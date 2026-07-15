@@ -4,7 +4,7 @@ Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
 Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
-**Versi saat ini: 4.5.3**
+**Versi saat ini: 4.5.4**
 
 ## Platform
 
@@ -56,8 +56,8 @@ version.properties
 ```
 
 ```properties
-VERSION_NAME=4.5.3
-VERSION_CODE=44
+VERSION_NAME=4.5.4
+VERSION_CODE=45
 ```
 
 ## Build APK
