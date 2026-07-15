@@ -74,7 +74,7 @@ jobs:
       - name: Create Gradle Wrapper
         run: gradle wrapper --gradle-version 8.4
 
-      - name: Build APK (signed release if secrets are valid)
+      - name: Build release APK
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -103,16 +103,16 @@ jobs:
                     -file /tmp/dramaku-signing-test.csr >/tmp/keytool-certreq.log 2>&1; then
                 SIGNING_OK=true
               else
-                echo "::warning::Signing secrets are present but invalid. Falling back to debug APK."
+                echo "::warning::Signing secrets are present but invalid. Falling back to release APK signed with debug key."
                 echo "::warning::Most common fix: regenerate using scripts/create-release-keystore.sh, then update ANDROID_KEYSTORE_BASE64 / PASSWORD / ALIAS."
                 cat /tmp/keytool-list.log 2>/dev/null || true
                 cat /tmp/keytool-certreq.log 2>/dev/null || true
               fi
             else
-              echo "::warning::ANDROID_KEYSTORE_BASE64 could not be decoded. Falling back to debug APK."
+              echo "::warning::ANDROID_KEYSTORE_BASE64 could not be decoded. Falling back to release APK signed with debug key."
             fi
           else
-            echo "Signing secrets not found. Building debug APK fallback..."
+            echo "Signing secrets not found. Building release APK signed with debug key fallback..."
           fi
 
           if [ "$SIGNING_OK" = "true" ]; then
@@ -125,12 +125,12 @@ jobs:
             echo "APK_NAME=Dramaku-v${VERSION_NAME}-release" >> "$GITHUB_ENV"
             echo "APK_KIND=signed release" >> "$GITHUB_ENV"
           else
-            echo "Building debug APK fallback..."
-            ./gradlew assembleDebug
-            cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/apk/final/Dramaku-v${VERSION_NAME}-debug.apk"
-            echo "APK_PATH=app/build/outputs/apk/final/Dramaku-v${VERSION_NAME}-debug.apk" >> "$GITHUB_ENV"
-            echo "APK_NAME=Dramaku-v${VERSION_NAME}-debug" >> "$GITHUB_ENV"
-            echo "APK_KIND=debug fallback" >> "$GITHUB_ENV"
+            echo "Building release APK signed with debug key fallback..."
+            ./gradlew assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/final/Dramaku-v${VERSION_NAME}-release-debugkey.apk"
+            echo "APK_PATH=app/build/outputs/apk/final/Dramaku-v${VERSION_NAME}-release-debugkey.apk" >> "$GITHUB_ENV"
+            echo "APK_NAME=Dramaku-v${VERSION_NAME}-release-debugkey" >> "$GITHUB_ENV"
+            echo "APK_KIND=release signed with debug key fallback" >> "$GITHUB_ENV"
           fi
 
       - name: Upload APK Artifact
@@ -155,6 +155,7 @@ jobs:
             - Kotlin + Jetpack Compose native MVP
             - Native home/search/detail/library/settings
             - Native ExoPlayer playback
+            - Release variant APK is always built; if signing secrets are missing it uses debug-key fallback
             - Versioning terpusat (`version.properties`)
             - Release GitHub hanya dari tag `v*` / manual dispatch
 
