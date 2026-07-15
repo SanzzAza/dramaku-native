@@ -609,6 +609,7 @@ private fun Footer() {
 private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (Drama) -> Unit, dataTick: Int, bump: () -> Unit) {
     var q by remember { mutableStateOf("") }
     var state by remember { mutableStateOf<Load<List<Drama>>>(Load.Idle) }
+    var filter by remember { mutableStateOf("all") }
     val recent = remember(dataTick) { store.recentSearches() }
 
     LaunchedEffect(q) {
@@ -619,6 +620,7 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (D
         }
         delay(400)
         state = Load.Loading
+        filter = "all"
         state = runCatching {
             store.saveRecent(query)
             repo.searchAll(query)
@@ -649,10 +651,21 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (D
             Load.Loading -> LinearProgressIndicator(color = Accent, trackColor = Bg3, modifier = Modifier.fillMaxWidth())
             is Load.Err -> ErrorBox((state as Load.Err).message) { q = q.trim() + " " }
             is Load.Ok -> {
-                val list = (state as Load.Ok<List<Drama>>).data
-                if (list.isEmpty()) EmptyState("Tidak ada hasil untuk “$q”.")
-                else LazyVerticalGrid(columns = GridCells.Fixed(3), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                    items(list, key = { it.platform + it.id }) { d -> DramaCard(d, Modifier.fillMaxWidth(), onDrama) }
+                val all = (state as Load.Ok<List<Drama>>).data
+                val counts = remember(all) { all.groupingBy { it.platform }.eachCount() }
+                val list = if (filter == "all") all else all.filter { it.platform == filter }
+                if (all.isEmpty()) EmptyState("Tidak ada hasil untuk “$q”.")
+                else Column(Modifier.fillMaxSize()) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+                        item { Pill("Semua (${all.size})", filter == "all") { filter = "all" } }
+                        items(counts.keys.sortedBy { platformLabel(it) }) { p ->
+                            Pill("${platformLabel(p)} (${counts[p] ?: 0})", filter == p) { filter = p }
+                        }
+                    }
+                    if (list.isEmpty()) EmptyState("Tidak ada hasil di filter ini.")
+                    else LazyVerticalGrid(columns = GridCells.Fixed(3), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+                        items(list, key = { it.platform + it.id }) { d -> DramaCard(d, Modifier.fillMaxWidth(), onDrama) }
+                    }
                 }
             }
         }
@@ -707,6 +720,8 @@ private fun LibraryScreen(store: LocalStore, dataTick: Int, onDrama: (Drama) -> 
 private fun SettingsScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
     val context = LocalContext.current
     var dataSaver by remember(dataTick) { mutableStateOf(store.dataSaver()) }
+    var autoNext by remember(dataTick) { mutableStateOf(store.autoNext()) }
+    var fitContainDefault by remember(dataTick) { mutableStateOf(store.fitContain()) }
     val historyCount = remember(dataTick) { store.history(dataTick).size }
     val favCount = remember(dataTick) { store.favs().size }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -715,6 +730,16 @@ private fun SettingsScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
         SettingSwitch("Mode hemat data", "Prioritaskan stream 480p kalau tersedia", dataSaver) {
             dataSaver = it
             store.setDataSaver(it)
+            bump()
+        }
+        SettingSwitch("Auto next episode", "Lanjut otomatis saat episode selesai", autoNext) {
+            autoNext = it
+            store.setAutoNext(it)
+            bump()
+        }
+        SettingSwitch("Mode video default Asli", "Mati = Full layar, aktif = rasio asli", fitContainDefault) {
+            fitContainDefault = it
+            store.setFitContain(it)
             bump()
         }
         SettingRow("Riwayat", "$historyCount item tersimpan") {}
@@ -781,7 +806,8 @@ private fun VerticalEpisodePlayer(
     var lastEpisode by remember { mutableIntStateOf(startEpisode.coerceIn(1, total)) }
     var uiVisible by remember { mutableStateOf(true) }
     var episodeSheet by remember { mutableStateOf(false) }
-    var fitContain by remember { mutableStateOf(false) }
+    var sheetRange by remember { mutableIntStateOf(0) }
+    var fitContain by remember { mutableStateOf(store.fitContain()) }
     var playing by remember { mutableStateOf(false) }
     var currentMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
@@ -816,7 +842,7 @@ private fun VerticalEpisodePlayer(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED && pagerState.currentPage < total - 1) {
+                if (playbackState == Player.STATE_ENDED && store.autoNext() && pagerState.currentPage < total - 1) {
                     saveProgress(pagerState.currentPage + 1)
                     scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
                 }
@@ -888,6 +914,7 @@ private fun VerticalEpisodePlayer(
         lastEpisode = ep
         uiVisible = true
         episodeSheet = false
+        sheetRange = ((ep - 1) / 30).coerceAtLeast(0)
         liked = false
         currentMs = 0L
         durationMs = 0L
@@ -1028,6 +1055,7 @@ private fun VerticalEpisodePlayer(
                 PlayerSideButton(if (fitContain) "□" else "▣", if (fitContain) "Asli" else "Full") {
                     uiVisible = true
                     fitContain = !fitContain
+                    store.setFitContain(fitContain)
                 }
                 PlayerSideButton("↻", "Retry") {
                     uiVisible = true
@@ -1115,13 +1143,26 @@ private fun VerticalEpisodePlayer(
                         IconButton(onClick = { episodeSheet = false }) { Text("×", color = Text, fontSize = 26.sp) }
                     }
                     Spacer(Modifier.height(10.dp))
+                    val rangeSize = 30
+                    val rangeCount = ((total + rangeSize - 1) / rangeSize).coerceAtLeast(1)
+                    if (rangeCount > 1) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 10.dp)) {
+                            items((0 until rangeCount).toList()) { r ->
+                                val st = r * rangeSize + 1
+                                val en = min(total, (r + 1) * rangeSize)
+                                Pill("$st-$en", sheetRange == r) { sheetRange = r }
+                            }
+                        }
+                    }
+                    val startEp = sheetRange * rangeSize + 1
+                    val endEp = min(total, startEp + rangeSize - 1)
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(5),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp)
                     ) {
-                        items((1..total).toList()) { ep ->
+                        items((startEp..endEp).toList()) { ep ->
                             val active = ep == pagerState.currentPage + 1
                             Surface(
                                 color = if (active) Accent else Bg3,
@@ -1186,6 +1227,8 @@ private fun DetailScreen(
     val isFav = store.isFav(drama.id, drama.platform)
     val hist = store.history().firstOrNull { it.id == drama.id && it.platform == drama.platform }
     val resumeEp = hist?.episode?.coerceAtLeast(1) ?: 1
+    val totalEpisodes = episodeCount(detail).coerceAtLeast(1)
+    var detailRange by remember(drama.id, totalEpisodes) { mutableIntStateOf(((resumeEp - 1) / 30).coerceAtLeast(0)) }
     Box(Modifier.fillMaxSize().background(Bg)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 22.dp)) {
             item {
@@ -1199,7 +1242,7 @@ private fun DetailScreen(
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f).padding(bottom = 8.dp)) {
                         Text(drama.title, color = Text, fontSize = 25.sp, lineHeight = 28.sp, fontWeight = FontWeight.Black, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        Text("${platformLabel(drama.platform)} · ${episodeCount(detail).coerceAtLeast(1)} Episode", color = Muted, fontSize = 12.sp)
+                        Text("${platformLabel(drama.platform)} · $totalEpisodes Episode", color = Muted, fontSize = 12.sp)
                     }
                 }
             }
@@ -1236,8 +1279,20 @@ private fun DetailScreen(
                     Spacer(Modifier.height(20.dp))
                     Text("Daftar Episode", color = Text, fontWeight = FontWeight.Black, fontSize = 18.sp)
                     Spacer(Modifier.height(10.dp))
-                    val total = episodeCount(detail).coerceAtLeast(1)
-                    val rows = (1..total).chunked(5)
+                    val rangeSize = 30
+                    val rangeCount = ((totalEpisodes + rangeSize - 1) / rangeSize).coerceAtLeast(1)
+                    if (rangeCount > 1) {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 10.dp)) {
+                            items((0 until rangeCount).toList()) { r ->
+                                val st = r * rangeSize + 1
+                                val en = min(totalEpisodes, (r + 1) * rangeSize)
+                                Pill("$st-$en", detailRange == r) { detailRange = r }
+                            }
+                        }
+                    }
+                    val startEp = detailRange * rangeSize + 1
+                    val endEp = min(totalEpisodes, startEp + rangeSize - 1)
+                    val rows = (startEp..endEp).chunked(5)
                     rows.forEach { row ->
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                             row.forEach { ep ->
@@ -1633,6 +1688,12 @@ private class LocalStore(context: Context) {
     fun setPlatform(id: String) = prefs.edit().putString("platform", id).apply()
     fun dataSaver() = prefs.getBoolean("dataSaver", false)
     fun setDataSaver(v: Boolean) = prefs.edit().putBoolean("dataSaver", v).apply()
+    fun autoNext() = prefs.getBoolean("autoNext", true)
+    fun setAutoNext(v: Boolean) = prefs.edit().putBoolean("autoNext", v).apply()
+    fun fitContain() = prefs.getBoolean("fitContain", false)
+    fun setFitContain(v: Boolean) = prefs.edit().putBoolean("fitContain", v).apply()
+
+    private fun progressPrefix(id: String, ep: Int) = "progress_${id}_${ep}_"
 
     fun history(tick: Int = 0): List<HistoryItem> = parseHistory()
     fun saveHistory(drama: Drama, ep: Int) {
@@ -1654,17 +1715,31 @@ private class LocalStore(context: Context) {
         prefs.edit().putString("history", arr.toString()).apply()
     }
     fun updateProgress(id: String, ep: Int, pos: Long, dur: Long) {
+        val p = progressPrefix(id, ep)
+        val editor = prefs.edit()
+            .putLong(p + "pos", pos.coerceAtLeast(0L))
+            .putLong(p + "dur", dur.coerceAtLeast(0L))
         val list = parseHistory().toMutableList()
         val idx = list.indexOfFirst { it.id == id }
         if (idx >= 0) {
             val h = list[idx]
             list[idx] = h.copy(episode = ep, pos = pos, dur = dur, updated = System.currentTimeMillis())
             val arr = JSONArray(); list.sortedByDescending { it.updated }.forEach { arr.put(it.toJson()) }
-            prefs.edit().putString("history", arr.toString()).apply()
+            editor.putString("history", arr.toString())
         }
+        editor.apply()
     }
-    fun progressMs(id: String, ep: Int): Long = parseHistory().firstOrNull { it.id == id && it.episode == ep }?.pos ?: 0L
-    fun clearHistory() = prefs.edit().remove("history").apply()
+    fun progressMs(id: String, ep: Int): Long {
+        val p = progressPrefix(id, ep)
+        val saved = prefs.getLong(p + "pos", -1L)
+        if (saved >= 0L) return saved
+        return parseHistory().firstOrNull { it.id == id && it.episode == ep }?.pos ?: 0L
+    }
+    fun clearHistory() {
+        val editor = prefs.edit().remove("history")
+        prefs.all.keys.filter { it.startsWith("progress_") }.forEach { editor.remove(it) }
+        editor.apply()
+    }
 
     fun favs(): List<Drama> = parseDramaList(prefs.getString("favs", "[]"))
     fun isFav(id: String, platform: String) = favs().any { it.id == id && it.platform == platform }

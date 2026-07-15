@@ -48,6 +48,13 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.5.7 parity pack
+
+- Search filter platform native.
+- Progress video disimpan per episode.
+- Episode range di detail/player untuk judul dengan banyak episode.
+- Settings Auto Next dan default mode video Full/Asli.
+
 ## Player controls parity
 
 Native player sekarang mendukung auto-hide overlay, tap untuk tampilkan kontrol, episode sheet saat nonton, pause saat app background, fit Full/Asli, retry, auto-next episode, progress bar detik, slider seek/drag, double tap seek ±10 detik, dan long press speed 2x.
