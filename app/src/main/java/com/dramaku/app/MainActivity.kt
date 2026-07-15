@@ -496,7 +496,6 @@ private fun HomeScreen(
                 val data = state.data
                 val spotlight = (data.popular + data.newest + data.recommended).firstOrNull { it.poster.isNotBlank() }
                 if (spotlight != null) item { Spotlight(spotlight, onDrama) }
-                item { QuickActions(onRandom = onRandom, onSearch = onSearch, onClips = onClips) }
                 item { PlatformStatusStrip(remoteConfig) }
                 if (history.isNotEmpty()) item { ContinueWatching(history, onResume) }
                 item { ForYouSection(history, (data.popular + data.newest + data.recommended), onDrama) }
@@ -723,38 +722,6 @@ private fun Spotlight(drama: Drama, onDrama: (Drama) -> Unit) {
                     Pill("▶ Tonton", selected = true) { onDrama(drama) }
                     Pill("${drama.episodes.coerceAtLeast(1)} Ep") {}
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun QuickActions(onRandom: () -> Unit, onSearch: () -> Unit, onClips: () -> Unit) {
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-        Text("Jelajah Cepat", color = Text, fontWeight = FontWeight.Black, fontSize = 19.sp)
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionCard("RND", "Acak", "Drama random", Modifier.weight(1f), onRandom)
-            ActionCard("PLAY", "Cuplikan", "Feed episode 1", Modifier.weight(1f), onClips)
-            ActionCard("HOT", "Viral", "Cari tren", Modifier.weight(1f), onSearch)
-        }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 12.dp)) {
-            items(listOf("CEO", "Balas Dendam", "Romantis", "Korea", "China", "Comedy", "Action")) { q ->
-                Pill(q, false, onSearch)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ActionCard(icon: String, title: String, sub: String, modifier: Modifier, onClick: () -> Unit) {
-    Surface(modifier = modifier.clickable(onClick = onClick), color = Bg3, shape = RoundedCornerShape(20.dp)) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Black)
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text(title, color = Text, fontWeight = FontWeight.Bold)
-                Text(sub, color = Muted, fontSize = 12.sp)
             }
         }
     }
@@ -1261,12 +1228,22 @@ private fun ClipFeedPlayer(
                         )
                     )
                 )
-                Column(Modifier.align(Alignment.BottomStart).padding(18.dp, 18.dp, 92.dp, 34.dp)) {
-                    Text("Cuplikan · Episode 1", color = Accent, fontWeight = FontWeight.Black, fontSize = 13.sp)
-                    Text(display.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp, lineHeight = 27.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(6.dp))
-                    Text("${platformLabel(display.platform)} · ${display.episodes.coerceAtLeast(1)} Episode", color = Color(0xDDFFFFFF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text("Swipe atas/bawah untuk ganti drama", color = Color(0xBFFFFFFF), fontSize = 12.sp)
+                Column(Modifier.align(Alignment.BottomStart).padding(16.dp, 16.dp, 88.dp, 30.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Poster(display.poster, display.title, Modifier.width(78.dp).height(112.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(display.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(5.dp))
+                            Text("${platformLabel(display.platform)} · ${display.episodes.coerceAtLeast(1)} Episode", color = Color(0xDDFFFFFF), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("Cuplikan Episode 1", color = Accent, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Surface(color = Color(0x99000000), shape = RoundedCornerShape(999.dp)) {
+                        Text("Ep.1 | ${display.title}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+                    }
+                    Text("Swipe atas/bawah untuk ganti drama", color = Color(0xBFFFFFFF), fontSize = 11.sp, modifier = Modifier.padding(top = 7.dp))
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
@@ -1274,7 +1251,7 @@ private fun ClipFeedPlayer(
                             enabled = currentDetail != null,
                             colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
                             shape = RoundedCornerShape(999.dp)
-                        ) { Text("Tonton Semua Episode", fontWeight = FontWeight.Black, fontSize = 12.sp) }
+                        ) { Text("Tonton Semua", fontWeight = FontWeight.Black, fontSize = 12.sp) }
                         OutlinedButton(
                             onClick = { onOpenDetail(display) },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),

@@ -48,6 +48,12 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.3 clean clips UI
+
+- Hapus section Jelajah Cepat dari Home karena Cuplikan sudah menjadi bottom tab utama.
+- Overlay Cuplikan dibuat compact: poster kecil/card di kiri, judul di samping, dan label `Ep.1 | Judul` di bawah.
+- Tombol CTA dipersingkat menjadi `Tonton Semua`.
+
 ## v4.6.2 bottom nav clips
 
 - Cuplikan dipindahkan ke bottom navigation sebagai tab utama.
