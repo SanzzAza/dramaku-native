@@ -48,6 +48,10 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## Player controls parity
+
+Native player sekarang mendukung auto-hide overlay, tap untuk tampilkan kontrol, episode sheet saat nonton, pause saat app background, fit Full/Asli, retry, dan auto-next episode.
+
 ## Next improvement
 
 Repo ini sekarang bersih native. Improvement lanjutan yang disarankan:

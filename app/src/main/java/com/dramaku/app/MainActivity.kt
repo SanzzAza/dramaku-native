@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -16,6 +17,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -43,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.input.pointer.pointerInput
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -50,12 +53,16 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.withContext
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -733,6 +740,7 @@ private fun SettingSwitch(title: String, sub: String, checked: Boolean, onChecke
 }
 
 
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VerticalEpisodePlayer(
@@ -743,6 +751,9 @@ private fun VerticalEpisodePlayer(
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val componentActivity = context as? ComponentActivity
+    val scope = rememberCoroutineScope()
     val total = episodeCount(detail).coerceAtLeast(1)
     val pagerState = rememberPagerState(
         initialPage = (startEpisode - 1).coerceIn(0, total - 1),
@@ -753,6 +764,10 @@ private fun VerticalEpisodePlayer(
     var error by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
     var lastEpisode by remember { mutableIntStateOf(startEpisode.coerceIn(1, total)) }
+    var uiVisible by remember { mutableStateOf(true) }
+    var episodeSheet by remember { mutableStateOf(false) }
+    var fitContain by remember { mutableStateOf(false) }
+    var playing by remember { mutableStateOf(false) }
 
     fun saveProgress(ep: Int) {
         runCatching {
@@ -761,19 +776,76 @@ private fun VerticalEpisodePlayer(
         }
     }
 
-    BackHandler { saveProgress(pagerState.currentPage + 1); onClose() }
+    fun closePlayer() {
+        saveProgress(pagerState.currentPage + 1)
+        runCatching { player.pause() }
+        onClose()
+    }
+
+    BackHandler {
+        if (episodeSheet) episodeSheet = false else closePlayer()
+    }
 
     DisposableEffect(Unit) {
+        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                playing = isPlaying
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED && pagerState.currentPage < total - 1) {
+                    saveProgress(pagerState.currentPage + 1)
+                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                }
+            }
+        }
+        player.addListener(listener)
         onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            player.removeListener(listener)
             saveProgress(pagerState.currentPage + 1)
+            runCatching { player.stop() }
             player.release()
         }
+    }
+
+    DisposableEffect(componentActivity) {
+        val lifecycle = componentActivity?.lifecycle
+        if (lifecycle == null) {
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                        saveProgress(pagerState.currentPage + 1)
+                        runCatching { player.pause() }
+                    }
+                    else -> Unit
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
+    }
+
+    LaunchedEffect(uiVisible, loading, error, pagerState.currentPage) {
+        if (uiVisible && !loading && error == null && !episodeSheet) {
+            delay(2800)
+            uiVisible = false
+        }
+    }
+
+    LaunchedEffect(episodeSheet) {
+        if (episodeSheet) uiVisible = true
     }
 
     LaunchedEffect(pagerState.currentPage, retryKey) {
         val ep = pagerState.currentPage + 1
         if (lastEpisode != ep) saveProgress(lastEpisode)
         lastEpisode = ep
+        uiVisible = true
+        episodeSheet = false
         loading = true
         error = null
         val start = store.progressMs(detail.drama.id, ep)
@@ -793,7 +865,17 @@ private fun VerticalEpisodePlayer(
         loading = false
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = {
+                    uiVisible = !uiVisible
+                    if (!uiVisible) episodeSheet = false
+                })
+            }
+    ) {
         VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             val ep = page + 1
             Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -804,49 +886,72 @@ private fun VerticalEpisodePlayer(
                                 useController = false
                                 controllerAutoShow = false
                                 this.player = player
+                                resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                             }
                         },
-                        update = { it.player = player },
+                        update = {
+                            it.player = player
+                            it.resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Transparent, Color(0xCC000000)),
-                            startY = 250f
+                if (uiVisible || loading || error != null) {
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color(0x22000000), Color(0xDD000000)),
+                                startY = 180f
+                            )
                         )
                     )
-                )
-                Column(
-                    Modifier.align(Alignment.BottomStart).padding(18.dp, 18.dp, 88.dp, 28.dp)
-                ) {
-                    Text("Episode $ep", color = Accent, fontWeight = FontWeight.Black, fontSize = 14.sp)
-                    Text(detail.drama.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text("Swipe atas/bawah buat pindah episode", color = Color(0xCCFFFFFF), fontSize = 12.sp)
+                    Column(
+                        Modifier.align(Alignment.BottomStart).padding(18.dp, 18.dp, 92.dp, 30.dp)
+                    ) {
+                        Text("Episode $ep", color = Accent, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                        Text(detail.drama.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("Swipe atas/bawah buat pindah episode", color = Color(0xCCFFFFFF), fontSize = 12.sp)
+                    }
                 }
             }
         }
 
-        Row(
-            Modifier.align(Alignment.TopStart).fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { saveProgress(pagerState.currentPage + 1); onClose() }, modifier = Modifier.clip(CircleShape).background(Color(0x99000000))) {
-                Text("‹", color = Color.White, fontSize = 34.sp)
+        AnimatedVisibility(uiVisible || loading || error != null, modifier = Modifier.align(Alignment.TopStart)) {
+            Row(
+                Modifier.fillMaxWidth().padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { closePlayer() }, modifier = Modifier.clip(CircleShape).background(Color(0x99000000))) {
+                    Text("‹", color = Color.White, fontSize = 34.sp)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("${pagerState.currentPage + 1}/$total", color = Color.White, fontWeight = FontWeight.Bold)
             }
-            Spacer(Modifier.width(8.dp))
-            Text("${pagerState.currentPage + 1}/$total", color = Color.White, fontWeight = FontWeight.Bold)
         }
 
-        Column(
-            Modifier.align(Alignment.CenterEnd).padding(end = 14.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            PlayerSideButton("♥", "Suka") {}
-            PlayerSideButton("☰", "Episode") {}
-            PlayerSideButton("↻", "Retry") { retryKey++ }
+        AnimatedVisibility(uiVisible || loading || error != null, modifier = Modifier.align(Alignment.CenterEnd)) {
+            Column(
+                Modifier.padding(end = 14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                PlayerSideButton(if (playing) "Ⅱ" else "▶", if (playing) "Pause" else "Play") {
+                    uiVisible = true
+                    if (player.isPlaying) player.pause() else player.play()
+                }
+                PlayerSideButton("☰", "Episode") {
+                    uiVisible = true
+                    episodeSheet = true
+                }
+                PlayerSideButton(if (fitContain) "□" else "▣", if (fitContain) "Asli" else "Full") {
+                    uiVisible = true
+                    fitContain = !fitContain
+                }
+                PlayerSideButton("↻", "Retry") {
+                    uiVisible = true
+                    retryKey++
+                }
+            }
         }
 
         if (loading) {
@@ -868,13 +973,59 @@ private fun VerticalEpisodePlayer(
                 }
             }
         }
+
+        if (episodeSheet) {
+            Box(
+                Modifier.fillMaxSize().background(Color(0x99000000)).clickable { episodeSheet = false }
+            )
+            Surface(
+                color = Bg2,
+                shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = 430.dp)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Daftar Episode", color = Text, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                            Text(detail.drama.title, color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        IconButton(onClick = { episodeSheet = false }) { Text("×", color = Text, fontSize = 26.sp) }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(5),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp)
+                    ) {
+                        items((1..total).toList()) { ep ->
+                            val active = ep == pagerState.currentPage + 1
+                            Surface(
+                                color = if (active) Accent else Bg3,
+                                contentColor = if (active) Color.Black else Text,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.height(44.dp).clickable {
+                                    episodeSheet = false
+                                    uiVisible = true
+                                    scope.launch { pagerState.animateScrollToPage(ep - 1) }
+                                }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(ep.toString(), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun PlayerSideButton(icon: String, label: String, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(color = Color(0x99000000), shape = CircleShape, modifier = Modifier.size(48.dp).clickable(onClick = onClick)) {
+        Surface(color = Color(0x99000000), shape = CircleShape, modifier = Modifier.size(50.dp).clickable(onClick = onClick)) {
             Box(contentAlignment = Alignment.Center) { Text(icon, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
         }
         Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
