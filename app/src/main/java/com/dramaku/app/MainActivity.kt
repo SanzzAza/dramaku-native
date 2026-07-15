@@ -56,6 +56,7 @@ import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -182,6 +183,7 @@ private fun DramakuNativeApp() {
     var dataTick by remember { mutableIntStateOf(0) }
     var resolvingEpisode by remember { mutableIntStateOf(0) }
     var playerSession by remember { mutableStateOf<PlayerSession?>(null) }
+    var pendingResume by remember { mutableStateOf<HistoryItem?>(null) }
 
     val playerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
@@ -214,7 +216,17 @@ private fun DramakuNativeApp() {
             .fold({ Load.Ok(it) }, { Load.Err(it.message ?: "Gagal memuat detail") })
     }
 
-    BackHandler(enabled = selectedDrama != null) { selectedDrama = null }
+    LaunchedEffect(detailState, pendingResume) {
+        val pending = pendingResume ?: return@LaunchedEffect
+        val detail = (detailState as? Load.Ok)?.data ?: return@LaunchedEffect
+        if (detail.drama.id == pending.id && detail.drama.platform == pending.platform) {
+            playerSession = PlayerSession(detail, pending.episode.coerceAtLeast(1))
+            selectedDrama = null
+            pendingResume = null
+        }
+    }
+
+    BackHandler(enabled = selectedDrama != null) { selectedDrama = null; pendingResume = null }
 
     Box(Modifier.fillMaxSize().background(Bg)) {
         Scaffold(
@@ -251,6 +263,10 @@ private fun DramakuNativeApp() {
                             val bundle = (homeState as? Load.Ok)?.data
                             val pool = (bundle?.popular.orEmpty() + bundle?.newest.orEmpty() + bundle?.recommended.orEmpty()).filter { it.id.isNotBlank() }
                             if (pool.isNotEmpty()) selectedDrama = pool.random()
+                        },
+                        onResume = { h ->
+                            pendingResume = h
+                            selectedDrama = Drama(h.id, h.title, poster = h.poster, platform = h.platform)
                         }
                     )
                     RootTab.Search -> SearchScreen(repo, store, onDrama = { selectedDrama = it }, dataTick = dataTick, bump = { dataTick++ })
@@ -300,7 +316,8 @@ private fun HomeScreen(
     onRefresh: () -> Unit,
     onDrama: (Drama) -> Unit,
     onSearch: () -> Unit,
-    onRandom: () -> Unit
+    onRandom: () -> Unit,
+    onResume: (HistoryItem) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -318,7 +335,7 @@ private fun HomeScreen(
                 val spotlight = (data.popular + data.newest + data.recommended).firstOrNull { it.poster.isNotBlank() }
                 if (spotlight != null) item { Spotlight(spotlight, onDrama) }
                 item { QuickActions(onRandom = onRandom, onSearch = onSearch) }
-                if (history.isNotEmpty()) item { ContinueWatching(history, onDrama) }
+                if (history.isNotEmpty()) item { ContinueWatching(history, onResume) }
                 if (data.popular.isNotEmpty()) item { DramaRail("Top 10 Hari Ini", data.popular.take(10), onDrama) }
                 if (data.popular.size > 10) item { DramaGridSection("Paling Populer", data.popular.drop(10).take(30), onDrama) }
                 if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest.take(45), onDrama) }
@@ -485,14 +502,12 @@ private fun ActionCard(icon: String, title: String, sub: String, modifier: Modif
 }
 
 @Composable
-private fun ContinueWatching(history: List<HistoryItem>, onDrama: (Drama) -> Unit) {
+private fun ContinueWatching(history: List<HistoryItem>, onResume: (HistoryItem) -> Unit) {
     Column(Modifier.padding(top = 10.dp)) {
         SectionTitle("Lanjutkan Tontonan")
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             items(history.take(8)) { h ->
-                Column(Modifier.width(128.dp).clickable {
-                    onDrama(Drama(h.id, h.title, poster = h.poster, platform = h.platform))
-                }) {
+                Column(Modifier.width(128.dp).clickable { onResume(h) }) {
                     Box {
                         Poster(h.poster, h.title, Modifier.width(128.dp).height(180.dp))
                         Badge("Ep ${h.episode}", Modifier.align(Alignment.TopStart).padding(8.dp))
@@ -768,6 +783,13 @@ private fun VerticalEpisodePlayer(
     var episodeSheet by remember { mutableStateOf(false) }
     var fitContain by remember { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
+    var currentMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var isSeeking by remember { mutableStateOf(false) }
+    var flashText by remember { mutableStateOf<String?>(null) }
+    var speedHold by remember { mutableStateOf(false) }
+    var liked by remember { mutableStateOf(false) }
+    var lastProgressSaveMs by remember { mutableLongStateOf(0L) }
 
     fun saveProgress(ep: Int) {
         runCatching {
@@ -840,12 +862,36 @@ private fun VerticalEpisodePlayer(
         if (episodeSheet) uiVisible = true
     }
 
+    LaunchedEffect(player, pagerState.currentPage, loading) {
+        while (true) {
+            val dur = player.duration.takeIf { it > 0 } ?: 0L
+            durationMs = dur
+            if (!isSeeking) currentMs = player.currentPosition.coerceAtLeast(0L)
+            if (dur > 0 && System.currentTimeMillis() - lastProgressSaveMs > 2500L) {
+                lastProgressSaveMs = System.currentTimeMillis()
+                saveProgress(pagerState.currentPage + 1)
+            }
+            delay(500)
+        }
+    }
+
+    LaunchedEffect(flashText) {
+        if (flashText != null) {
+            delay(700)
+            flashText = null
+        }
+    }
+
     LaunchedEffect(pagerState.currentPage, retryKey) {
         val ep = pagerState.currentPage + 1
         if (lastEpisode != ep) saveProgress(lastEpisode)
         lastEpisode = ep
         uiVisible = true
         episodeSheet = false
+        liked = false
+        currentMs = 0L
+        durationMs = 0L
+        lastProgressSaveMs = 0L
         loading = true
         error = null
         val start = store.progressMs(detail.drama.id, ep)
@@ -869,11 +915,47 @@ private fun VerticalEpisodePlayer(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = {
-                    uiVisible = !uiVisible
-                    if (!uiVisible) episodeSheet = false
-                })
+            .pointerInput(player, pagerState.currentPage) {
+                detectTapGestures(
+                    onTap = {
+                        uiVisible = !uiVisible
+                        if (!uiVisible) episodeSheet = false
+                    },
+                    onDoubleTap = { offset ->
+                        uiVisible = true
+                        val width = size.width.coerceAtLeast(1)
+                        when {
+                            offset.x < width * 0.42f -> {
+                                val next = (player.currentPosition - 10_000L).coerceAtLeast(0L)
+                                player.seekTo(next)
+                                currentMs = next
+                                flashText = "-10 detik"
+                            }
+                            offset.x > width * 0.58f -> {
+                                val dur = player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                                val next = (player.currentPosition + 10_000L).coerceAtMost(dur)
+                                player.seekTo(next)
+                                currentMs = next
+                                flashText = "+10 detik"
+                            }
+                            else -> {
+                                liked = true
+                                flashText = "Suka"
+                            }
+                        }
+                    },
+                    onPress = {
+                        val releasedQuickly = withTimeoutOrNull(520) { tryAwaitRelease() }
+                        if (releasedQuickly == null) {
+                            speedHold = true
+                            flashText = "2x"
+                            runCatching { player.setPlaybackSpeed(2f) }
+                            tryAwaitRelease()
+                            runCatching { player.setPlaybackSpeed(1f) }
+                            speedHold = false
+                        }
+                    }
+                )
             }
     ) {
         VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
@@ -951,6 +1033,47 @@ private fun VerticalEpisodePlayer(
                     uiVisible = true
                     retryKey++
                 }
+            }
+        }
+
+        AnimatedVisibility(uiVisible || loading || error != null, modifier = Modifier.align(Alignment.BottomCenter)) {
+            Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(formatMs(currentMs), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.weight(1f))
+                    Text(formatMs(durationMs), color = Color(0xCCFFFFFF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = if (durationMs > 0) (currentMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f,
+                    onValueChange = { v ->
+                        isSeeking = true
+                        val pos = (v * durationMs).toLong().coerceAtLeast(0L)
+                        currentMs = pos
+                    },
+                    onValueChangeFinished = {
+                        player.seekTo(currentMs)
+                        saveProgress(pagerState.currentPage + 1)
+                        isSeeking = false
+                    },
+                    enabled = durationMs > 0,
+                    colors = SliderDefaults.colors(
+                        thumbColor = Accent,
+                        activeTrackColor = Accent,
+                        inactiveTrackColor = Color(0x66FFFFFF)
+                    )
+                )
+            }
+        }
+
+        AnimatedVisibility(flashText != null || speedHold || liked, modifier = Modifier.align(Alignment.Center)) {
+            Surface(color = Color(0xAA000000), shape = RoundedCornerShape(999.dp)) {
+                Text(
+                    flashText ?: if (speedHold) "2x" else "♥",
+                    color = if (liked) Accent else Color.White,
+                    fontWeight = FontWeight.Black,
+                    fontSize = if (liked) 34.sp else 20.sp,
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp)
+                )
             }
         }
 
@@ -1061,6 +1184,8 @@ private fun DetailScreen(
     val detail = (state as? Load.Ok)?.data ?: Detail(fallback)
     val drama = detail.drama
     val isFav = store.isFav(drama.id, drama.platform)
+    val hist = store.history().firstOrNull { it.id == drama.id && it.platform == drama.platform }
+    val resumeEp = hist?.episode?.coerceAtLeast(1) ?: 1
     Box(Modifier.fillMaxSize().background(Bg)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 22.dp)) {
             item {
@@ -1086,11 +1211,22 @@ private fun DetailScreen(
                         else -> {}
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(onClick = { onPlay(detail, 1) }, enabled = state is Load.Ok && resolvingEpisode == 0, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black), modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(16.dp)) {
-                            Text(if (resolvingEpisode == 1) "Memuat..." else "▶ Mulai Tonton", fontWeight = FontWeight.Black)
+                        Button(onClick = { onPlay(detail, resumeEp) }, enabled = state is Load.Ok && resolvingEpisode == 0, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black), modifier = Modifier.weight(1f).height(50.dp), shape = RoundedCornerShape(16.dp)) {
+                            Text(if (resolvingEpisode == resumeEp) "Memuat..." else if (hist != null) "▶ Lanjut Ep $resumeEp" else "▶ Mulai Tonton", fontWeight = FontWeight.Black)
                         }
                         IconButton(onClick = { store.toggleFav(drama); onFavChanged() }, modifier = Modifier.size(50.dp).clip(RoundedCornerShape(16.dp)).background(if (isFav) Accent else Bg3)) { Text(if (isFav) "♥" else "♡", color = if (isFav) Color.Black else Text, fontSize = 24.sp) }
                         IconButton(onClick = { onShare(drama) }, modifier = Modifier.size(50.dp).clip(RoundedCornerShape(16.dp)).background(Bg3)) { Text("↗", color = Text, fontSize = 22.sp) }
+                    }
+                    if (hist != null) {
+                        Surface(color = Bg3, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(top = 12.dp).clickable { onPlay(detail, resumeEp) }) {
+                            Column(Modifier.padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Lanjutkan tontonan", color = Text, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text("Ep $resumeEp${if (hist.pct > 0) " · ${hist.pct}%" else ""}", color = Accent, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                }
+                                if (hist.pct > 0) LinearProgressIndicator(progress = hist.pct / 100f, color = Accent, trackColor = Color(0x33000000), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp))
+                            }
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                     if (drama.tags.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(drama.tags.take(8)) { Pill(it) {} } }
@@ -1122,6 +1258,14 @@ private fun DetailScreen(
 }
 
 private fun episodeCount(detail: Detail): Int = max(detail.drama.episodes, detail.episodes.size)
+
+private fun formatMs(ms: Long): String {
+    val totalSec = (ms / 1000L).coerceAtLeast(0L)
+    val h = totalSec / 3600L
+    val m = (totalSec % 3600L) / 60L
+    val s = totalSec % 60L
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
+}
 
 private fun shareDrama(context: Context, drama: Drama) {
     val text = "${drama.title}\nPlatform: ${platformLabel(drama.platform)}\nDramaku"
@@ -1493,8 +1637,19 @@ private class LocalStore(context: Context) {
     fun history(tick: Int = 0): List<HistoryItem> = parseHistory()
     fun saveHistory(drama: Drama, ep: Int) {
         val arr = JSONArray()
-        val old = parseHistory().filterNot { it.id == drama.id && it.platform == drama.platform }.toMutableList()
-        old.add(0, HistoryItem(drama.id, drama.title, drama.poster, drama.platform, ep))
+        val current = parseHistory()
+        val prev = current.firstOrNull { it.id == drama.id && it.platform == drama.platform }
+        val old = current.filterNot { it.id == drama.id && it.platform == drama.platform }.toMutableList()
+        val keepProgress = prev != null && prev.episode == ep
+        old.add(0, HistoryItem(
+            drama.id,
+            drama.title.ifBlank { prev?.title.orEmpty() },
+            drama.poster.ifBlank { prev?.poster.orEmpty() },
+            drama.platform,
+            ep,
+            pos = if (keepProgress) prev?.pos ?: 0L else 0L,
+            dur = if (keepProgress) prev?.dur ?: 0L else 0L
+        ))
         old.take(80).forEach { arr.put(it.toJson()) }
         prefs.edit().putString("history", arr.toString()).apply()
     }

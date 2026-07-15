@@ -50,7 +50,7 @@ Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jala
 
 ## Player controls parity
 
-Native player sekarang mendukung auto-hide overlay, tap untuk tampilkan kontrol, episode sheet saat nonton, pause saat app background, fit Full/Asli, retry, dan auto-next episode.
+Native player sekarang mendukung auto-hide overlay, tap untuk tampilkan kontrol, episode sheet saat nonton, pause saat app background, fit Full/Asli, retry, auto-next episode, progress bar detik, slider seek/drag, double tap seek ±10 detik, dan long press speed 2x.
 
 ## Next improvement
 
