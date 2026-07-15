@@ -48,6 +48,13 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.5.8 final polish
+
+- Hapus riwayat/favorit per item.
+- Settings final dengan statistik, clear recent search, About, Privasi, Disclaimer.
+- Report episode dari player lewat Android share sheet.
+- Release signed APK tetap otomatis lewat GitHub Actions.
+
 ## v4.5.7 parity pack
 
 - Search filter platform native.

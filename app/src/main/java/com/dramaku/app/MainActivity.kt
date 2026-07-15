@@ -681,33 +681,57 @@ private fun EmptyState(text: String) {
 
 @Composable
 private fun LibraryScreen(store: LocalStore, dataTick: Int, onDrama: (Drama) -> Unit) {
+    val context = LocalContext.current
+    var localTick by remember { mutableIntStateOf(0) }
     var showFav by remember { mutableStateOf(false) }
-    val history = remember(dataTick) { store.history(dataTick) }
-    val favs = remember(dataTick) { store.favs() }
+    val history = remember(dataTick, localTick) { store.history(dataTick + localTick) }
+    val favs = remember(dataTick, localTick) { store.favs() }
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("Koleksi", color = Text, fontSize = 27.sp, fontWeight = FontWeight.Black)
+        Text("Riwayat, progress, dan favorit lokal", color = Muted, fontSize = 12.sp)
         Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Pill("Riwayat (${history.size})", !showFav) { showFav = false }
             Pill("Favorit (${favs.size})", showFav) { showFav = true }
         }
         if (showFav) {
             if (favs.isEmpty()) EmptyState("Belum ada favorit.")
-            else LazyVerticalGrid(columns = GridCells.Fixed(3), verticalArrangement = Arrangement.spacedBy(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                items(favs, key = { it.platform + it.id }) { d -> DramaCard(d, Modifier.fillMaxWidth(), onDrama) }
+            else LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items(favs, key = { it.platform + it.id }) { d ->
+                    Surface(color = Bg3, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Poster(d.poster, d.title, Modifier.width(72.dp).height(102.dp).clickable { onDrama(d) })
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f).clickable { onDrama(d) }) {
+                                Text(d.title, color = Text, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(platformLabel(d.platform), color = Muted, fontSize = 12.sp)
+                            }
+                            TextButton(onClick = {
+                                store.removeFav(d.id, d.platform)
+                                localTick++
+                                Toast.makeText(context, "Favorit dihapus", Toast.LENGTH_SHORT).show()
+                            }) { Text("Hapus", color = Danger) }
+                        }
+                    }
+                }
             }
         } else {
             if (history.isEmpty()) EmptyState("Belum ada riwayat tontonan.")
             else LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(history, key = { it.id + it.platform }) { h ->
-                    Surface(color = Bg3, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth().clickable { onDrama(Drama(h.id, h.title, poster = h.poster, platform = h.platform)) }) {
+                    Surface(color = Bg3, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Poster(h.poster, h.title, Modifier.width(72.dp).height(102.dp))
+                            Poster(h.poster, h.title, Modifier.width(72.dp).height(102.dp).clickable { onDrama(Drama(h.id, h.title, poster = h.poster, platform = h.platform)) })
                             Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
+                            Column(Modifier.weight(1f).clickable { onDrama(Drama(h.id, h.title, poster = h.poster, platform = h.platform)) }) {
                                 Text(h.title, color = Text, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text("${platformLabel(h.platform)} · Episode ${h.episode}${if (h.pct > 0) " · ${h.pct}%" else ""}", color = Muted, fontSize = 12.sp)
                                 if (h.pct > 0) LinearProgressIndicator(progress = h.pct / 100f, color = Accent, trackColor = Color(0x33000000), modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp))
                             }
+                            TextButton(onClick = {
+                                store.removeHistory(h.id, h.platform)
+                                localTick++
+                                Toast.makeText(context, "Riwayat dihapus", Toast.LENGTH_SHORT).show()
+                            }) { Text("Hapus", color = Danger) }
                         }
                     }
                 }
@@ -722,11 +746,20 @@ private fun SettingsScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
     var dataSaver by remember(dataTick) { mutableStateOf(store.dataSaver()) }
     var autoNext by remember(dataTick) { mutableStateOf(store.autoNext()) }
     var fitContainDefault by remember(dataTick) { mutableStateOf(store.fitContain()) }
+    var dialog by remember { mutableStateOf<String?>(null) }
     val historyCount = remember(dataTick) { store.history(dataTick).size }
     val favCount = remember(dataTick) { store.favs().size }
+    val recentCount = remember(dataTick) { store.recentSearches().size }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Text("Saya", color = Text, fontSize = 27.sp, fontWeight = FontWeight.Black)
-        Text("Dramaku native MVP", color = Muted, modifier = Modifier.padding(bottom = 18.dp))
+        Text("Dramaku native final polish", color = Muted, modifier = Modifier.padding(bottom = 18.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+            StatTile("Riwayat", historyCount.toString(), Modifier.weight(1f))
+            StatTile("Favorit", favCount.toString(), Modifier.weight(1f))
+            StatTile("Recent", recentCount.toString(), Modifier.weight(1f))
+        }
+
         SettingSwitch("Mode hemat data", "Prioritaskan stream 480p kalau tersedia", dataSaver) {
             dataSaver = it
             store.setDataSaver(it)
@@ -744,14 +777,45 @@ private fun SettingsScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
         }
         SettingRow("Riwayat", "$historyCount item tersimpan") {}
         SettingRow("Favorit", "$favCount judul") {}
+        SettingRow("Recent search", "$recentCount kata kunci tersimpan") {}
+        SettingRow("Bersihkan recent search", "Hapus kata kunci pencarian terakhir", danger = true) {
+            store.clearRecentSearches(); bump(); Toast.makeText(context, "Recent search dihapus", Toast.LENGTH_SHORT).show()
+        }
         SettingRow("Bersihkan riwayat", "Hapus data lokal riwayat/progress", danger = true) {
             store.clearHistory(); bump(); Toast.makeText(context, "Riwayat dihapus", Toast.LENGTH_SHORT).show()
         }
         SettingRow("Bersihkan favorit", "Kosongkan daftar favorit", danger = true) {
             store.clearFavs(); bump(); Toast.makeText(context, "Favorit dihapus", Toast.LENGTH_SHORT).show()
         }
-        SettingRow("Disclaimer", "Aplikasi agregator, tidak meng-host konten") {
-            Toast.makeText(context, "Semua konten milik platform masing-masing.", Toast.LENGTH_LONG).show()
+        SettingRow("Tentang Dramaku", "Versi, platform, dan info aplikasi") { dialog = "about" }
+        SettingRow("Privasi", "Data lokal, cache, history, favorit") { dialog = "privacy" }
+        SettingRow("Disclaimer", "Aplikasi agregator, tidak meng-host konten") { dialog = "disclaimer" }
+    }
+
+    dialog?.let { type ->
+        val (title, body) = when (type) {
+            "privacy" -> "Privasi" to "History, favorit, recent search, dan progress tontonan disimpan lokal di perangkat. Dramaku native tidak meng-host video dan tidak menyimpan data akun di server aplikasi ini."
+            "disclaimer" -> "Disclaimer" to "Semua konten milik platform masing-masing. Aplikasi ini hanya aggregator UI/client. Gunakan dengan bijak dan hormati hak cipta pemilik konten."
+            else -> "Tentang Dramaku" to "Dramaku Native adalah app Android Kotlin + Jetpack Compose dengan native ExoPlayer, search lintas platform, history/favorit lokal, dan player vertical swipe."
+        }
+        AlertDialog(
+            onDismissRequest = { dialog = null },
+            confirmButton = { TextButton(onClick = { dialog = null }) { Text("Tutup", color = Accent) } },
+            title = { Text(title, color = Text, fontWeight = FontWeight.Black) },
+            text = { Text(body, color = Muted) },
+            containerColor = Bg2,
+            titleContentColor = Text,
+            textContentColor = Muted
+        )
+    }
+}
+
+@Composable
+private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(color = Bg3, shape = RoundedCornerShape(18.dp), modifier = modifier) {
+        Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, color = Accent, fontWeight = FontWeight.Black, fontSize = 20.sp)
+            Text(label, color = Muted, fontSize = 11.sp)
         }
     }
 }
@@ -1061,6 +1125,10 @@ private fun VerticalEpisodePlayer(
                     uiVisible = true
                     retryKey++
                 }
+                PlayerSideButton("⚑", "Lapor") {
+                    uiVisible = true
+                    shareEpisodeReport(context, detail.drama, pagerState.currentPage + 1, error)
+                }
             }
         }
 
@@ -1330,6 +1398,16 @@ private fun shareDrama(context: Context, drama: Drama) {
         putExtra(Intent.EXTRA_TEXT, text)
     }
     context.startActivity(Intent.createChooser(send, "Bagikan"))
+}
+
+private fun shareEpisodeReport(context: Context, drama: Drama, episode: Int, error: String?) {
+    val text = "Laporan Episode Bermasalah - Dramaku Native\n\nJudul: ${drama.title}\nPlatform: ${platformLabel(drama.platform)}\nEpisode: $episode\nError: ${error ?: "-"}\nWaktu: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}"
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, "Laporan Dramaku - ${drama.title}")
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    context.startActivity(Intent.createChooser(send, "Laporkan Episode"))
 }
 
 private class DramakuRepository {
@@ -1752,6 +1830,20 @@ private class LocalStore(context: Context) {
     }
     fun clearFavs() = prefs.edit().remove("favs").apply()
 
+    fun removeFav(id: String, platform: String) {
+        val arr = JSONArray()
+        favs().filterNot { it.id == id && it.platform == platform }.forEach { arr.put(it.toJson()) }
+        prefs.edit().putString("favs", arr.toString()).apply()
+    }
+
+    fun removeHistory(id: String, platform: String) {
+        val arr = JSONArray()
+        parseHistory().filterNot { it.id == id && it.platform == platform }.forEach { arr.put(it.toJson()) }
+        val editor = prefs.edit().putString("history", arr.toString())
+        prefs.all.keys.filter { it.startsWith("progress_${id}_") }.forEach { editor.remove(it) }
+        editor.apply()
+    }
+
     fun recentSearches(): List<String> = JSONArray(prefs.getString("recent", "[]") ?: "[]").let { arr -> (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } } }
     fun saveRecent(q: String) {
         val list = recentSearches().filterNot { it.equals(q, true) }.toMutableList()
@@ -1759,6 +1851,7 @@ private class LocalStore(context: Context) {
         val arr = JSONArray(); list.take(10).forEach { arr.put(it) }
         prefs.edit().putString("recent", arr.toString()).apply()
     }
+    fun clearRecentSearches() = prefs.edit().remove("recent").apply()
 
     private fun parseHistory(): List<HistoryItem> = runCatching {
         val arr = JSONArray(prefs.getString("history", "[]") ?: "[]")
