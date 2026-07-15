@@ -48,6 +48,12 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.0 infinite home feed
+
+- Home memakai `LazyListState` + `snapshotFlow` untuk progressive/infinite reveal saat user mendekati bawah.
+- Prefetch API dinaikkan sampai 5 page untuk platform yang support pagination.
+- Footer home menampilkan loading/remaining content saat konten berikutnya dibuka.
+
 ## v4.5.9 premium native pack
 
 - Remote config native via `data/RemoteConfigRepository.kt`.

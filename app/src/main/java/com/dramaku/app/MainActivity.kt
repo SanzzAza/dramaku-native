@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -339,7 +340,34 @@ private fun HomeScreen(
     onRandom: () -> Unit,
     onResume: (HistoryItem) -> Unit
 ) {
+    val listState = rememberLazyListState()
+    var popularVisible by remember(platformId) { mutableIntStateOf(30) }
+    var newestVisible by remember(platformId) { mutableIntStateOf(45) }
+    var recommendedVisible by remember(platformId) { mutableIntStateOf(60) }
+    var loadMorePulse by remember(platformId) { mutableIntStateOf(0) }
+
+    LaunchedEffect(listState, state, platformId) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            if (last == null) false
+            else last.index >= info.totalItemsCount - 2 && (last.offset + last.size) <= info.viewportEndOffset + 900
+        }.collect { nearBottom ->
+            if (nearBottom && state is Load.Ok) {
+                val data = state.data
+                val canMore = popularVisible < data.popular.size || newestVisible < data.newest.size || recommendedVisible < data.recommended.size
+                if (canMore) {
+                    popularVisible = min(data.popular.size, popularVisible + 18)
+                    newestVisible = min(data.newest.size, newestVisible + 24)
+                    recommendedVisible = min(data.recommended.size, recommendedVisible + 30)
+                    loadMorePulse++
+                }
+            }
+        }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 18.dp)
     ) {
@@ -360,12 +388,35 @@ private fun HomeScreen(
                 if (history.isNotEmpty()) item { ContinueWatching(history, onResume) }
                 item { ForYouSection(history, (data.popular + data.newest + data.recommended), onDrama) }
                 if (data.popular.isNotEmpty()) item { DramaRail("Top 10 Hari Ini", data.popular.take(10), onDrama) }
-                if (data.popular.size > 10) item { DramaGridSection("Paling Populer", data.popular.drop(10).take(30), onDrama) }
-                if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest.take(45), onDrama) }
-                if (data.recommended.isNotEmpty()) item { DramaGridSection("Rekomendasi", data.recommended.take(60), onDrama) }
+                if (data.popular.size > 10) item { DramaGridSection("Paling Populer", data.popular.drop(10).take(popularVisible), onDrama) }
+                if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest.take(newestVisible), onDrama) }
+                if (data.recommended.isNotEmpty()) item { DramaGridSection("Rekomendasi", data.recommended.take(recommendedVisible), onDrama) }
+                item { HomeLoadMoreFooter(data, popularVisible, newestVisible, recommendedVisible, loadMorePulse) }
                 item { Footer() }
             }
         }
+    }
+}
+
+
+@Composable
+private fun HomeLoadMoreFooter(data: HomeBundle, popularVisible: Int, newestVisible: Int, recommendedVisible: Int, pulse: Int) {
+    val remaining = (data.popular.size - popularVisible).coerceAtLeast(0) +
+            (data.newest.size - newestVisible).coerceAtLeast(0) +
+            (data.recommended.size - recommendedVisible).coerceAtLeast(0)
+    if (remaining > 0) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Memuat konten berikutnya... ($remaining tersisa)", color = Muted, fontSize = 12.sp)
+        }
+    } else {
+        Text(
+            "Semua konten yang tersedia sudah ditampilkan",
+            color = Muted,
+            fontSize = 12.sp,
+            modifier = Modifier.fillMaxWidth().padding(20.dp)
+        )
     }
 }
 
@@ -1562,9 +1613,9 @@ private class DramakuRepository {
         val popularJson = fetchMany(pages.map { homeUrls(platformId, it)[1] })
         val newestJson = fetchMany(pages.map { homeUrls(platformId, it)[2] })
 
-        val rec = dedupe(homeJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(80)
-        val pop = dedupe(popularJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(50)
-        val nw = dedupe(newestJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(70)
+        val rec = dedupe(homeJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(160)
+        val pop = dedupe(popularJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(120)
+        val nw = dedupe(newestJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(140)
         if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) error("Data platform kosong / endpoint gagal")
         HomeBundle(rec, pop, nw)
     }
@@ -1752,7 +1803,8 @@ private class DramakuRepository {
 private fun pagesFor(platformId: String): IntRange = when (platformId) {
     // These endpoints are mostly static/non-paginated in the current API.
     "flickreels", "netshort" -> 1..1
-    else -> 1..3
+    "drakor" -> 1..5
+    else -> 1..5
 }
 
 private fun homeUrls(p: String, page: Int = 1): List<String> {
