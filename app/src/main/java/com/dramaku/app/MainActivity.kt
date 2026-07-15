@@ -1112,8 +1112,17 @@ private fun ClipFeedPlayer(
     var retryKey by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf(false) }
 
+    fun stopPreviewAudio() {
+        runCatching {
+            player.playWhenReady = false
+            player.pause()
+            player.stop()
+            player.clearMediaItems()
+        }
+    }
+
     fun closeFeed() {
-        runCatching { player.pause() }
+        stopPreviewAudio()
         onClose()
     }
 
@@ -1128,7 +1137,7 @@ private fun ClipFeedPlayer(
         onDispose {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             player.removeListener(listener)
-            runCatching { player.stop() }
+            stopPreviewAudio()
             player.release()
         }
     }
@@ -1247,13 +1256,13 @@ private fun ClipFeedPlayer(
                     Spacer(Modifier.height(12.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
-                            onClick = { currentDetail?.let(onWatchFull) },
+                            onClick = { currentDetail?.let { detail -> stopPreviewAudio(); onWatchFull(detail) } },
                             enabled = currentDetail != null,
                             colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
                             shape = RoundedCornerShape(999.dp)
                         ) { Text("Tonton Semua", fontWeight = FontWeight.Black, fontSize = 12.sp) }
                         OutlinedButton(
-                            onClick = { onOpenDetail(display) },
+                            onClick = { stopPreviewAudio(); onOpenDetail(display) },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
                             shape = RoundedCornerShape(999.dp)
                         ) { Text("Detail", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
@@ -1284,6 +1293,7 @@ private fun ClipFeedPlayer(
                 }
                 PlayerSideButton("ℹ", "Detail") {
                     uiVisible = true
+                    stopPreviewAudio()
                     onOpenDetail(currentDetail?.drama ?: items[pagerState.currentPage])
                 }
             }

@@ -48,6 +48,11 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.4 clips audio handoff fix
+
+- Fix suara bentrok saat tombol Tonton Semua ditekan dari Cuplikan.
+- Player cuplikan sekarang pause, stop, dan clear media sebelum membuka full player/detail.
+
 ## v4.6.3 clean clips UI
 
 - Hapus section Jelajah Cepat dari Home karena Cuplikan sudah menjadi bottom tab utama.
