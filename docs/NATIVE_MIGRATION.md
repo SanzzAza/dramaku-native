@@ -8,7 +8,8 @@ Project ini adalah Android full native berbasis **Kotlin + Jetpack Compose**.
 - WebView lama, `index.html`, `assets/js`, dan `assets/css` sudah dihapus dari repo native ini.
 - Native screen MVP:
   - Beranda native
-  - Platform selector 10 platform
+  - Platform dropdown dengan placeholder “Pilih platform”
+  - Multi-page loader agar list drama lebih banyak
   - Search gabungan lintas platform
   - Detail drama native
   - Episode grid native

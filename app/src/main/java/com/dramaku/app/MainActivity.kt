@@ -299,7 +299,7 @@ private fun HomeScreen(
     ) {
         item {
             Header(platformId, onSearch, onRefresh)
-            PlatformSelector(platformId, onPlatform)
+            PlatformDropdown(platformId, state is Load.Loading, onPlatform)
         }
         when (state) {
             Load.Loading, Load.Idle -> item { LoadingHome() }
@@ -311,8 +311,9 @@ private fun HomeScreen(
                 item { QuickActions(onRandom = onRandom, onSearch = onSearch) }
                 if (history.isNotEmpty()) item { ContinueWatching(history, onDrama) }
                 if (data.popular.isNotEmpty()) item { DramaRail("Top 10 Hari Ini", data.popular.take(10), onDrama) }
-                if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest.take(12), onDrama) }
-                if (data.recommended.isNotEmpty()) item { DramaGridSection("Rekomendasi", data.recommended.take(18), onDrama) }
+                if (data.popular.size > 10) item { DramaGridSection("Paling Populer", data.popular.drop(10).take(30), onDrama) }
+                if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest.take(45), onDrama) }
+                if (data.recommended.isNotEmpty()) item { DramaGridSection("Rekomendasi", data.recommended.take(60), onDrama) }
                 item { Footer() }
             }
         }
@@ -343,11 +344,66 @@ private fun Header(platformId: String, onSearch: () -> Unit, onRefresh: () -> Un
 }
 
 @Composable
-private fun PlatformSelector(selected: String, onSelect: (String) -> Unit) {
-    LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(Platforms) { p ->
-            val on = selected == p.id
-            Pill(text = p.label, selected = on, onClick = { onSelect(p.id) })
+private fun PlatformDropdown(selected: String, loading: Boolean, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Box {
+            Surface(
+                color = Bg3,
+                contentColor = Text,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth().clickable { expanded = true }
+            ) {
+                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Pilih platform", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(platformLabel(selected), color = Text, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                    }
+                    if (loading) {
+                        CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                    } else {
+                        Text(if (expanded) "⌃" else "⌄", color = Accent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.background(Bg2)
+            ) {
+                Platforms.forEach { p ->
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(9.dp).clip(CircleShape).background(if (p.id == selected) Accent else Muted)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(p.label, color = Text, fontWeight = FontWeight.Bold)
+                                    Text(p.id, color = Muted, fontSize = 11.sp)
+                                }
+                            }
+                        },
+                        onClick = {
+                            expanded = false
+                            if (p.id != selected) onSelect(p.id)
+                        }
+                    )
+                }
+            }
+        }
+        if (loading) PlatformLoadingPlaceholder()
+    }
+}
+
+@Composable
+private fun PlatformLoadingPlaceholder() {
+    Column(Modifier.padding(top = 12.dp)) {
+        Surface(color = Bg3, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().height(150.dp)) {}
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            repeat(3) { Surface(color = Bg3, shape = RoundedCornerShape(18.dp), modifier = Modifier.weight(1f).height(155.dp)) {} }
         }
     }
 }
@@ -768,14 +824,24 @@ private class DramakuRepository {
         .build()
 
     suspend fun loadHome(platformId: String): HomeBundle = coroutineScope {
-        val urls = homeUrls(platformId)
-        val jobs = urls.map { url -> async { runCatching { getJson(url) }.getOrNull() } }
-        val (home, popular, newest) = jobs.awaitAll()
-        val rec = flat(home?.dataOrSelf(), platformId).take(18)
-        val pop = flat(popular?.dataOrSelf(), platformId).take(12)
-        val nw = flat(newest?.dataOrSelf(), platformId).take(14)
+        // Native home now loads several pages per section so the list does not feel empty
+        // compared with the old WebView version.
+        val pages = pagesFor(platformId)
+        val homeJson = fetchMany(pages.map { homeUrls(platformId, it)[0] })
+        val popularJson = fetchMany(pages.map { homeUrls(platformId, it)[1] })
+        val newestJson = fetchMany(pages.map { homeUrls(platformId, it)[2] })
+
+        val rec = dedupe(homeJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(80)
+        val pop = dedupe(popularJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(50)
+        val nw = dedupe(newestJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(70)
         if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) error("Data platform kosong / endpoint gagal")
         HomeBundle(rec, pop, nw)
+    }
+
+    private suspend fun fetchMany(urls: List<String>): List<JSONObject> = coroutineScope {
+        urls.distinct().map { url -> async { runCatching { getJson(url) }.getOrNull() } }
+            .awaitAll()
+            .filterNotNull()
     }
 
     suspend fun searchAll(query: String): List<Drama> = coroutineScope {
@@ -952,25 +1018,68 @@ private class DramakuRepository {
     }
 }
 
-private fun homeUrls(p: String): List<String> {
+private fun pagesFor(platformId: String): IntRange = when (platformId) {
+    // These endpoints are mostly static/non-paginated in the current API.
+    "flickreels", "netshort" -> 1..1
+    else -> 1..3
+}
+
+private fun homeUrls(p: String, page: Int = 1): List<String> {
     val base = apiBase(p)
+    val safePage = page.coerceAtLeast(1)
     val nl = p in setOf("flickreels", "dramanova", "reelshort", "netshort")
     val lang = if (p == "dramabox") "&lang=in" else if (!nl) "&lang=id" else ""
-    var h = "$base/home?page=1$lang"
-    var pop = "$base/populer?page=1$lang"
-    var nw = "$base/new?page=1$lang"
+    var h = "$base/home?page=$safePage$lang"
+    var pop = "$base/populer?page=$safePage$lang"
+    var nw = "$base/new?page=$safePage$lang"
     when (p) {
-        "dramanova" -> { pop = "$base/discovery?size=10"; nw = "$base/recommend?page=1&size=10" }
-        "flickreels" -> { pop = "$base/populer"; nw = "$base/new?page=1" }
-        "reelshort" -> { h = "$base/home?tab_id=0&sub_tab_id=0"; pop = "$base/populer?page=1&limit=20&period=0&rule=0"; nw = "$base/new?page=1&limit=20" }
-        "netshort" -> { h = "$base/home?page=1"; pop = "$base/populer"; nw = "$base/new" }
-        "dramabox" -> { h = "$base/home?page=1&lang=in"; pop = "$base/populer?page=1&lang=in"; nw = "$base/new?page=1&lang=in" }
-        "goodshort" -> { h = "$base/home"; pop = "$base/populer?page=1"; nw = "$base/new?page=1&channelId=563" }
-        "moviebox" -> { h = "$base/indonesia?page=1&perPage=10"; pop = "$base/indonesia?page=1&perPage=10"; nw = "$base/global?page=1&perPage=10" }
-        "drakor" -> { h = "$base/home/korea?page=1&limit=30&sort=LATEST"; pop = "$base/trending?page=1&limit=30&days=30"; nw = "$base/terbaru?page=1&limit=30" }
+        "dramanova" -> {
+            h = "$base/recommend?page=$safePage&size=20"
+            pop = "$base/discovery?size=20&page=$safePage"
+            nw = "$base/recommend?page=$safePage&size=20"
+        }
+        "flickreels" -> {
+            pop = "$base/populer"
+            nw = "$base/new?page=$safePage"
+        }
+        "reelshort" -> {
+            h = "$base/home?tab_id=0&sub_tab_id=0&page=$safePage&limit=20"
+            pop = "$base/populer?page=$safePage&limit=20&period=0&rule=0"
+            nw = "$base/new?page=$safePage&limit=20"
+        }
+        "netshort" -> {
+            h = "$base/home?page=1"
+            pop = "$base/populer"
+            nw = "$base/new"
+        }
+        "dramabox" -> {
+            h = "$base/home?page=$safePage&lang=in"
+            pop = "$base/populer?page=$safePage&lang=in"
+            nw = "$base/new?page=$safePage&lang=in"
+        }
+        "goodshort" -> {
+            h = "$base/home?page=$safePage"
+            pop = "$base/populer?page=$safePage"
+            nw = "$base/new?page=$safePage&channelId=563"
+        }
+        "moviebox" -> {
+            h = "$base/indonesia?page=$safePage&perPage=20"
+            pop = "$base/global?page=$safePage&perPage=20"
+            nw = "$base/horror?page=$safePage&perPage=20"
+        }
+        "drakor" -> {
+            h = "$base/home/korea?page=$safePage&limit=30&sort=LATEST"
+            pop = "$base/trending?page=$safePage&limit=30&days=30"
+            nw = "$base/terbaru?page=$safePage&limit=30"
+        }
     }
     return listOf(h, pop, nw)
 }
+
+private fun dedupe(items: List<Drama>): List<Drama> = items
+    .filter { it.id.isNotBlank() && it.title.isNotBlank() }
+    .distinctBy { it.platform + "|" + it.id }
+    .distinctBy { it.platform + "|" + normalizeKey(it.title) }
 
 private fun detailUrl(d: Drama): String = when (d.platform) {
     "dramabox" -> "${apiBase(d.platform)}/detail?bookId=${enc(d.id)}&lang=in"

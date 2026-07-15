@@ -23,7 +23,8 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
 - Beranda native Compose
 - Spotlight / rekomendasi / populer / terbaru
-- Platform selector 10 platform
+- Platform dropdown dengan placeholder “Pilih platform”
+- Load beberapa page per platform supaya list drama lebih banyak
 - Search gabungan lintas platform
 - Detail drama native
 - Episode grid native
