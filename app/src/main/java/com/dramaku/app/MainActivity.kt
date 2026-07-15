@@ -122,7 +122,7 @@ private enum class RootTab(val title: String, val icon: String, val showInNav: B
     Search("Cari", "⌕", false)
 }
 
-private data class PlatformInfo(val id: String, val label: String, val base: String)
+private data class PlatformInfo(val id: String, val label: String, val base: String, val logoUrl: String = "")
 private data class Drama(
     val id: String,
     val title: String,
@@ -160,16 +160,16 @@ private sealed class Load<out T> {
 }
 
 private val Platforms = listOf(
-    PlatformInfo("melolo", "Melolo", "https://api.sonzaix.indevs.in/melolo"),
-    PlatformInfo("freereels", "FreeReels", "https://api.sonzaix.indevs.in/freereels"),
-    PlatformInfo("flickreels", "FlickReels", "https://api.sonzaix.indevs.in/flickreels"),
-    PlatformInfo("dramanova", "DramaNova", "https://api.sonzaix.indevs.in/dramanova"),
-    PlatformInfo("reelshort", "ReelShort", "https://api.sonzaix.indevs.in/reelshort"),
-    PlatformInfo("netshort", "NetShort", "https://api.sonzaix.indevs.in/netshort"),
-    PlatformInfo("dramabox", "DramaBox", "https://api.sonzaix.indevs.in/dramabox"),
-    PlatformInfo("goodshort", "GoodShort", "https://api.sonzaix.indevs.in/goodshort"),
-    PlatformInfo("moviebox", "MovieBox", "https://api.sonzaix.indevs.in/moviebox"),
-    PlatformInfo("drakor", "Drakor", "https://api.sonzaix.indevs.in/drama")
+    PlatformInfo("melolo", "Melolo", "https://api.sonzaix.indevs.in/melolo", "https://www.google.com/s2/favicons?sz=128&domain=melolo.id"),
+    PlatformInfo("freereels", "FreeReels", "https://api.sonzaix.indevs.in/freereels", "https://www.google.com/s2/favicons?sz=128&domain=mydramawave.com"),
+    PlatformInfo("flickreels", "FlickReels", "https://api.sonzaix.indevs.in/flickreels", "https://www.google.com/s2/favicons?sz=128&domain=flickreels.com"),
+    PlatformInfo("dramanova", "DramaNova", "https://api.sonzaix.indevs.in/dramanova", "https://www.google.com/s2/favicons?sz=128&domain=dramanova.app"),
+    PlatformInfo("reelshort", "ReelShort", "https://api.sonzaix.indevs.in/reelshort", "https://www.google.com/s2/favicons?sz=128&domain=reelshort.com"),
+    PlatformInfo("netshort", "NetShort", "https://api.sonzaix.indevs.in/netshort", "https://www.google.com/s2/favicons?sz=128&domain=netshort.com"),
+    PlatformInfo("dramabox", "DramaBox", "https://api.sonzaix.indevs.in/dramabox", "https://www.google.com/s2/favicons?sz=128&domain=dramaboxapp.com"),
+    PlatformInfo("goodshort", "GoodShort", "https://api.sonzaix.indevs.in/goodshort", "https://www.google.com/s2/favicons?sz=128&domain=goodshort.com"),
+    PlatformInfo("moviebox", "MovieBox", "https://api.sonzaix.indevs.in/moviebox", "https://www.google.com/s2/favicons?sz=128&domain=moviebox.ng"),
+    PlatformInfo("drakor", "Drakor", "https://api.sonzaix.indevs.in/drama", "https://www.google.com/s2/favicons?sz=128&domain=drakor.id")
 )
 private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
 private fun platformLabel(id: String) = platform(id).label
@@ -546,12 +546,54 @@ private fun Header(platformId: String, onSearch: () -> Unit, onRefresh: () -> Un
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Dramaku", color = Text, fontSize = 27.sp, fontWeight = FontWeight.Black)
-                Text("Native • ${platformLabel(platformId)}", color = Muted, fontSize = 12.sp)
+                Text("Sumber · ${platformLabel(platformId)}", color = Muted, fontSize = 12.sp)
             }
             IconButton(onClick = onSearch) { Text("⌕", color = Text, fontSize = 25.sp) }
             IconButton(onClick = onRefresh) { Text("↻", color = Text, fontSize = 22.sp) }
         }
-        Text("Streaming drama & film dari 10 platform dalam UI Android native.", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        Text("Drama pendek, film, dan drakor pilihan dalam satu aplikasi.", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+    }
+}
+
+
+@Composable
+private fun PlatformLogo(platformId: String, size: androidx.compose.ui.unit.Dp = 36.dp, enabled: Boolean = true) {
+    val p = platform(platformId)
+    val fallback = when (platformId) {
+        "melolo" -> "M"
+        "freereels" -> "FR"
+        "flickreels" -> "FL"
+        "dramanova" -> "DN"
+        "reelshort" -> "RS"
+        "netshort" -> "NS"
+        "dramabox" -> "DB"
+        "goodshort" -> "GS"
+        "moviebox" -> "MB"
+        "drakor" -> "DK"
+        else -> p.label.take(2).uppercase()
+    }
+    Surface(
+        color = if (enabled) Color(0xFF07141A) else Color(0xFF171B22),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.size(size)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                fallback,
+                color = if (enabled) Accent else Muted,
+                fontSize = (size.value * 0.28f).sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 1
+            )
+            if (p.logoUrl.isNotBlank()) {
+                AsyncImage(
+                    model = p.logoUrl,
+                    contentDescription = p.label,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(size * 0.64f).clip(RoundedCornerShape(7.dp))
+                )
+            }
+        }
     }
 }
 
@@ -567,6 +609,8 @@ private fun PlatformDropdown(selected: String, loading: Boolean, remoteConfig: N
                 modifier = Modifier.fillMaxWidth().clickable { expanded = true }
             ) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PlatformLogo(selected, size = 42.dp)
+                    Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Pilih platform", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text(platformLabel(selected), color = Text, fontSize = 16.sp, fontWeight = FontWeight.Black)
@@ -589,9 +633,7 @@ private fun PlatformDropdown(selected: String, loading: Boolean, remoteConfig: N
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    Modifier.size(9.dp).clip(CircleShape).background(if (!enabled) Danger else if (p.id == selected) Accent else Muted)
-                                )
+                                PlatformLogo(p.id, size = 34.dp, enabled = enabled)
                                 Spacer(Modifier.width(10.dp))
                                 Column {
                                     Text(p.label, color = if (enabled) Text else Muted, fontWeight = FontWeight.Bold)
@@ -653,8 +695,8 @@ private fun PlatformStatusStrip(remoteConfig: NativeRemoteConfig?) {
                 val enabled = st?.enabled ?: true
                 Surface(color = if (enabled) Color(0x1510F5A6) else Color(0x22FB7185), shape = RoundedCornerShape(16.dp)) {
                     Row(Modifier.padding(horizontal = 11.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(if (enabled) Accent else Danger))
-                        Spacer(Modifier.width(7.dp))
+                        PlatformLogo(p.id, size = 30.dp, enabled = enabled)
+                        Spacer(Modifier.width(8.dp))
                         Column {
                             Text(p.label, color = Text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Text(st?.reason ?: if (enabled) "Aktif" else "Maintenance", color = Muted, fontSize = 10.sp, maxLines = 1)

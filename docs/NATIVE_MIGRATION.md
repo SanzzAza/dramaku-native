@@ -48,6 +48,12 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.8 premium copy and platform logos
+
+- Header Home mengganti copywriting developer menjadi teks user-facing premium.
+- Dropdown platform dan status platform memakai logo/brand mark platform dengan fallback wordmark.
+- Platform picker lebih mirip pengalaman WebView lama yang menonjolkan identitas platform.
+
 ## v4.6.7 compact full player overlay
 
 - Full player overlay dibuat lebih mirip WebView lama.
