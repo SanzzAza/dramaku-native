@@ -5,7 +5,7 @@ Project ini sudah mulai dipindahkan dari WebView shell ke Android full native be
 ## Yang sudah diganti
 
 - `MainActivity` sekarang Compose native, bukan `WebView`.
-- WebView lama dipertahankan sebagai `LegacyWebViewActivity` untuk referensi source, tetapi tidak dipakai di manifest dan web assets tidak lagi dipaketkan ke APK.
+- WebView lama, `index.html`, `assets/js`, dan `assets/css` sudah dihapus dari repo native ini.
 - Native screen MVP:
   - Beranda native
   - Platform selector 10 platform
@@ -33,7 +33,6 @@ Project ini sudah mulai dipindahkan dari WebView shell ke Android full native be
 
 - `app/src/main/java/com/dramaku/app/MainActivity.kt` — app native Compose utama.
 - `app/src/main/java/com/dramaku/app/PlayerActivity.java` — native ExoPlayer.
-- `app/src/main/java/com/dramaku/app/LegacyWebViewActivity.java` — WebView lama, hanya referensi.
 - `app/build.gradle` — Compose/Kotlin/Coil/OkHttp dependencies.
 
 ## Build
@@ -49,7 +48,7 @@ Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jala
 
 ## Next improvement
 
-MVP ini sudah native, tapi improvement lanjutan yang disarankan:
+Repo ini sekarang bersih native. Improvement lanjutan yang disarankan:
 
 1. Pisahkan `MainActivity.kt` menjadi package `data/`, `ui/`, `player/`, `storage/`.
 2. Pindah storage dari `SharedPreferences` ke Room/DataStore.

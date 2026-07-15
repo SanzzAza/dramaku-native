@@ -1,6 +1,6 @@
 # Dramaku - Streaming Drama & Film Terbaik
 
-Nonton drama & film dari 10 platform sekaligus dalam 1 app Android native / web demo.
+Nonton drama & film dari 10 platform sekaligus dalam 1 app Android native.
 
 **Versi saat ini: 4.5.2**
 
@@ -84,16 +84,6 @@ Jika secrets belum ada, workflow akan membuat debug APK fallback.
 
 Panduan lengkap: [`docs/SIGNING.md`](docs/SIGNING.md).
 
-## Remote Config
-File default: [`remote-config.json`](remote-config.json).
-
-Panduan: [`docs/REMOTE_CONFIG.md`](docs/REMOTE_CONFIG.md).
-
-## Web demo
-- https://dramafeed.vercel.app/
-
-## Struktur JS
-Lihat [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Disclaimer & Privasi
 Semua konten milik platform masing-masing. Aplikasi ini hanya sebagai aggregator UI/client.
