@@ -13,6 +13,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -22,6 +23,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.VerticalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -47,6 +51,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -113,6 +122,7 @@ private data class EpisodeInfo(val number: Int, val streaming: String = "")
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>)
 private data class StreamResult(val url: String, val subtitle: String = "")
+private data class PlayerSession(val detail: Detail, val startEpisode: Int)
 private data class HistoryItem(
     val id: String,
     val title: String,
@@ -164,6 +174,7 @@ private fun DramakuNativeApp() {
     var detailState by remember { mutableStateOf<Load<Detail>>(Load.Idle) }
     var dataTick by remember { mutableIntStateOf(0) }
     var resolvingEpisode by remember { mutableIntStateOf(0) }
+    var playerSession by remember { mutableStateOf<PlayerSession?>(null) }
 
     val playerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
@@ -180,29 +191,7 @@ private fun DramakuNativeApp() {
     }
 
     fun openPlayer(detail: Detail, ep: Int) {
-        if (resolvingEpisode != 0) return
-        resolvingEpisode = ep
-        scope.launch {
-            val result = runCatching { repo.resolveStream(detail, ep, store.dataSaver()) }
-            resolvingEpisode = 0
-            val stream = result.getOrNull()
-            if (stream == null || stream.url.isBlank()) {
-                Toast.makeText(context, result.exceptionOrNull()?.message ?: "Video belum tersedia", Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            store.saveHistory(detail.drama, ep)
-            dataTick++
-            val i = Intent(context, PlayerActivity::class.java).apply {
-                putExtra(PlayerActivity.EXTRA_URL, stream.url)
-                putExtra(PlayerActivity.EXTRA_SUBTITLE, stream.subtitle)
-                putExtra(PlayerActivity.EXTRA_TITLE, "${detail.drama.title} · Ep $ep")
-                putExtra(PlayerActivity.EXTRA_DRAMA_ID, detail.drama.id)
-                putExtra(PlayerActivity.EXTRA_EPISODE, ep)
-                putExtra(PlayerActivity.EXTRA_PLATFORM, detail.drama.platform)
-                putExtra(PlayerActivity.EXTRA_START_POS, store.progressMs(detail.drama.id, ep))
-            }
-            playerLauncher.launch(i)
-        }
+        playerSession = PlayerSession(detail, ep)
     }
 
     LaunchedEffect(selectedPlatform, refreshKey) {
@@ -278,6 +267,19 @@ private fun DramakuNativeApp() {
                     onShare = { shareDrama(context, it) }
                 )
             }
+        }
+
+        playerSession?.let { session ->
+            VerticalEpisodePlayer(
+                detail = session.detail,
+                startEpisode = session.startEpisode,
+                repo = repo,
+                store = store,
+                onClose = {
+                    playerSession = null
+                    dataTick++
+                }
+            )
         }
     }
 }
@@ -728,6 +730,170 @@ private fun SettingSwitch(title: String, sub: String, checked: Boolean, onChecke
             Switch(checked = checked, onCheckedChange = onChecked, colors = SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = Accent))
         }
     }
+}
+
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun VerticalEpisodePlayer(
+    detail: Detail,
+    startEpisode: Int,
+    repo: DramakuRepository,
+    store: LocalStore,
+    onClose: () -> Unit
+) {
+    val context = LocalContext.current
+    val total = episodeCount(detail).coerceAtLeast(1)
+    val pagerState = rememberPagerState(
+        initialPage = (startEpisode - 1).coerceIn(0, total - 1),
+        pageCount = { total }
+    )
+    val player = remember { ExoPlayer.Builder(context).build() }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var retryKey by remember { mutableIntStateOf(0) }
+    var lastEpisode by remember { mutableIntStateOf(startEpisode.coerceIn(1, total)) }
+
+    fun saveProgress(ep: Int) {
+        runCatching {
+            val duration = player.duration.takeIf { it > 0 } ?: 0L
+            store.updateProgress(detail.drama.id, ep, player.currentPosition.coerceAtLeast(0L), duration)
+        }
+    }
+
+    BackHandler { saveProgress(pagerState.currentPage + 1); onClose() }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            saveProgress(pagerState.currentPage + 1)
+            player.release()
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage, retryKey) {
+        val ep = pagerState.currentPage + 1
+        if (lastEpisode != ep) saveProgress(lastEpisode)
+        lastEpisode = ep
+        loading = true
+        error = null
+        val start = store.progressMs(detail.drama.id, ep)
+        store.saveHistory(detail.drama, ep)
+        val result = runCatching { repo.resolveStream(detail, ep, store.dataSaver()) }
+        val stream = result.getOrNull()
+        if (stream == null || stream.url.isBlank()) {
+            loading = false
+            error = result.exceptionOrNull()?.message ?: "Video belum tersedia"
+            player.stop()
+            return@LaunchedEffect
+        }
+        player.setMediaItem(buildNativeMediaItem(stream))
+        player.prepare()
+        if (start > 0) player.seekTo(start)
+        player.playWhenReady = true
+        loading = false
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            val ep = page + 1
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                if (page == pagerState.currentPage) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                useController = false
+                                controllerAutoShow = false
+                                this.player = player
+                            }
+                        },
+                        update = { it.player = player },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Transparent, Color(0xCC000000)),
+                            startY = 250f
+                        )
+                    )
+                )
+                Column(
+                    Modifier.align(Alignment.BottomStart).padding(18.dp, 18.dp, 88.dp, 28.dp)
+                ) {
+                    Text("Episode $ep", color = Accent, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                    Text(detail.drama.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text("Swipe atas/bawah buat pindah episode", color = Color(0xCCFFFFFF), fontSize = 12.sp)
+                }
+            }
+        }
+
+        Row(
+            Modifier.align(Alignment.TopStart).fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = { saveProgress(pagerState.currentPage + 1); onClose() }, modifier = Modifier.clip(CircleShape).background(Color(0x99000000))) {
+                Text("‹", color = Color.White, fontSize = 34.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            Text("${pagerState.currentPage + 1}/$total", color = Color.White, fontWeight = FontWeight.Bold)
+        }
+
+        Column(
+            Modifier.align(Alignment.CenterEnd).padding(end = 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            PlayerSideButton("♥", "Suka") {}
+            PlayerSideButton("☰", "Episode") {}
+            PlayerSideButton("↻", "Retry") { retryKey++ }
+        }
+
+        if (loading) {
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Accent)
+                Spacer(Modifier.height(12.dp))
+                Text("Memuat Episode ${pagerState.currentPage + 1}...", color = Color.White)
+            }
+        }
+
+        if (error != null) {
+            Surface(color = Color(0xDD101B27), shape = RoundedCornerShape(20.dp), modifier = Modifier.align(Alignment.Center).padding(24.dp)) {
+                Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(error ?: "Gagal memutar video", color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { retryKey++ }, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black)) {
+                        Text("Coba Lagi", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerSideButton(icon: String, label: String, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(color = Color(0x99000000), shape = CircleShape, modifier = Modifier.size(48.dp).clickable(onClick = onClick)) {
+            Box(contentAlignment = Alignment.Center) { Text(icon, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
+        }
+        Text(label, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+private fun buildNativeMediaItem(stream: StreamResult): MediaItem {
+    val builder = MediaItem.Builder().setUri(Uri.parse(stream.url))
+    if (stream.subtitle.isNotBlank()) {
+        val lower = stream.subtitle.lowercase()
+        val mime = if (lower.endsWith(".vtt")) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+        val sub = MediaItem.SubtitleConfiguration.Builder(Uri.parse(stream.subtitle))
+            .setMimeType(mime)
+            .setLanguage("id")
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .build()
+        builder.setSubtitleConfigurations(listOf(sub))
+    }
+    return builder.build()
 }
 
 @Composable

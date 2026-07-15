@@ -17,7 +17,8 @@ Project ini adalah Android full native berbasis **Kotlin + Jetpack Compose**.
   - Riwayat/progress native via `SharedPreferences`
   - Settings native
   - Share sheet Android native
-- Player tetap memakai `PlayerActivity` + Media3 ExoPlayer native.
+- Player utama sekarang native vertical swipe episode ala TikTok memakai Compose `VerticalPager` + Media3 ExoPlayer.
+- `PlayerActivity` masih ada sebagai fallback/native player sederhana.
 - Resolusi stream 10 platform sudah berada di Kotlin repository untuk platform:
   - Melolo
   - FreeReels

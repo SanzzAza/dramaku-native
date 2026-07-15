@@ -5,8 +5,8 @@
 - `version.properties` → Android `versionName` + `versionCode`
 
 ```properties
-VERSION_NAME=4.5.2
-VERSION_CODE=39
+VERSION_NAME=4.5.3
+VERSION_CODE=44
 ```
 
 ## Release flow
