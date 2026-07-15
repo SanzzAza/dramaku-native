@@ -1,6 +1,6 @@
 # Dramaku Native Migration
 
-Project ini sudah mulai dipindahkan dari WebView shell ke Android full native berbasis **Kotlin + Jetpack Compose**.
+Project ini adalah Android full native berbasis **Kotlin + Jetpack Compose**.
 
 ## Yang sudah diganti
 
@@ -17,7 +17,7 @@ Project ini sudah mulai dipindahkan dari WebView shell ke Android full native be
   - Settings native
   - Share sheet Android native
 - Player tetap memakai `PlayerActivity` + Media3 ExoPlayer native.
-- Resolusi stream sudah dipindahkan dari `assets/js/player.js` ke Kotlin repository untuk platform:
+- Resolusi stream 10 platform sudah berada di Kotlin repository untuk platform:
   - Melolo
   - FreeReels
   - FlickReels
