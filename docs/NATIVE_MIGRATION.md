@@ -48,6 +48,13 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.6 platform resolver fix
+
+- FreeReels memakai raw HLS URL di native, bukan proxy WebView, plus MIME HLS.
+- GoodShort resolver fallback ke `detail.list[].multiVideos/cdnList` saat `/stream` hanya metadata.
+- DramaNova home diberi fallback sementara kalau endpoint sedang 503/kosong agar app tidak blank total.
+- Fallback `PlayerActivity` juga set MIME HLS untuk `.m3u8`.
+
 ## v4.6.5 clips compact overlay fix
 
 - Overlay Cuplikan diperkecil drastis agar tidak menutupi video.

@@ -1740,7 +1740,11 @@ private fun PlayerSideButton(icon: String, label: String, onClick: () -> Unit) {
 }
 
 private fun buildNativeMediaItem(stream: StreamResult): MediaItem {
+    val lowerUrl = stream.url.lowercase()
     val builder = MediaItem.Builder().setUri(Uri.parse(stream.url))
+    if (lowerUrl.contains(".m3u8") || lowerUrl.contains("m3u8")) {
+        builder.setMimeType(MimeTypes.APPLICATION_M3U8)
+    }
     if (stream.subtitle.isNotBlank()) {
         val lower = stream.subtitle.lowercase()
         val mime = if (lower.endsWith(".vtt")) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
@@ -1926,9 +1930,19 @@ private class DramakuRepository {
         val popularJson = fetchMany(pages.map { homeUrls(platformId, it)[1] })
         val newestJson = fetchMany(pages.map { homeUrls(platformId, it)[2] })
 
-        val rec = dedupe(homeJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(160)
-        val pop = dedupe(popularJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(120)
-        val nw = dedupe(newestJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(140)
+        var rec = dedupe(homeJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(160)
+        var pop = dedupe(popularJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(120)
+        var nw = dedupe(newestJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(140)
+
+        // DramaNova occasionally returns 503 on category endpoints. If it is empty,
+        // show a temporary cross-platform fallback instead of a blank home.
+        if (platformId == "dramanova" && rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) {
+            val fallback = loadFallbackHomeForBrokenPlatform("dramanova")
+            rec = fallback.recommended
+            pop = fallback.popular
+            nw = fallback.newest
+        }
+
         if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) error("Data platform kosong / endpoint gagal")
         HomeBundle(rec, pop, nw)
     }
@@ -1937,6 +1951,16 @@ private class DramakuRepository {
         urls.distinct().map { url -> async { runCatching { getJson(url) }.getOrNull() } }
             .awaitAll()
             .filterNotNull()
+    }
+
+    private suspend fun loadFallbackHomeForBrokenPlatform(brokenPlatform: String): HomeBundle = coroutineScope {
+        val fallbackPlatforms = listOf("melolo", "freereels", "goodshort", "dramabox", "drakor")
+        val jobs = fallbackPlatforms.map { p -> async { runCatching { loadHome(p) }.getOrNull() } }
+        val bundles = jobs.awaitAll().filterNotNull()
+        val recommended = dedupe(bundles.flatMap { it.recommended }).map { it.copy(description = "Fallback sementara untuk ${platformLabel(brokenPlatform)}") }.take(80)
+        val popular = dedupe(bundles.flatMap { it.popular }).take(60)
+        val newest = dedupe(bundles.flatMap { it.newest }).take(60)
+        HomeBundle(recommended, popular, newest)
     }
 
     suspend fun searchAll(query: String): List<Drama> = coroutineScope {
@@ -2042,7 +2066,9 @@ private class DramakuRepository {
                 val j = getJson("$base/stream?dramaId=${enc(id)}&episode=$ep&lang=id").optJSONObject("data") ?: error("Video belum tersedia")
                 val raw = j.stringAny("h264_m3u8", "m3u8_url", "video_url")
                 val sub = subtitleFrom(j.optJSONArray("subtitles"))
-                StreamResult(if (raw.isNotBlank()) "https://proxy.sonzaixlab.workers.dev/proxy?url=${enc(raw)}" else "", sub)
+                // Native ExoPlayer does not need the WebView CORS proxy. Use the raw HLS URL
+                // so Media3 can resolve variant/audio segment URLs correctly.
+                StreamResult(raw, sub)
             }
             "flickreels" -> StreamResult(getJson("$base/stream?id=${enc(id)}&ep=$ep").optJSONObject("data")?.stringAny("hls_url").orEmpty())
             "reelshort" -> {
@@ -2070,11 +2096,31 @@ private class DramakuRepository {
                 }
             }
             "goodshort" -> {
-                val list = getJson("$base/stream?bookId=${enc(id)}").optJSONObject("data")?.optJSONArray("downloadList") ?: error("Video belum tersedia")
-                val epData = list.optJSONObject(ep - 1) ?: error("Episode belum tersedia")
-                val videos = epData.optJSONArray("multiVideos")?.objects().orEmpty()
-                val pick = videos.firstOrNull { it.stringAny("type") == "${res}p" } ?: videos.firstOrNull { it.stringAny("type") == "720p" } ?: videos.firstOrNull()
-                StreamResult(pick?.stringAny("filePath").orEmpty())
+                // New GoodShort API often exposes playable URLs inside detail.list[].multiVideos/cdnList,
+                // while /stream may only return metadata. Prefer detail fallback for reliability.
+                val detailJson = runCatching { getJson("$base/detail?bookId=${enc(id)}") }.getOrNull()
+                val listFromDetail = detailJson?.optJSONObject("data")?.optJSONArray("list")
+                val epData = listFromDetail?.optJSONObject(ep - 1)
+                val videos = epData?.optJSONArray("multiVideos")?.objects().orEmpty()
+                val pick = videos.firstOrNull { it.stringAny("type") == "${res}p" }
+                    ?: videos.firstOrNull { it.stringAny("type") == "720p" }
+                    ?: videos.firstOrNull()
+                val fromMulti = pick?.stringAny("filePath").orEmpty()
+                if (fromMulti.isNotBlank()) return StreamResult(fromMulti)
+                val cdn = epData?.optJSONArray("cdnList")?.objects().orEmpty()
+                    .firstOrNull { it.stringAny("videoPath").isNotBlank() }
+                    ?.stringAny("videoPath").orEmpty()
+                if (cdn.isNotBlank()) return StreamResult(cdn)
+
+                // Legacy fallback when /stream returns downloadList.
+                val streamData = getJson("$base/stream?bookId=${enc(id)}").optJSONObject("data")
+                val downloadList = streamData?.optJSONArray("downloadList") ?: error("Video belum tersedia")
+                val legacyEp = downloadList.optJSONObject(ep - 1) ?: error("Episode belum tersedia")
+                val legacyVideos = legacyEp.optJSONArray("multiVideos")?.objects().orEmpty()
+                val legacyPick = legacyVideos.firstOrNull { it.stringAny("type") == "${res}p" }
+                    ?: legacyVideos.firstOrNull { it.stringAny("type") == "720p" }
+                    ?: legacyVideos.firstOrNull()
+                StreamResult(legacyPick?.stringAny("filePath").orEmpty())
             }
             "dramabox" -> {
                 val data = getJson("$base/stream?bookId=${enc(id)}&chapterIndex=${ep - 1}&lang=in").optJSONObject("data") ?: error("Video belum tersedia")

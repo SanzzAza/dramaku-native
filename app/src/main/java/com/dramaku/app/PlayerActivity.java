@@ -121,6 +121,10 @@ public class PlayerActivity extends AppCompatActivity {
 
     private MediaItem buildMediaItem(String url, String subtitle) {
         MediaItem.Builder builder = new MediaItem.Builder().setUri(Uri.parse(url));
+        String lowerUrl = url == null ? "" : url.toLowerCase();
+        if (lowerUrl.contains(".m3u8") || lowerUrl.contains("m3u8")) {
+            builder.setMimeType(MimeTypes.APPLICATION_M3U8);
+        }
         if (subtitle != null && !subtitle.trim().isEmpty()) {
             String lower = subtitle.toLowerCase();
             String mime = lower.endsWith(".vtt") ? MimeTypes.TEXT_VTT : MimeTypes.APPLICATION_SUBRIP;
