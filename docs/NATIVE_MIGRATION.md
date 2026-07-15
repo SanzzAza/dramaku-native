@@ -48,6 +48,14 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.1 cuplikan feed
+
+- Tambah fitur Cuplikan dari Home/Jelajah Cepat.
+- Feed fullscreen ala TikTok/Reels: swipe atas/bawah untuk ganti drama.
+- Tiap slide autoplay Episode 1 sebagai cuplikan.
+- Overlay menampilkan judul, platform, total episode, dan tombol Tonton Semua Episode.
+- Tombol Tonton Semua Episode membuka full native vertical episode player dari episode 1.
+
 ## v4.6.0 infinite home feed
 
 - Home memakai `LazyListState` + `snapshotFlow` untuk progressive/infinite reveal saat user mendekati bawah.

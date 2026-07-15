@@ -189,6 +189,7 @@ private fun DramakuNativeApp() {
     var dataTick by remember { mutableIntStateOf(0) }
     var resolvingEpisode by remember { mutableIntStateOf(0) }
     var playerSession by remember { mutableStateOf<PlayerSession?>(null) }
+    var clipFeedItems by remember { mutableStateOf<List<Drama>>(emptyList()) }
     var pendingResume by remember { mutableStateOf<HistoryItem?>(null) }
 
     val playerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -283,6 +284,14 @@ private fun DramakuNativeApp() {
                             val pool = (bundle?.popular.orEmpty() + bundle?.newest.orEmpty() + bundle?.recommended.orEmpty()).filter { it.id.isNotBlank() }
                             if (pool.isNotEmpty()) selectedDrama = pool.random()
                         },
+                        onClips = {
+                            val bundle = (homeState as? Load.Ok)?.data
+                            val pool = (bundle?.popular.orEmpty() + bundle?.newest.orEmpty() + bundle?.recommended.orEmpty())
+                                .filter { it.id.isNotBlank() && it.poster.isNotBlank() }
+                                .distinctBy { it.platform + it.id }
+                            if (pool.isNotEmpty()) clipFeedItems = pool.shuffled().take(80)
+                            else Toast.makeText(context, "Cuplikan belum tersedia", Toast.LENGTH_SHORT).show()
+                        },
                         onResume = { h ->
                             pendingResume = h
                             selectedDrama = Drama(h.id, h.title, poster = h.poster, platform = h.platform)
@@ -323,6 +332,23 @@ private fun DramakuNativeApp() {
                 }
             )
         }
+
+        if (clipFeedItems.isNotEmpty()) {
+            ClipFeedPlayer(
+                items = clipFeedItems,
+                repo = repo,
+                store = store,
+                onClose = { clipFeedItems = emptyList() },
+                onWatchFull = { detail ->
+                    clipFeedItems = emptyList()
+                    playerSession = PlayerSession(detail, 1)
+                },
+                onOpenDetail = { drama ->
+                    clipFeedItems = emptyList()
+                    selectedDrama = drama
+                }
+            )
+        }
     }
 }
 
@@ -338,6 +364,7 @@ private fun HomeScreen(
     onDrama: (Drama) -> Unit,
     onSearch: () -> Unit,
     onRandom: () -> Unit,
+    onClips: () -> Unit,
     onResume: (HistoryItem) -> Unit
 ) {
     val listState = rememberLazyListState()
@@ -383,7 +410,7 @@ private fun HomeScreen(
                 val data = state.data
                 val spotlight = (data.popular + data.newest + data.recommended).firstOrNull { it.poster.isNotBlank() }
                 if (spotlight != null) item { Spotlight(spotlight, onDrama) }
-                item { QuickActions(onRandom = onRandom, onSearch = onSearch) }
+                item { QuickActions(onRandom = onRandom, onSearch = onSearch, onClips = onClips) }
                 item { PlatformStatusStrip(remoteConfig) }
                 if (history.isNotEmpty()) item { ContinueWatching(history, onResume) }
                 item { ForYouSection(history, (data.popular + data.newest + data.recommended), onDrama) }
@@ -616,12 +643,13 @@ private fun Spotlight(drama: Drama, onDrama: (Drama) -> Unit) {
 }
 
 @Composable
-private fun QuickActions(onRandom: () -> Unit, onSearch: () -> Unit) {
+private fun QuickActions(onRandom: () -> Unit, onSearch: () -> Unit, onClips: () -> Unit) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Text("Jelajah Cepat", color = Text, fontWeight = FontWeight.Black, fontSize = 19.sp)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionCard("🎲", "Acak", "Temukan drama", Modifier.weight(1f), onRandom)
+            ActionCard("🎲", "Acak", "Drama random", Modifier.weight(1f), onRandom)
+            ActionCard("▶", "Cuplikan", "Feed episode 1", Modifier.weight(1f), onClips)
             ActionCard("🔥", "Viral", "Cari tren", Modifier.weight(1f), onSearch)
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 12.dp)) {
@@ -1006,6 +1034,219 @@ private fun SettingSwitch(title: String, sub: String, checked: Boolean, onChecke
 }
 
 
+
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ClipFeedPlayer(
+    items: List<Drama>,
+    repo: DramakuRepository,
+    store: LocalStore,
+    onClose: () -> Unit,
+    onWatchFull: (Detail) -> Unit,
+    onOpenDetail: (Drama) -> Unit
+) {
+    if (items.isEmpty()) return
+    val context = LocalContext.current
+    val activity = context as? Activity
+    val componentActivity = context as? ComponentActivity
+    val pagerState = rememberPagerState(pageCount = { items.size })
+    val player = remember { ExoPlayer.Builder(context).build() }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var currentDetail by remember { mutableStateOf<Detail?>(null) }
+    var uiVisible by remember { mutableStateOf(true) }
+    var retryKey by remember { mutableIntStateOf(0) }
+    var playing by remember { mutableStateOf(false) }
+
+    fun closeFeed() {
+        runCatching { player.pause() }
+        onClose()
+    }
+
+    BackHandler { closeFeed() }
+
+    DisposableEffect(Unit) {
+        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+        }
+        player.addListener(listener)
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            player.removeListener(listener)
+            runCatching { player.stop() }
+            player.release()
+        }
+    }
+
+    DisposableEffect(componentActivity) {
+        val lifecycle = componentActivity?.lifecycle
+        if (lifecycle == null) {
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> runCatching { player.pause() }
+                    else -> Unit
+                }
+            }
+            lifecycle.addObserver(observer)
+            onDispose { lifecycle.removeObserver(observer) }
+        }
+    }
+
+    LaunchedEffect(uiVisible, loading, error, pagerState.currentPage) {
+        if (uiVisible && !loading && error == null) {
+            delay(2600)
+            uiVisible = false
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage, retryKey) {
+        val drama = items.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
+        uiVisible = true
+        loading = true
+        error = null
+        currentDetail = null
+        val detailResult = runCatching { repo.loadDetail(drama) }
+        val detail = detailResult.getOrNull()
+        if (detail == null) {
+            loading = false
+            error = detailResult.exceptionOrNull()?.message ?: "Detail tidak tersedia"
+            player.stop()
+            return@LaunchedEffect
+        }
+        currentDetail = detail
+        val streamResult = runCatching { repo.resolveStream(detail, 1, store.dataSaver()) }
+        val stream = streamResult.getOrNull()
+        if (stream == null || stream.url.isBlank()) {
+            loading = false
+            error = streamResult.exceptionOrNull()?.message ?: "Cuplikan belum tersedia"
+            player.stop()
+            return@LaunchedEffect
+        }
+        player.setMediaItem(buildNativeMediaItem(stream))
+        player.prepare()
+        player.seekTo(0)
+        player.playWhenReady = true
+        loading = false
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(player, pagerState.currentPage) {
+                detectTapGestures(
+                    onTap = { uiVisible = !uiVisible },
+                    onDoubleTap = {
+                        uiVisible = true
+                        if (player.isPlaying) player.pause() else player.play()
+                    }
+                )
+            }
+    ) {
+        VerticalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+            val drama = items[page]
+            val display = if (page == pagerState.currentPage) currentDetail?.drama ?: drama else drama
+            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                if (page == pagerState.currentPage) {
+                    AndroidView(
+                        factory = { ctx ->
+                            PlayerView(ctx).apply {
+                                useController = false
+                                controllerAutoShow = false
+                                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                this.player = player
+                            }
+                        },
+                        update = { it.player = player },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    AsyncImage(model = drama.poster, contentDescription = drama.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                }
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color(0x22000000), Color(0xE6000000)),
+                            startY = 180f
+                        )
+                    )
+                )
+                Column(Modifier.align(Alignment.BottomStart).padding(18.dp, 18.dp, 92.dp, 34.dp)) {
+                    Text("Cuplikan · Episode 1", color = Accent, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                    Text(display.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 24.sp, lineHeight = 27.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(6.dp))
+                    Text("${platformLabel(display.platform)} · ${display.episodes.coerceAtLeast(1)} Episode", color = Color(0xDDFFFFFF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("Swipe atas/bawah untuk ganti drama", color = Color(0xBFFFFFFF), fontSize = 12.sp)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = { currentDetail?.let(onWatchFull) },
+                            enabled = currentDetail != null,
+                            colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
+                            shape = RoundedCornerShape(999.dp)
+                        ) { Text("Tonton Semua Episode", fontWeight = FontWeight.Black, fontSize = 12.sp) }
+                        OutlinedButton(
+                            onClick = { onOpenDetail(display) },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            shape = RoundedCornerShape(999.dp)
+                        ) { Text("Detail", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(uiVisible || loading || error != null, modifier = Modifier.align(Alignment.TopStart)) {
+            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { closeFeed() }, modifier = Modifier.clip(CircleShape).background(Color(0x99000000))) {
+                    Text("‹", color = Color.White, fontSize = 34.sp)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text("Cuplikan ${pagerState.currentPage + 1}/${items.size}", color = Color.White, fontWeight = FontWeight.Black)
+            }
+        }
+
+        AnimatedVisibility(uiVisible || loading || error != null, modifier = Modifier.align(Alignment.CenterEnd)) {
+            Column(Modifier.padding(end = 14.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                PlayerSideButton(if (playing) "Ⅱ" else "▶", if (playing) "Pause" else "Play") {
+                    uiVisible = true
+                    if (player.isPlaying) player.pause() else player.play()
+                }
+                PlayerSideButton("↻", "Retry") {
+                    uiVisible = true
+                    retryKey++
+                }
+                PlayerSideButton("ℹ", "Detail") {
+                    uiVisible = true
+                    onOpenDetail(currentDetail?.drama ?: items[pagerState.currentPage])
+                }
+            }
+        }
+
+        if (loading) {
+            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Accent)
+                Spacer(Modifier.height(12.dp))
+                Text("Memuat cuplikan...", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (error != null) {
+            Surface(color = Color(0xDD101B27), shape = RoundedCornerShape(20.dp), modifier = Modifier.align(Alignment.Center).padding(24.dp)) {
+                Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(error ?: "Cuplikan gagal dimuat", color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { retryKey++ }, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black)) {
+                        Text("Coba Lagi", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
