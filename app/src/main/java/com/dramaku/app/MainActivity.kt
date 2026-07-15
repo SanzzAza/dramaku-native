@@ -113,8 +113,13 @@ private fun DramakuTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = colors, typography = Typography(), content = content)
 }
 
-private enum class RootTab(val title: String, val icon: String) {
-    Home("Beranda", "⌂"), Search("Cari", "⌕"), Library("Koleksi", "♡"), Settings("Saya", "⚙")
+private enum class RootTab(val title: String, val icon: String, val showInNav: Boolean = true) {
+    Clips("Cuplikan", "▶"),
+    Home("Temukan", "◆"),
+    Rewards("Hadiah", "◇"),
+    Library("Daftar Saya", "▣"),
+    Settings("Profil", "●"),
+    Search("Cari", "⌕", false)
 }
 
 private data class PlatformInfo(val id: String, val label: String, val base: String)
@@ -246,12 +251,12 @@ private fun DramakuNativeApp() {
             containerColor = Bg,
             bottomBar = {
                 NavigationBar(containerColor = Color(0xEE071018), tonalElevation = 0.dp) {
-                    RootTab.values().forEach { item ->
+                    RootTab.values().filter { it.showInNav }.forEach { item ->
                         NavigationBarItem(
                             selected = tab == item,
                             onClick = { tab = item },
-                            icon = { Text(item.icon, color = if (tab == item) Accent else Muted, fontSize = 20.sp) },
-                            label = { Text(item.title, color = if (tab == item) Accent else Muted, fontSize = 11.sp) },
+                            icon = { Text(item.icon, color = if (tab == item) Accent else Muted, fontSize = 18.sp, fontWeight = FontWeight.Black) },
+                            label = { Text(item.title, color = if (tab == item) Accent else Muted, fontSize = 10.sp, maxLines = 1) },
                             colors = NavigationBarItemDefaults.colors(indicatorColor = Color(0x2210F5A6))
                         )
                     }
@@ -260,6 +265,14 @@ private fun DramakuNativeApp() {
         ) { pad ->
             Box(Modifier.padding(pad).fillMaxSize()) {
                 when (tab) {
+                    RootTab.Clips -> ClipsScreen(
+                        state = homeState,
+                        repo = repo,
+                        store = store,
+                        onBackHome = { tab = RootTab.Home },
+                        onWatchFull = { detail -> playerSession = PlayerSession(detail, 1) },
+                        onOpenDetail = { selectedDrama = it }
+                    )
                     RootTab.Home -> HomeScreen(
                         platformId = selectedPlatform,
                         state = homeState,
@@ -298,6 +311,7 @@ private fun DramakuNativeApp() {
                         }
                     )
                     RootTab.Search -> SearchScreen(repo, store, onDrama = { selectedDrama = it }, dataTick = dataTick, bump = { dataTick++ })
+                    RootTab.Rewards -> RewardsScreen()
                     RootTab.Library -> LibraryScreen(store, dataTick, onDrama = { selectedDrama = it })
                     RootTab.Settings -> SettingsScreen(store, dataTick, bump = { dataTick++ })
                 }
@@ -348,6 +362,78 @@ private fun DramakuNativeApp() {
                     selectedDrama = drama
                 }
             )
+        }
+    }
+}
+
+
+@Composable
+private fun ClipsScreen(
+    state: Load<HomeBundle>,
+    repo: DramakuRepository,
+    store: LocalStore,
+    onBackHome: () -> Unit,
+    onWatchFull: (Detail) -> Unit,
+    onOpenDetail: (Drama) -> Unit
+) {
+    when (state) {
+        Load.Loading, Load.Idle -> Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Accent)
+                Spacer(Modifier.height(12.dp))
+                Text("Menyiapkan cuplikan...", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+        is Load.Err -> Box(Modifier.fillMaxSize().background(Bg), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(24.dp)) {
+                Text("Cuplikan belum tersedia", color = Text, fontWeight = FontWeight.Black, fontSize = 22.sp)
+                Text(state.message, color = Muted, modifier = Modifier.padding(top = 8.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(14.dp))
+                Button(onClick = onBackHome, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black)) {
+                    Text("Kembali ke Temukan", fontWeight = FontWeight.Black)
+                }
+            }
+        }
+        is Load.Ok -> {
+            val pool = remember(state.data) {
+                (state.data.popular + state.data.newest + state.data.recommended)
+                    .filter { it.id.isNotBlank() && it.poster.isNotBlank() }
+                    .distinctBy { it.platform + it.id }
+                    .take(100)
+            }
+            if (pool.isEmpty()) {
+                Box(Modifier.fillMaxSize().background(Bg), contentAlignment = Alignment.Center) {
+                    Text("Cuplikan belum tersedia untuk platform ini", color = Muted)
+                }
+            } else {
+                ClipFeedPlayer(
+                    items = pool,
+                    repo = repo,
+                    store = store,
+                    onClose = onBackHome,
+                    onWatchFull = onWatchFull,
+                    onOpenDetail = onOpenDetail
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RewardsScreen() {
+    Column(
+        Modifier.fillMaxSize().background(Bg).padding(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Surface(color = Color(0x1510F5A6), shape = RoundedCornerShape(28.dp)) {
+            Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Hadiah", color = Text, fontSize = 28.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.height(8.dp))
+                Text("Fitur reward/check-in native sedang disiapkan.", color = Muted, fontSize = 13.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Spacer(Modifier.height(14.dp))
+                Text("Segera hadir", color = Accent, fontWeight = FontWeight.Black)
+            }
         }
     }
 }
@@ -648,9 +734,9 @@ private fun QuickActions(onRandom: () -> Unit, onSearch: () -> Unit, onClips: ()
         Text("Jelajah Cepat", color = Text, fontWeight = FontWeight.Black, fontSize = 19.sp)
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            ActionCard("🎲", "Acak", "Drama random", Modifier.weight(1f), onRandom)
-            ActionCard("▶", "Cuplikan", "Feed episode 1", Modifier.weight(1f), onClips)
-            ActionCard("🔥", "Viral", "Cari tren", Modifier.weight(1f), onSearch)
+            ActionCard("RND", "Acak", "Drama random", Modifier.weight(1f), onRandom)
+            ActionCard("PLAY", "Cuplikan", "Feed episode 1", Modifier.weight(1f), onClips)
+            ActionCard("HOT", "Viral", "Cari tren", Modifier.weight(1f), onSearch)
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(top = 12.dp)) {
             items(listOf("CEO", "Balas Dendam", "Romantis", "Korea", "China", "Comedy", "Action")) { q ->
@@ -664,7 +750,7 @@ private fun QuickActions(onRandom: () -> Unit, onSearch: () -> Unit, onClips: ()
 private fun ActionCard(icon: String, title: String, sub: String, modifier: Modifier, onClick: () -> Unit) {
     Surface(modifier = modifier.clickable(onClick = onClick), color = Bg3, shape = RoundedCornerShape(20.dp)) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(icon, fontSize = 26.sp)
+            Text(icon, color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Black)
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(title, color = Text, fontWeight = FontWeight.Bold)
@@ -856,7 +942,7 @@ private fun SearchWelcome(onPick: (String) -> Unit) {
         Text("Lagi viral", color = Text, fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.padding(top = 10.dp, bottom = 10.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(listOf("CEO", "Balas Dendam", "Romantis", "Korea", "China", "Comedy", "Action", "Cinta Kontrak", "Ongoing", "Drakor")) { q ->
-                Pill(if (q == "CEO") "🔥 $q" else q, false) { onPick(q) }
+                Pill(q, false) { onPick(q) }
             }
         }
     }

@@ -48,6 +48,13 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.2 bottom nav clips
+
+- Cuplikan dipindahkan ke bottom navigation sebagai tab utama.
+- Bottom nav dibuat lebih premium/minimal tanpa emoji.
+- Menu bawah: Cuplikan, Temukan, Hadiah, Daftar Saya, Profil.
+- Tab Cuplikan langsung membuka feed fullscreen Episode 1 antar drama.
+
 ## v4.6.1 cuplikan feed
 
 - Tambah fitur Cuplikan dari Home/Jelajah Cepat.
