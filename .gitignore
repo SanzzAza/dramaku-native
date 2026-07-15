@@ -1,0 +1,22 @@
+# Build outputs
+.gradle/
+build/
+app/build/
+
+# Local Android signing secrets - never commit these
+local/
+*.jks
+*.keystore
+keystore.properties
+release-secrets.txt
+app/release.keystore
+app/*.jks
+app/*.keystore
+
+# Local screenshots / chat attachments
+uploads/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

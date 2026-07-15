@@ -1,0 +1,105 @@
+{
+  "version": 19,
+  "updatedAt": "2026-07-15",
+  "minAppVersion": "4.0",
+  "message": {
+    "enabled": false,
+    "type": "info",
+    "title": "",
+    "text": ""
+  },
+  "api": {
+    "melolo": "https://api.sonzaix.indevs.in/melolo",
+    "freereels": "https://api.sonzaix.indevs.in/freereels",
+    "flickreels": "https://api.sonzaix.indevs.in/flickreels",
+    "dramanova": "https://api.sonzaix.indevs.in/dramanova",
+    "reelshort": "https://api.sonzaix.indevs.in/reelshort",
+    "netshort": "https://api.sonzaix.indevs.in/netshort",
+    "dramabox": "https://api.sonzaix.indevs.in/dramabox",
+    "goodshort": "https://api.sonzaix.indevs.in/goodshort",
+    "moviebox": "https://api.sonzaix.indevs.in/moviebox",
+    "drakor": "https://api.sonzaix.indevs.in/drama"
+  },
+  "platforms": {
+    "melolo": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "freereels": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "flickreels": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "dramanova": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "reelshort": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "netshort": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "dramabox": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "goodshort": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "moviebox": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    },
+    "drakor": {
+      "enabled": true,
+      "status": "active",
+      "reason": "Aktif"
+    }
+  },
+  "features": {
+    "reportEpisode": true,
+    "nativePlayer": true,
+    "onboarding": true,
+    "settings": true
+  },
+  "latestVersion": "4.5.2",
+  "downloadUrl": "https://github.com/SanzzAza/dramaku/releases/latest",
+  "changelog": [
+    "Mood Picker diganti Jelajah Cepat (aksi + chip viral)",
+    "Shortcut: Acak, Cuplikan, Riwayat, Favorit",
+    "Chip Lagi Viral + recent search kamu",
+    "Paket Gacor A tetap: Buat Kamu, progress, pull-refresh"
+  ],
+  "update": {
+    "latestVersion": "4.5.2",
+    "downloadUrl": "https://github.com/SanzzAza/dramaku/releases/latest",
+    "force": false,
+    "changelog": [
+      "Mood Picker diganti Jelajah Cepat (aksi + chip viral)",
+      "Shortcut: Acak, Cuplikan, Riwayat, Favorit",
+      "Chip Lagi Viral + recent search kamu",
+      "Paket Gacor A tetap: Buat Kamu, progress, pull-refresh"
+    ]
+  },
+  "support": {
+    "whatsapp": "",
+    "telegram": "t.me/laykunn",
+    "email": ""
+  }
+}
