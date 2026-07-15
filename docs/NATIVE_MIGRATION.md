@@ -48,6 +48,13 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.5 clips compact overlay fix
+
+- Overlay Cuplikan diperkecil drastis agar tidak menutupi video.
+- Poster mini 48x70, judul 1 baris, chip `Ep.1 | Judul` compact.
+- CTA dipendekkan menjadi `Tonton` dan `Detail`.
+- Gradient bawah dibuat lebih ringan/transparan.
+
 ## v4.6.4 clips audio handoff fix
 
 - Fix suara bentrok saat tombol Tonton Semua ditekan dari Cuplikan.

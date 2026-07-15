@@ -1232,40 +1232,39 @@ private fun ClipFeedPlayer(
                 Box(
                     Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color(0x22000000), Color(0xE6000000)),
-                            startY = 180f
+                            listOf(Color.Transparent, Color.Transparent, Color(0x99000000)),
+                            startY = 420f
                         )
                     )
                 )
-                Column(Modifier.align(Alignment.BottomStart).padding(16.dp, 16.dp, 88.dp, 30.dp)) {
+                Column(Modifier.align(Alignment.BottomStart).padding(12.dp, 12.dp, 76.dp, 18.dp)) {
                     Row(verticalAlignment = Alignment.Bottom) {
-                        Poster(display.poster, display.title, Modifier.width(78.dp).height(112.dp))
-                        Spacer(Modifier.width(12.dp))
+                        Poster(display.poster, display.title, Modifier.width(48.dp).height(70.dp))
+                        Spacer(Modifier.width(9.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(display.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp, lineHeight = 21.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Spacer(Modifier.height(5.dp))
-                            Text("${platformLabel(display.platform)} · ${display.episodes.coerceAtLeast(1)} Episode", color = Color(0xDDFFFFFF), fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Cuplikan Episode 1", color = Accent, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                            Text(display.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 14.sp, lineHeight = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(2.dp))
+                            Text("${platformLabel(display.platform)} · ${display.episodes.coerceAtLeast(1)} Ep", color = Color(0xDFFFFFFF), fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Surface(color = Color(0x88000000), shape = RoundedCornerShape(999.dp), modifier = Modifier.padding(top = 5.dp)) {
+                                Text("Ep.1 | ${display.title}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp))
+                            }
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
-                    Surface(color = Color(0x99000000), shape = RoundedCornerShape(999.dp)) {
-                        Text("Ep.1 | ${display.title}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
-                    }
-                    Text("Swipe atas/bawah untuk ganti drama", color = Color(0xBFFFFFFF), fontSize = 11.sp, modifier = Modifier.padding(top = 7.dp))
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Button(
                             onClick = { currentDetail?.let { detail -> stopPreviewAudio(); onWatchFull(detail) } },
                             enabled = currentDetail != null,
                             colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black),
-                            shape = RoundedCornerShape(999.dp)
-                        ) { Text("Tonton Semua", fontWeight = FontWeight.Black, fontSize = 12.sp) }
+                            shape = RoundedCornerShape(999.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) { Text("Tonton", fontWeight = FontWeight.Black, fontSize = 11.sp) }
                         OutlinedButton(
                             onClick = { stopPreviewAudio(); onOpenDetail(display) },
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                            shape = RoundedCornerShape(999.dp)
-                        ) { Text("Detail", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            shape = RoundedCornerShape(999.dp),
+                            modifier = Modifier.height(36.dp)
+                        ) { Text("Detail", fontWeight = FontWeight.Bold, fontSize = 11.sp) }
                     }
                 }
             }
