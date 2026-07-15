@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.input.pointer.pointerInput
 import coil.compose.AsyncImage
+import com.dramaku.app.data.NativeRemoteConfig
+import com.dramaku.app.data.RemoteConfigRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -172,6 +174,7 @@ private fun DramakuNativeApp() {
     val context = LocalContext.current
     val store = remember { LocalStore(context) }
     val repo = remember { DramakuRepository() }
+    val remoteRepo = remember { RemoteConfigRepository() }
     val scope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf(RootTab.Home) }
@@ -180,6 +183,8 @@ private fun DramakuNativeApp() {
     var homeState by remember { mutableStateOf<Load<HomeBundle>>(Load.Idle) }
     var selectedDrama by remember { mutableStateOf<Drama?>(null) }
     var detailState by remember { mutableStateOf<Load<Detail>>(Load.Idle) }
+    var remoteConfig by remember { mutableStateOf<NativeRemoteConfig?>(null) }
+    var remoteError by remember { mutableStateOf<String?>(null) }
     var dataTick by remember { mutableIntStateOf(0) }
     var resolvingEpisode by remember { mutableIntStateOf(0) }
     var playerSession by remember { mutableStateOf<PlayerSession?>(null) }
@@ -201,6 +206,12 @@ private fun DramakuNativeApp() {
 
     fun openPlayer(detail: Detail, ep: Int) {
         playerSession = PlayerSession(detail, ep)
+    }
+
+    LaunchedEffect(refreshKey) {
+        runCatching { remoteRepo.load() }
+            .onSuccess { remoteConfig = it; remoteError = null }
+            .onFailure { remoteError = it.message ?: "Remote config gagal" }
     }
 
     LaunchedEffect(selectedPlatform, refreshKey) {
@@ -251,10 +262,17 @@ private fun DramakuNativeApp() {
                         platformId = selectedPlatform,
                         state = homeState,
                         history = store.history(dataTick),
+                        remoteConfig = remoteConfig,
+                        remoteError = remoteError,
                         onPlatform = {
-                            selectedPlatform = it
-                            store.setPlatform(it)
-                            refreshKey++
+                            val allowed = remoteConfig?.isPlatformEnabled(it) ?: true
+                            if (!allowed) {
+                                Toast.makeText(context, "${platformLabel(it)}: ${remoteConfig?.platform(it)?.reason ?: "Maintenance"}", Toast.LENGTH_SHORT).show()
+                            } else {
+                                selectedPlatform = it
+                                store.setPlatform(it)
+                                refreshKey++
+                            }
                         },
                         onRefresh = { refreshKey++ },
                         onDrama = { selectedDrama = it },
@@ -312,6 +330,8 @@ private fun HomeScreen(
     platformId: String,
     state: Load<HomeBundle>,
     history: List<HistoryItem>,
+    remoteConfig: NativeRemoteConfig?,
+    remoteError: String?,
     onPlatform: (String) -> Unit,
     onRefresh: () -> Unit,
     onDrama: (Drama) -> Unit,
@@ -325,7 +345,8 @@ private fun HomeScreen(
     ) {
         item {
             Header(platformId, onSearch, onRefresh)
-            PlatformDropdown(platformId, state is Load.Loading, onPlatform)
+            PlatformDropdown(platformId, state is Load.Loading, remoteConfig, onPlatform)
+            RemoteConfigBanner(remoteConfig, remoteError)
         }
         when (state) {
             Load.Loading, Load.Idle -> item { LoadingHome() }
@@ -335,7 +356,9 @@ private fun HomeScreen(
                 val spotlight = (data.popular + data.newest + data.recommended).firstOrNull { it.poster.isNotBlank() }
                 if (spotlight != null) item { Spotlight(spotlight, onDrama) }
                 item { QuickActions(onRandom = onRandom, onSearch = onSearch) }
+                item { PlatformStatusStrip(remoteConfig) }
                 if (history.isNotEmpty()) item { ContinueWatching(history, onResume) }
+                item { ForYouSection(history, (data.popular + data.newest + data.recommended), onDrama) }
                 if (data.popular.isNotEmpty()) item { DramaRail("Top 10 Hari Ini", data.popular.take(10), onDrama) }
                 if (data.popular.size > 10) item { DramaGridSection("Paling Populer", data.popular.drop(10).take(30), onDrama) }
                 if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest.take(45), onDrama) }
@@ -370,7 +393,7 @@ private fun Header(platformId: String, onSearch: () -> Unit, onRefresh: () -> Un
 }
 
 @Composable
-private fun PlatformDropdown(selected: String, loading: Boolean, onSelect: (String) -> Unit) {
+private fun PlatformDropdown(selected: String, loading: Boolean, remoteConfig: NativeRemoteConfig?, onSelect: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Box {
@@ -398,16 +421,18 @@ private fun PlatformDropdown(selected: String, loading: Boolean, onSelect: (Stri
                 modifier = Modifier.background(Bg2)
             ) {
                 Platforms.forEach { p ->
+                    val st = remoteConfig?.platform(p.id)
+                    val enabled = st?.enabled ?: true
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
-                                    Modifier.size(9.dp).clip(CircleShape).background(if (p.id == selected) Accent else Muted)
+                                    Modifier.size(9.dp).clip(CircleShape).background(if (!enabled) Danger else if (p.id == selected) Accent else Muted)
                                 )
                                 Spacer(Modifier.width(10.dp))
                                 Column {
-                                    Text(p.label, color = Text, fontWeight = FontWeight.Bold)
-                                    Text(p.id, color = Muted, fontSize = 11.sp)
+                                    Text(p.label, color = if (enabled) Text else Muted, fontWeight = FontWeight.Bold)
+                                    Text(if (enabled) (st?.reason ?: p.id) else (st?.reason ?: "Maintenance"), color = Muted, fontSize = 11.sp)
                                 }
                             }
                         },
@@ -432,6 +457,75 @@ private fun PlatformLoadingPlaceholder() {
             repeat(3) { Surface(color = Bg3, shape = RoundedCornerShape(18.dp), modifier = Modifier.weight(1f).height(155.dp)) {} }
         }
     }
+}
+
+
+@Composable
+private fun RemoteConfigBanner(remoteConfig: NativeRemoteConfig?, remoteError: String?) {
+    val msg = remoteConfig?.message
+    when {
+        msg?.enabled == true && (msg.title.isNotBlank() || msg.text.isNotBlank()) -> {
+            Surface(color = Color(0x2210F5A6), shape = RoundedCornerShape(20.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(msg.title.ifBlank { "Info Dramaku" }, color = Text, fontWeight = FontWeight.Black)
+                    if (msg.text.isNotBlank()) Text(msg.text, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 3.dp))
+                }
+            }
+        }
+        remoteError != null -> {
+            Surface(color = Color(0x22FB7185), shape = RoundedCornerShape(20.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth()) {
+                Text("Remote config offline · pakai konfigurasi lokal", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(14.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlatformStatusStrip(remoteConfig: NativeRemoteConfig?) {
+    Column(Modifier.padding(top = 10.dp)) {
+        SectionTitle("Status Platform")
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(Platforms) { p ->
+                val st = remoteConfig?.platform(p.id)
+                val enabled = st?.enabled ?: true
+                Surface(color = if (enabled) Color(0x1510F5A6) else Color(0x22FB7185), shape = RoundedCornerShape(16.dp)) {
+                    Row(Modifier.padding(horizontal = 11.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(if (enabled) Accent else Danger))
+                        Spacer(Modifier.width(7.dp))
+                        Column {
+                            Text(p.label, color = Text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(st?.reason ?: if (enabled) "Aktif" else "Maintenance", color = Muted, fontSize = 10.sp, maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ForYouSection(history: List<HistoryItem>, pool: List<Drama>, onDrama: (Drama) -> Unit) {
+    if (history.isEmpty() || pool.isEmpty()) return
+    val histPlatforms = history.map { it.platform }.toSet()
+    val seen = history.map { it.id }.toSet()
+    val titleTokens = history.flatMap { normalizeKey(it.title).split(" ") }.filter { it.length > 2 }.toSet()
+    val picks = pool
+        .filter { it.id !in seen }
+        .map { d ->
+            var score = 0
+            if (d.platform in histPlatforms) score += 5
+            val t = normalizeKey(d.title)
+            titleTokens.forEach { if (t.contains(it)) score += 2 }
+            if (d.poster.isNotBlank()) score += 1
+            d to score
+        }
+        .filter { it.second > 0 }
+        .sortedByDescending { it.second }
+        .map { it.first }
+        .distinctBy { it.platform + it.id }
+        .take(10)
+    if (picks.isEmpty()) return
+    DramaRail("Buat Kamu", picks, onDrama)
 }
 
 @Composable
@@ -640,14 +734,17 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (D
             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Accent, unfocusedBorderColor = Bg3, focusedTextColor = Text, unfocusedTextColor = Text, cursorColor = Accent)
         )
         if (q.length < 2 && recent.isNotEmpty()) {
-            Text("Terakhir dicari", color = Muted, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+            Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Terakhir dicari", color = Muted, modifier = Modifier.weight(1f))
+                TextButton(onClick = { store.clearRecentSearches(); bump() }) { Text("Hapus", color = Danger, fontSize = 12.sp) }
+            }
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(recent) { Pill(it, false) { q = it } }
             }
         }
         Spacer(Modifier.height(14.dp))
         when (state) {
-            Load.Idle -> EmptyState("Ketik minimal 2 huruf buat cari di 10 platform.")
+            Load.Idle -> SearchWelcome { q = it }
             Load.Loading -> LinearProgressIndicator(color = Accent, trackColor = Bg3, modifier = Modifier.fillMaxWidth())
             is Load.Err -> ErrorBox((state as Load.Err).message) { q = q.trim() + " " }
             is Load.Ok -> {
@@ -667,6 +764,20 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (D
                         items(list, key = { it.platform + it.id }) { d -> DramaCard(d, Modifier.fillMaxWidth(), onDrama) }
                     }
                 }
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun SearchWelcome(onPick: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 20.dp)) {
+        EmptyState("Ketik minimal 2 huruf buat cari di 10 platform.")
+        Text("Lagi viral", color = Text, fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.padding(top = 10.dp, bottom = 10.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(listOf("CEO", "Balas Dendam", "Romantis", "Korea", "China", "Comedy", "Action", "Cinta Kontrak", "Ongoing", "Drakor")) { q ->
+                Pill(if (q == "CEO") "🔥 $q" else q, false) { onPick(q) }
             }
         }
     }
@@ -1279,6 +1390,17 @@ private fun buildNativeMediaItem(stream: StreamResult): MediaItem {
     return builder.build()
 }
 
+
+@Composable
+private fun DetailInfoTile(label: String, value: String, modifier: Modifier = Modifier) {
+    Surface(color = Bg3, shape = RoundedCornerShape(18.dp), modifier = modifier) {
+        Column(Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value.ifBlank { "-" }, color = Text, fontWeight = FontWeight.Black, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, color = Muted, fontSize = 10.sp)
+        }
+    }
+}
+
 @Composable
 private fun DetailScreen(
     state: Load<Detail>,
@@ -1297,6 +1419,7 @@ private fun DetailScreen(
     val resumeEp = hist?.episode?.coerceAtLeast(1) ?: 1
     val totalEpisodes = episodeCount(detail).coerceAtLeast(1)
     var detailRange by remember(drama.id, totalEpisodes) { mutableIntStateOf(((resumeEp - 1) / 30).coerceAtLeast(0)) }
+    var descExpanded by remember(drama.id) { mutableStateOf(false) }
     Box(Modifier.fillMaxSize().background(Bg)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 22.dp)) {
             item {
@@ -1342,8 +1465,22 @@ private fun DetailScreen(
                     Spacer(Modifier.height(16.dp))
                     if (drama.tags.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(drama.tags.take(8)) { Pill(it) {} } }
                     Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        DetailInfoTile("Platform", platformLabel(drama.platform), Modifier.weight(1f))
+                        DetailInfoTile("Episode", "$totalEpisodes Ep", Modifier.weight(1f))
+                        DetailInfoTile("Tipe", if (totalEpisodes > 1) "Serial" else "Film", Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(18.dp))
                     Text("Sinopsis", color = Text, fontWeight = FontWeight.Black, fontSize = 18.sp)
-                    Text(drama.description.ifBlank { "Belum ada sinopsis untuk judul ini." }, color = Muted, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 6.dp))
+                    val fullDesc = drama.description.ifBlank { "Belum ada sinopsis untuk judul ini." }
+                    Text(
+                        if (descExpanded || fullDesc.length <= 180) fullDesc else fullDesc.take(180) + "...",
+                        color = Muted,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    if (fullDesc.length > 180) TextButton(onClick = { descExpanded = !descExpanded }) { Text(if (descExpanded) "Sembunyikan" else "Selengkapnya", color = Accent) }
                     Spacer(Modifier.height(20.dp))
                     Text("Daftar Episode", color = Text, fontWeight = FontWeight.Black, fontSize = 18.sp)
                     Spacer(Modifier.height(10.dp))

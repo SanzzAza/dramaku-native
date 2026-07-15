@@ -48,6 +48,16 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.5.9 premium native pack
+
+- Remote config native via `data/RemoteConfigRepository.kt`.
+- Announcement banner dan status/maintenance platform di Home.
+- Platform picker membaca remote config.
+- Home tambah Status Platform dan Buat Kamu.
+- Search tambah trending chips, clear recent, dan filter platform.
+- Detail tambah info tiles dan sinopsis expand/collapse.
+- Dokumentasi struktur native: `docs/NATIVE_STRUCTURE.md`.
+
 ## v4.5.8 final polish
 
 - Hapus riwayat/favorit per item.
