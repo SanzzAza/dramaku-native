@@ -1548,17 +1548,27 @@ private fun VerticalEpisodePlayer(
                     Box(
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(
-                                listOf(Color.Transparent, Color(0x22000000), Color(0xDD000000)),
-                                startY = 180f
+                                listOf(Color.Transparent, Color.Transparent, Color(0xAA000000)),
+                                startY = 360f
                             )
                         )
                     )
                     Column(
-                        Modifier.align(Alignment.BottomStart).padding(18.dp, 18.dp, 92.dp, 30.dp)
+                        Modifier.align(Alignment.BottomStart).padding(14.dp, 14.dp, 90.dp, 26.dp)
                     ) {
-                        Text("Episode $ep", color = Accent, fontWeight = FontWeight.Black, fontSize = 14.sp)
-                        Text(detail.drama.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text("Swipe atas/bawah buat pindah episode", color = Color(0xCCFFFFFF), fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Poster(detail.drama.poster, detail.drama.title, Modifier.width(54.dp).height(78.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Surface(color = Accent, contentColor = Color.Black, shape = RoundedCornerShape(999.dp)) {
+                                    Text("Episode $ep", fontWeight = FontWeight.Black, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp))
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(detail.drama.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 17.sp, lineHeight = 20.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                val desc = detail.drama.description.ifBlank { "Swipe atas/bawah buat pindah episode" }
+                                Text(desc, color = Color(0xCCFFFFFF), fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
                     }
                 }
             }
@@ -1573,7 +1583,10 @@ private fun VerticalEpisodePlayer(
                     Text("‹", color = Color.White, fontSize = 34.sp)
                 }
                 Spacer(Modifier.width(8.dp))
-                Text("${pagerState.currentPage + 1}/$total", color = Color.White, fontWeight = FontWeight.Bold)
+                Column(Modifier.weight(1f)) {
+                    Text(detail.drama.title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Episode ${pagerState.currentPage + 1} dari $total", color = Color(0xBFFFFFFF), fontSize = 11.sp, maxLines = 1)
+                }
             }
         }
 

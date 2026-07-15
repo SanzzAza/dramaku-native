@@ -48,6 +48,13 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.7 compact full player overlay
+
+- Full player overlay dibuat lebih mirip WebView lama.
+- Top bar menampilkan judul kecil + info episode.
+- Bottom overlay memakai poster mini, badge episode, judul compact, dan sinopsis pendek.
+- Gradient bawah diperingan agar video tidak terlalu tertutup.
+
 ## v4.6.6 platform resolver fix
 
 - FreeReels memakai raw HLS URL di native, bukan proxy WebView, plus MIME HLS.
