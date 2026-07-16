@@ -5,8 +5,8 @@
 - `version.properties` → Android `versionName` + `versionCode`
 
 ```properties
-VERSION_NAME=4.7.0
-VERSION_CODE=61
+VERSION_NAME=4.7.1
+VERSION_CODE=62
 ```
 
 ## Release flow
@@ -16,11 +16,11 @@ VERSION_CODE=61
 3. Push tag for release, for example:
 
 ```bash
-git tag v4.7.0
-git push origin v4.7.0
+git tag v4.7.1
+git push origin v4.7.1
 ```
 
-4. GitHub Actions builds signed/debug APK and publishes GitHub Release.
+4. GitHub Actions membangun APK dan membuat GitHub Release. Jika signing secrets tersedia, artifact memakai signing key resmi; jika tidak, artifact diberi nama `release-debugkey` sebagai fallback pengujian.
 
 ## Notes
 

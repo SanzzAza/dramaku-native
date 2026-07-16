@@ -10,6 +10,11 @@ app/src/main/java/com/dramaku/app/
   PlayerActivity.java             # fallback/simple ExoPlayer activity
   SplashActivity.java             # native splash
   data/RemoteConfigRepository.kt  # remote config native
+  storage/ProgressKeys.kt          # platform-aware playback progress keys
+
+app/src/test/java/com/dramaku/app/
+  data/                            # remote config parser tests
+  storage/                         # storage key isolation/migration tests
 ```
 
 ## Struktur target next refactor

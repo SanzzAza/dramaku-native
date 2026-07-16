@@ -4,7 +4,7 @@ Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
 Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
-**Versi saat ini: 4.7.0**
+**Versi saat ini: 4.7.1**
 
 ## Platform
 
@@ -49,6 +49,9 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 - Copywriting Home dibuat lebih premium, bukan teks developer/native
 - Melolo stream hardening: streamv2-only, player error listener, browser-like HLS headers
 - MovieBox/FlickReels source error fix: safer CDN headers, HLS fallback, multi-resolution fallback
+- Progress v2 dipisahkan berdasarkan platform agar ID drama lintas sumber tidak bentrok
+- Unit test dasar untuk key progress dan parser remote config
+- Target Android API 35 dan Gradle Wrapper 8.4 tersedia di repo
 - Home lebih bersih tanpa section quick action yang tidak perlu
 - Stream resolver 10 platform di Kotlin
 - HTTPS-only network config
@@ -59,6 +62,8 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 app/src/main/java/com/dramaku/app/MainActivity.kt     # UI native Compose + data repository MVP
 app/src/main/java/com/dramaku/app/PlayerActivity.java # Native ExoPlayer
 app/src/main/java/com/dramaku/app/SplashActivity.java # Native splash
+app/src/main/java/com/dramaku/app/storage/             # Storage key helpers
+app/src/test/java/                                     # Unit tests
 app/build.gradle                                      # Android/Kotlin/Compose dependencies
 ```
 
@@ -73,8 +78,8 @@ version.properties
 ```
 
 ```properties
-VERSION_NAME=4.7.0
-VERSION_CODE=61
+VERSION_NAME=4.7.1
+VERSION_CODE=62
 ```
 
 ## Build APK
@@ -83,24 +88,17 @@ APK otomatis dibuild lewat GitHub Actions.
 
 - Push ke `main`: build artifact APK
 - Tag `v*`: build + GitHub Release
-- Manual `workflow_dispatch`: bisa pilih create release
+- Manual `workflow_dispatch`: bisa memilih create release
 
-Build lokal:
-
-```bash
-gradle wrapper --gradle-version 8.4
-./gradlew :app:assembleDebug
-```
-
-Jika sudah punya wrapper:
+Build dan validasi lokal memakai Gradle Wrapper yang sudah disimpan di repo:
 
 ```bash
-./gradlew :app:assembleDebug
+./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
 ## Signed release APK
 
-GitHub Actions otomatis membuat signed release APK jika secrets ini tersedia:
+GitHub Actions membuat signed release APK jika seluruh signing secrets ini tersedia. Jika belum tersedia, workflow lama membuat release-variant APK dengan debug-key fallback untuk pengujian; jangan gunakan fallback tersebut sebagai rilis production:
 
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
