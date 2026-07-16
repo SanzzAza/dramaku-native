@@ -54,7 +54,7 @@ class RemoteConfigRepository(
         }
     }
 
-    private fun parse(json: JSONObject): NativeRemoteConfig {
+    internal fun parse(json: JSONObject): NativeRemoteConfig {
         val msgJson = json.optJSONObject("message") ?: JSONObject()
         val msg = RemoteMessage(
             enabled = msgJson.optBoolean("enabled", false),

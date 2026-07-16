@@ -1,7 +1,9 @@
-# Build outputs
+# Build outputs and machine-local Android configuration
 .gradle/
+.kotlin/
 build/
 app/build/
+local.properties
 
 # Local Android signing secrets - never commit these
 local/

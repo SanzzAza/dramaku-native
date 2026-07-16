@@ -103,6 +103,6 @@ $KEY_PASS
 
 ============================================================
 After adding secrets, run GitHub Actions: Build APK.
-The release should output Dramaku-v3.4-release.apk.
+A valid setup should output Dramaku-v4.7.1-release.apk.
 ============================================================
 EOF

@@ -39,14 +39,21 @@ Project ini adalah Android full native berbasis **Kotlin + Jetpack Compose**.
 
 ## Build
 
-Di CI project ini membuat Gradle wrapper otomatis lewat workflow. Lokal:
+Gradle Wrapper 8.4 tersimpan di repo dan sesuai dengan workflow build APK yang sudah ada. Build dan validasi lokal:
 
 ```bash
-gradle wrapper --gradle-version 8.4
-./gradlew :app:assembleDebug
+./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
 
-Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
+Workflow GitHub Actions yang sudah ada tetap menangani build artifact dan release APK.
+
+## v4.7.1 stabilization
+
+- Progress playback memakai key v2 berbasis platform + drama ID + episode agar sumber berbeda tidak bentrok.
+- Progress lama tetap dibaca dan dimigrasikan saat riwayat platform dapat diidentifikasi.
+- Gradle Wrapper 8.4 disimpan di repo sesuai workflow build yang berjalan.
+- Unit test ditambahkan untuk key progress dan parser remote config.
+- `compileSdk`/`targetSdk` dinaikkan ke API 35.
 
 ## v4.7.0 MovieBox FlickReels source fix
 

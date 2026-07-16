@@ -50,6 +50,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import coil.compose.AsyncImage
 import com.dramaku.app.data.NativeRemoteConfig
 import com.dramaku.app.data.RemoteConfigRepository
+import com.dramaku.app.storage.ProgressKeys
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -204,11 +205,12 @@ private fun DramakuNativeApp() {
         val data = result.data
         if (result.resultCode == Activity.RESULT_OK && data != null) {
             val id = data.getStringExtra(PlayerActivity.RESULT_DRAMA_ID).orEmpty()
+            val platformId = data.getStringExtra(PlayerActivity.RESULT_PLATFORM).orEmpty()
             val ep = data.getIntExtra(PlayerActivity.RESULT_EPISODE, 1)
             val pos = data.getLongExtra(PlayerActivity.RESULT_POSITION, 0L)
             val dur = data.getLongExtra(PlayerActivity.RESULT_DURATION, 0L)
-            if (id.isNotBlank()) {
-                store.updateProgress(id, ep, pos, dur)
+            if (id.isNotBlank() && platformId.isNotBlank()) {
+                store.updateProgress(id, platformId, ep, pos, dur)
                 dataTick++
             }
         }
@@ -1419,7 +1421,7 @@ private fun VerticalEpisodePlayer(
     fun saveProgress(ep: Int) {
         runCatching {
             val duration = player.duration.takeIf { it > 0 } ?: 0L
-            store.updateProgress(detail.drama.id, ep, player.currentPosition.coerceAtLeast(0L), duration)
+            store.updateProgress(detail.drama.id, detail.drama.platform, ep, player.currentPosition.coerceAtLeast(0L), duration)
         }
     }
 
@@ -1525,7 +1527,7 @@ private fun VerticalEpisodePlayer(
         lastProgressSaveMs = 0L
         loading = true
         error = null
-        val start = store.progressMs(detail.drama.id, ep)
+        val start = store.progressMs(detail.drama.id, detail.drama.platform, ep)
         store.saveHistory(detail.drama, ep)
         val result = runCatching { repo.resolveStream(detail, ep, store.dataSaver()) }
         val stream = result.getOrNull()
@@ -2439,8 +2441,6 @@ private class LocalStore(context: Context) {
     fun fitContain() = prefs.getBoolean("fitContain", false)
     fun setFitContain(v: Boolean) = prefs.edit().putBoolean("fitContain", v).apply()
 
-    private fun progressPrefix(id: String, ep: Int) = "progress_${id}_${ep}_"
-
     fun history(tick: Int = 0): List<HistoryItem> = parseHistory()
     fun saveHistory(drama: Drama, ep: Int) {
         val arr = JSONArray()
@@ -2460,26 +2460,41 @@ private class LocalStore(context: Context) {
         old.take(80).forEach { arr.put(it.toJson()) }
         prefs.edit().putString("history", arr.toString()).apply()
     }
-    fun updateProgress(id: String, ep: Int, pos: Long, dur: Long) {
-        val p = progressPrefix(id, ep)
+    fun updateProgress(id: String, platform: String, ep: Int, pos: Long, dur: Long) {
+        val p = ProgressKeys.episodePrefix(platform, id, ep)
+        val safePos = pos.coerceAtLeast(0L)
+        val safeDur = dur.coerceAtLeast(0L)
         val editor = prefs.edit()
-            .putLong(p + "pos", pos.coerceAtLeast(0L))
-            .putLong(p + "dur", dur.coerceAtLeast(0L))
+            .putLong(p + "pos", safePos)
+            .putLong(p + "dur", safeDur)
         val list = parseHistory().toMutableList()
-        val idx = list.indexOfFirst { it.id == id }
+        val idx = list.indexOfFirst { it.id == id && it.platform == platform }
         if (idx >= 0) {
             val h = list[idx]
-            list[idx] = h.copy(episode = ep, pos = pos, dur = dur, updated = System.currentTimeMillis())
+            list[idx] = h.copy(episode = ep, pos = safePos, dur = safeDur, updated = System.currentTimeMillis())
             val arr = JSONArray(); list.sortedByDescending { it.updated }.forEach { arr.put(it.toJson()) }
             editor.putString("history", arr.toString())
         }
         editor.apply()
     }
-    fun progressMs(id: String, ep: Int): Long {
-        val p = progressPrefix(id, ep)
+    fun progressMs(id: String, platform: String, ep: Int): Long {
+        val p = ProgressKeys.episodePrefix(platform, id, ep)
         val saved = prefs.getLong(p + "pos", -1L)
         if (saved >= 0L) return saved
-        return parseHistory().firstOrNull { it.id == id && it.episode == ep }?.pos ?: 0L
+
+        val history = parseHistory().firstOrNull { it.id == id && it.platform == platform && it.episode == ep }
+        val legacyPrefix = ProgressKeys.legacyEpisodePrefix(id, ep)
+        val legacyPos = prefs.getLong(legacyPrefix + "pos", -1L)
+        if (legacyPos >= 0L && history != null) {
+            // Copy old progress to the platform-aware key. Keep the old key because
+            // pre-v4.7.1 data cannot prove which platform owned it.
+            prefs.edit()
+                .putLong(p + "pos", legacyPos)
+                .putLong(p + "dur", prefs.getLong(legacyPrefix + "dur", 0L).coerceAtLeast(0L))
+                .apply()
+            return legacyPos
+        }
+        return history?.pos ?: 0L
     }
     fun clearHistory() {
         val editor = prefs.edit().remove("history")
@@ -2505,10 +2520,18 @@ private class LocalStore(context: Context) {
     }
 
     fun removeHistory(id: String, platform: String) {
+        val remaining = parseHistory().filterNot { it.id == id && it.platform == platform }
         val arr = JSONArray()
-        parseHistory().filterNot { it.id == id && it.platform == platform }.forEach { arr.put(it.toJson()) }
+        remaining.forEach { arr.put(it.toJson()) }
         val editor = prefs.edit().putString("history", arr.toString())
-        prefs.all.keys.filter { it.startsWith("progress_${id}_") }.forEach { editor.remove(it) }
+        val progressPrefix = ProgressKeys.dramaPrefix(platform, id)
+        prefs.all.keys.filter { it.startsWith(progressPrefix) }.forEach { editor.remove(it) }
+
+        // A legacy key has no platform segment. Remove it only when no other
+        // platform with the same drama ID remains in history.
+        if (remaining.none { it.id == id }) {
+            prefs.all.keys.filter { it.startsWith("progress_${id}_") }.forEach { editor.remove(it) }
+        }
         editor.apply()
     }
 

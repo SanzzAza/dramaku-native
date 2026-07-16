@@ -29,12 +29,12 @@ def hasReleaseSigning = System.getenv("ANDROID_KEYSTORE_PATH") &&
 
 android {
     namespace 'com.dramaku.app'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.dramaku.app"
         minSdk 24
-        targetSdk 34
+        targetSdk 35
         versionCode appVersionCode
         versionName appVersionName
     }
@@ -45,9 +45,9 @@ android {
                 storeFile file(System.getenv("ANDROID_KEYSTORE_PATH"))
                 storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
                 keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                // The helper script creates a PKCS12 keystore. Android/Gradle reads it most reliably
-                // when keyPassword equals storePassword, even if ANDROID_KEY_PASSWORD was set differently.
-                keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                // The helper script creates a PKCS12 keystore with matching store/key passwords.
+                // Honor a dedicated key password for manually generated keystores as well.
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD") ?: System.getenv("ANDROID_KEYSTORE_PASSWORD")
             }
         }
     }
@@ -62,8 +62,8 @@ android {
             if (hasReleaseSigning) {
                 signingConfig signingConfigs.release
             } else {
-                // Fallback: build release variant signed with debug key so the APK is installable.
-                // For production distribution, set release signing secrets in GitHub Actions.
+                // Preserve the existing workflow behavior: create an installable
+                // release-variant APK with the debug key when release secrets are absent.
                 signingConfig signingConfigs.debug
             }
         }
@@ -106,6 +106,9 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.3.1'
     implementation 'androidx.media3:media3-exoplayer-hls:1.3.1'
     implementation 'androidx.media3:media3-ui:1.3.1'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }
 
 // Native build: root web assets are no longer packaged into the APK.

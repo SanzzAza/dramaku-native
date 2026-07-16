@@ -1,4 +1,5 @@
 plugins {
-    id 'com.android.application' version '8.2.0' apply false
+    // Compatible with the existing GitHub Actions Gradle 8.4 build.
+    id 'com.android.application' version '8.3.2' apply false
     id 'org.jetbrains.kotlin.android' version '1.9.22' apply false
 }
