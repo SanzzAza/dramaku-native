@@ -69,7 +69,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Verify Gradle Wrapper
-        run: ./gradlew --version
+        run: chmod +x gradlew && ./gradlew --version
 
       - name: Build release APK
         env:
