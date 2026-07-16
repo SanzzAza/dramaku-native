@@ -38,11 +38,8 @@ jobs:
             VERSION_CODE=1
           fi
 
-          # Tags like v4.3.0 or v4.3.0-build12 override the display version name.
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            TAG_NAME="${GITHUB_REF_NAME}"
-            VERSION_NAME="${TAG_NAME#v}"
-            VERSION_NAME="${VERSION_NAME%%-build*}"
+          # Tags like v4.3.0 or main branch push create a GitHub Release.
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]] || [ "${GITHUB_REF_NAME}" = "main" ]; then
             CREATE_RELEASE=true
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.create_release }}" = "true" ]; then
             CREATE_RELEASE=true
