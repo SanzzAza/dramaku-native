@@ -71,8 +71,8 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Create Gradle Wrapper
-        run: gradle wrapper --gradle-version 8.4
+      - name: Verify Gradle Wrapper
+        run: ./gradlew --version
 
       - name: Build release APK
         env:
