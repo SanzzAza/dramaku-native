@@ -48,6 +48,12 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.7.0 MovieBox FlickReels source fix
+
+- Global media headers disederhanakan ke User-Agent saja agar signed CDN MovieBox/FlickReels tidak menolak Origin/Referer.
+- FlickReels resolver fallback ke `detail.episodes[].hls_url` kalau endpoint stream gagal/kosong.
+- MovieBox resolver mencoba beberapa resolusi dan memprioritaskan H264/non-HEVC resource link.
+
 ## v4.6.9 Melolo stream hardening
 
 - Melolo resolver dipaksa memakai `/streamv2` karena `/stream` berisi CENC encrypted assets yang membuat ExoPlayer hitam.

@@ -1135,14 +1135,10 @@ private fun SettingSwitch(title: String, sub: String, checked: Boolean, onChecke
 
 
 private fun buildDramakuPlayer(context: Context): ExoPlayer {
-    val headers = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36",
-        "Referer" to "https://dramafeed.vercel.app/",
-        "Origin" to "https://dramafeed.vercel.app"
-    )
+    // Keep only User-Agent globally. Some signed CDN URLs (MovieBox/FlickReels)
+    // reject unexpected Origin/Referer headers and cause Media3 SOURCE errors.
     val httpFactory = DefaultHttpDataSource.Factory()
-        .setUserAgent(headers["User-Agent"])
-        .setDefaultRequestProperties(headers)
+        .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true)
     return ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
@@ -2163,7 +2159,19 @@ private class DramakuRepository {
                 // so Media3 can resolve variant/audio segment URLs correctly.
                 StreamResult(raw, sub)
             }
-            "flickreels" -> StreamResult(getJson("$base/stream?id=${enc(id)}&ep=$ep").optJSONObject("data")?.stringAny("hls_url").orEmpty())
+            "flickreels" -> {
+                val streamUrl = runCatching {
+                    getJson("$base/stream?id=${enc(id)}&ep=$ep").optJSONObject("data")?.stringAny("hls_url").orEmpty()
+                }.getOrDefault("")
+                if (streamUrl.isNotBlank()) return StreamResult(streamUrl)
+                val detailJson = getJson("$base/detail?id=${enc(id)}")
+                val episodes = detailJson.optJSONObject("data")?.optJSONArray("episodes")
+                    ?: detailJson.optJSONObject("data")?.optJSONArray("episode_list")
+                    ?: JSONArray()
+                val epObj = episodes.objects().firstOrNull { it.intAny("episode", "episode_no", 0) == ep }
+                    ?: episodes.optJSONObject(ep - 1)
+                StreamResult(epObj?.stringAny("hls_url", "url", "video_url").orEmpty())
+            }
             "reelshort" -> {
                 val data = getJson("$base/stream?id=${enc(id)}&episode_no=$ep").optJSONObject("data") ?: error("Video belum tersedia")
                 val vl = data.optJSONArray("videoList")?.objects().orEmpty()
@@ -2178,14 +2186,33 @@ private class DramakuRepository {
                 StreamResult(if (dataSaver) j.stringAny("480p", "360p", "720p") else j.stringAny("720p", "480p", "360p"))
             }
             "moviebox" -> {
+                val resolutions = listOf(res, 720, 1080, 480, 360).distinct()
                 if (d.subjectType == 2) {
-                    val j = getJson("$base/download-series?subjectId=${enc(id)}&se=1&resolution=$res").optJSONObject("data") ?: error("Video belum tersedia")
-                    val e = j.optJSONArray("episodes")?.objects()?.firstOrNull { it.intAny("ep", 1) == ep } ?: j.optJSONArray("episodes")?.optJSONObject(0)
-                    StreamResult(e?.stringAny("resourceLink").orEmpty(), e?.optJSONObject("subtitle")?.stringAny("url").orEmpty())
+                    var chosenUrl = ""
+                    var chosenSub = ""
+                    for (r in resolutions) {
+                        val j = runCatching { getJson("$base/download-series?subjectId=${enc(id)}&se=1&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
+                        val e = j.optJSONArray("episodes")?.objects()?.firstOrNull { it.intAny("ep", 1) == ep }
+                            ?: j.optJSONArray("episodes")?.optJSONObject(0)
+                        chosenUrl = e?.stringAny("resourceLink").orEmpty()
+                        chosenSub = e?.optJSONObject("subtitle")?.stringAny("url").orEmpty()
+                        if (chosenUrl.isNotBlank()) break
+                    }
+                    StreamResult(chosenUrl, chosenSub)
                 } else {
-                    val j = getJson("$base/download-movie?subjectId=${enc(id)}&resolution=$res").optJSONObject("data") ?: error("Video belum tersedia")
-                    val f = j.optJSONArray("files")?.objects()?.firstOrNull { it.stringAny("codecName").contains("h264", true) } ?: j.optJSONArray("files")?.optJSONObject(0)
-                    StreamResult(f?.stringAny("resourceLink").orEmpty(), j.optJSONObject("subtitle")?.stringAny("url").orEmpty())
+                    var chosenUrl = ""
+                    var chosenSub = ""
+                    for (r in resolutions) {
+                        val j = runCatching { getJson("$base/download-movie?subjectId=${enc(id)}&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
+                        val files = j.optJSONArray("files")?.objects().orEmpty()
+                        val f = files.firstOrNull { it.stringAny("codecName").contains("h264", true) }
+                            ?: files.firstOrNull { !it.stringAny("codecName").contains("hevc", true) }
+                            ?: files.firstOrNull()
+                        chosenUrl = f?.stringAny("resourceLink").orEmpty()
+                        chosenSub = j.optJSONObject("subtitle")?.stringAny("url").orEmpty()
+                        if (chosenUrl.isNotBlank()) break
+                    }
+                    StreamResult(chosenUrl, chosenSub)
                 }
             }
             "goodshort" -> {

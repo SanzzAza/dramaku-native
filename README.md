@@ -4,7 +4,7 @@ Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
 Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
-**Versi saat ini: 4.6.9**
+**Versi saat ini: 4.7.0**
 
 ## Platform
 
@@ -48,6 +48,7 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 - Platform logo/brand mark di dropdown dan status platform
 - Copywriting Home dibuat lebih premium, bukan teks developer/native
 - Melolo stream hardening: streamv2-only, player error listener, browser-like HLS headers
+- MovieBox/FlickReels source error fix: safer CDN headers, HLS fallback, multi-resolution fallback
 - Home lebih bersih tanpa section quick action yang tidak perlu
 - Stream resolver 10 platform di Kotlin
 - HTTPS-only network config
@@ -72,8 +73,8 @@ version.properties
 ```
 
 ```properties
-VERSION_NAME=4.6.9
-VERSION_CODE=60
+VERSION_NAME=4.7.0
+VERSION_CODE=61
 ```
 
 ## Build APK
