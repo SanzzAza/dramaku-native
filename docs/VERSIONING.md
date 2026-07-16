@@ -5,8 +5,8 @@
 - `version.properties` → Android `versionName` + `versionCode`
 
 ```properties
-VERSION_NAME=4.6.8
-VERSION_CODE=59
+VERSION_NAME=4.6.9
+VERSION_CODE=60
 ```
 
 ## Release flow
@@ -16,8 +16,8 @@ VERSION_CODE=59
 3. Push tag for release, for example:
 
 ```bash
-git tag v4.6.8
-git push origin v4.6.8
+git tag v4.6.9
+git push origin v4.6.9
 ```
 
 4. GitHub Actions builds signed/debug APK and publishes GitHub Release.

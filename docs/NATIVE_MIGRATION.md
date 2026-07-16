@@ -48,6 +48,13 @@ gradle wrapper --gradle-version 8.4
 
 Jika `gradle` belum ada di mesin lokal, build via GitHub Actions tetap bisa jalan karena workflow memakai `gradle/actions/setup-gradle`.
 
+## v4.6.9 Melolo stream hardening
+
+- Melolo resolver dipaksa memakai `/streamv2` karena `/stream` berisi CENC encrypted assets yang membuat ExoPlayer hitam.
+- Player tidak lagi fallback ke encrypted quality URL Melolo.
+- ExoPlayer memakai browser-like User-Agent/Referer/Origin untuk HLS/proxy yang sensitif header.
+- Player menampilkan error stream lewat `onPlayerError`, bukan layar hitam 0:00.
+
 ## v4.6.8 premium copy and platform logos
 
 - Header Home mengganti copywriting developer menjadi teks user-facing premium.

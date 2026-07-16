@@ -64,7 +64,10 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.OkHttpClient
@@ -1131,6 +1134,21 @@ private fun SettingSwitch(title: String, sub: String, checked: Boolean, onChecke
 
 
 
+private fun buildDramakuPlayer(context: Context): ExoPlayer {
+    val headers = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36",
+        "Referer" to "https://dramafeed.vercel.app/",
+        "Origin" to "https://dramafeed.vercel.app"
+    )
+    val httpFactory = DefaultHttpDataSource.Factory()
+        .setUserAgent(headers["User-Agent"])
+        .setDefaultRequestProperties(headers)
+        .setAllowCrossProtocolRedirects(true)
+    return ExoPlayer.Builder(context)
+        .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+        .build()
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ClipFeedPlayer(
@@ -1146,7 +1164,7 @@ private fun ClipFeedPlayer(
     val activity = context as? Activity
     val componentActivity = context as? ComponentActivity
     val pagerState = rememberPagerState(pageCount = { items.size })
-    val player = remember { ExoPlayer.Builder(context).build() }
+    val player = remember { buildDramakuPlayer(context) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var currentDetail by remember { mutableStateOf<Detail?>(null) }
@@ -1174,6 +1192,10 @@ private fun ClipFeedPlayer(
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+            override fun onPlayerError(errorValue: PlaybackException) {
+                loading = false
+                error = errorValue.message ?: "Video belum tersedia"
+            }
         }
         player.addListener(listener)
         onDispose {
@@ -1380,7 +1402,7 @@ private fun VerticalEpisodePlayer(
         initialPage = (startEpisode - 1).coerceIn(0, total - 1),
         pageCount = { total }
     )
-    val player = remember { ExoPlayer.Builder(context).build() }
+    val player = remember { buildDramakuPlayer(context) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
@@ -1420,6 +1442,11 @@ private fun VerticalEpisodePlayer(
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 playing = isPlaying
+            }
+
+            override fun onPlayerError(errorValue: PlaybackException) {
+                loading = false
+                error = errorValue.message ?: "Video belum tersedia"
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -2117,6 +2144,17 @@ private class DramakuRepository {
         val id = d.id
         val res = if (dataSaver) 480 else 720
         return when (p) {
+            "melolo" -> {
+                val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep")
+                val direct = v2.stringAny("url")
+                if (direct.isNotBlank() && v2.optBoolean("playable", true) != false) {
+                    StreamResult(direct)
+                } else {
+                    // /stream returns CENC AES-CTR encrypted ByteDance assets. Standard ExoPlayer
+                    // cannot decrypt them, so do not fallback to encrypted quality URLs.
+                    error("Stream Melolo tidak tersedia. Coba Retry untuk ambil link baru.")
+                }
+            }
             "freereels" -> {
                 val j = getJson("$base/stream?dramaId=${enc(id)}&episode=$ep&lang=id").optJSONObject("data") ?: error("Video belum tersedia")
                 val raw = j.stringAny("h264_m3u8", "m3u8_url", "video_url")
