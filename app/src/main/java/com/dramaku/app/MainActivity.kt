@@ -260,23 +260,31 @@ private fun DramakuNativeApp() {
         Scaffold(
             containerColor = Bg,
             bottomBar = {
-                NavigationBar(containerColor = Color(0xEE071018), tonalElevation = 0.dp) {
-                    RootTab.values().filter { it.showInNav }.forEach { item ->
-                        val iconVector = when (item) {
-                            RootTab.Clips -> Icons.Rounded.PlayCircle
-                            RootTab.Home -> Icons.Rounded.Home
-                            RootTab.Rewards -> Icons.Rounded.CardGiftcard
-                            RootTab.Library -> Icons.Rounded.VideoLibrary
-                            RootTab.Settings -> Icons.Rounded.Person
-                            RootTab.Search -> Icons.Rounded.Search
+                Surface(
+                    color = Color(0xD905080D),
+                    tonalElevation = 0.dp
+                ) {
+                    Column {
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x2210F5A6)))
+                        NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
+                            RootTab.values().filter { it.showInNav }.forEach { item ->
+                                val iconVector = when (item) {
+                                    RootTab.Clips -> Icons.Rounded.PlayCircle
+                                    RootTab.Home -> Icons.Rounded.Home
+                                    RootTab.Rewards -> Icons.Rounded.CardGiftcard
+                                    RootTab.Library -> Icons.Rounded.VideoLibrary
+                                    RootTab.Settings -> Icons.Rounded.Person
+                                    RootTab.Search -> Icons.Rounded.Search
+                                }
+                                NavigationBarItem(
+                                    selected = tab == item,
+                                    onClick = { tab = item },
+                                    icon = { Icon(iconVector, contentDescription = item.title, tint = if (tab == item) Accent else Muted, modifier = Modifier.size(22.dp)) },
+                                    label = { Text(item.title, color = if (tab == item) Accent else Muted, fontSize = 10.sp, maxLines = 1) },
+                                    colors = NavigationBarItemDefaults.colors(indicatorColor = Color(0x2210F5A6))
+                                )
+                            }
                         }
-                        NavigationBarItem(
-                            selected = tab == item,
-                            onClick = { tab = item },
-                            icon = { Icon(iconVector, contentDescription = item.title, tint = if (tab == item) Accent else Muted, modifier = Modifier.size(22.dp)) },
-                            label = { Text(item.title, color = if (tab == item) Accent else Muted, fontSize = 10.sp, maxLines = 1) },
-                            colors = NavigationBarItemDefaults.colors(indicatorColor = Color(0x2210F5A6))
-                        )
                     }
                 }
             }
@@ -504,6 +512,7 @@ private fun HomeScreen(
     ) {
         item {
             Header(platformId, onSearch, onRefresh)
+            PlatformFilterChips(selectedPlatform, remoteConfig, onPlatform)
             PlatformDropdown(platformId, state is Load.Loading, remoteConfig, onPlatform)
             RemoteConfigBanner(remoteConfig, remoteError)
         }
@@ -517,12 +526,108 @@ private fun HomeScreen(
                 item { PlatformStatusStrip(remoteConfig) }
                 if (history.isNotEmpty()) item { ContinueWatching(history, onResume) }
                 item { ForYouSection(history, (data.popular + data.newest + data.recommended), onDrama) }
-                if (data.popular.isNotEmpty()) item { DramaRail("Top 10 Hari Ini", data.popular.take(10), onDrama) }
+                if (data.popular.isNotEmpty()) item { Top10RankingRail("Top 10 Hari Ini", data.popular.take(10), onDrama) }
                 if (data.popular.size > 10) item { DramaGridSection("Paling Populer", data.popular.drop(10).take(popularVisible), onDrama) }
                 if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest.take(newestVisible), onDrama) }
                 if (data.recommended.isNotEmpty()) item { DramaGridSection("Rekomendasi", data.recommended.take(recommendedVisible), onDrama) }
                 item { HomeLoadMoreFooter(data, popularVisible, newestVisible, recommendedVisible, loadMorePulse) }
                 item { Footer() }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlatformFilterChips(
+    selected: String,
+    remoteConfig: NativeRemoteConfig?,
+    onSelect: (String) -> Unit
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        items(Platforms) { p ->
+            val isSelected = p.id == selected
+            val st = remoteConfig?.platform(p.id)
+            val enabled = st?.enabled ?: true
+            Surface(
+                color = if (isSelected) Accent else Bg3,
+                contentColor = if (isSelected) Color.Black else Text,
+                shape = RoundedCornerShape(999.dp),
+                modifier = Modifier.clickable {
+                    if (enabled) onSelect(p.id)
+                }
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    PlatformLogo(p.id, size = 20.dp, enabled = enabled)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        p.label,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSelected) Color.Black else if (enabled) Text else Muted
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Top10RankingRail(title: String, items: List<Drama>, onDrama: (Drama) -> Unit) {
+    Column(Modifier.padding(top = 14.dp)) {
+        SectionTitle(title)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            itemsIndexed(items.take(10)) { index, drama ->
+                val rank = index + 1
+                Box(Modifier.width(135.dp).clickable { onDrama(drama) }) {
+                    Column {
+                        Box {
+                            Poster(drama.poster, drama.title, Modifier.fillMaxWidth().aspectRatio(0.71f))
+                            Surface(
+                                color = Accent,
+                                contentColor = Color.Black,
+                                shape = RoundedCornerShape(topStart = 18.dp, bottomEnd = 12.dp),
+                                modifier = Modifier.align(Alignment.TopStart)
+                            ) {
+                                Text(
+                                    "#$rank",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                            if (drama.episodes > 0) {
+                                Badge("${drama.episodes} Ep", Modifier.align(Alignment.BottomStart).padding(7.dp), dark = true)
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            drama.title.ifBlank { "Tanpa Judul" },
+                            color = Text,
+                            fontSize = 13.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            drama.views.ifBlank { drama.tags.firstOrNull().orEmpty() },
+                            color = Accent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
         }
     }
