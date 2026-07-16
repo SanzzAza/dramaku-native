@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -512,7 +513,7 @@ private fun HomeScreen(
     ) {
         item {
             Header(platformId, onSearch, onRefresh)
-            PlatformFilterChips(selectedPlatform, remoteConfig, onPlatform)
+            PlatformFilterChips(platformId, remoteConfig, onPlatform)
             PlatformDropdown(platformId, state is Load.Loading, remoteConfig, onPlatform)
             RemoteConfigBanner(remoteConfig, remoteError)
         }
