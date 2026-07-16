@@ -1481,7 +1481,7 @@ private fun ClipFeedPlayer(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun VerticalEpisodePlayer(
     detail: Detail,
