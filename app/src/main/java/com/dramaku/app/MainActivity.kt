@@ -84,6 +84,7 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
@@ -156,6 +157,7 @@ private data class HomeBundle(
     val hasMore: Boolean = true
 )
 private data class StreamResult(val url: String, val subtitle: String = "")
+private data class CachedStream(val result: StreamResult, val expiresAtMs: Long)
 private data class PlayerSession(val detail: Detail, val startEpisode: Int)
 private data class HistoryItem(
     val id: String,
@@ -258,8 +260,13 @@ private fun DramakuNativeApp() {
     LaunchedEffect(selectedDrama) {
         val d = selectedDrama ?: return@LaunchedEffect
         detailState = Load.Loading
-        detailState = runCatching { repo.loadDetail(d) }
-            .fold({ Load.Ok(it) }, { Load.Err(it.message ?: "Gagal memuat detail") })
+        try {
+            detailState = Load.Ok(repo.loadDetailCached(d))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            detailState = Load.Err(t.message ?: "Gagal memuat detail")
+        }
     }
 
     LaunchedEffect(detailState, pendingResume) {
@@ -1435,20 +1442,29 @@ private fun ClipFeedPlayer(
         loading = true
         error = null
         currentDetail = null
-        val detailResult = runCatching { repo.loadDetail(drama) }
-        val detail = detailResult.getOrNull()
-        if (detail == null) {
-            loading = false
-            error = detailResult.exceptionOrNull()?.message ?: "Detail tidak tersedia"
-            player.stop()
-            return@LaunchedEffect
+        val quickDetail = repo.previewDetail(drama)
+        currentDetail = quickDetail
+        val stream = try {
+            repo.resolveStreamCached(quickDetail, 1, store.dataSaver())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            try {
+                val fullDetail = repo.loadDetailCached(drama)
+                currentDetail = fullDetail
+                repo.resolveStreamCached(fullDetail, 1, store.dataSaver())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                loading = false
+                error = t.message ?: "Cuplikan belum tersedia"
+                player.stop()
+                return@LaunchedEffect
+            }
         }
-        currentDetail = detail
-        val streamResult = runCatching { repo.resolveStream(detail, 1, store.dataSaver()) }
-        val stream = streamResult.getOrNull()
-        if (stream == null || stream.url.isBlank()) {
+        if (stream.url.isBlank()) {
             loading = false
-            error = streamResult.exceptionOrNull()?.message ?: "Cuplikan belum tersedia"
+            error = "Cuplikan belum tersedia"
             player.stop()
             return@LaunchedEffect
         }
@@ -1457,6 +1473,26 @@ private fun ClipFeedPlayer(
         player.seekTo(0)
         player.playWhenReady = true
         loading = false
+
+        // Warm the next clip URL in memory so vertical swipes feel faster.
+        items.getOrNull(pagerState.currentPage + 1)?.let { nextDrama ->
+            launch {
+                try {
+                    repo.resolveStreamCached(repo.previewDetail(nextDrama), 1, store.dataSaver())
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Throwable) {
+                    try {
+                        val fullDetail = repo.loadDetailCached(nextDrama)
+                        repo.resolveStreamCached(fullDetail, 1, store.dataSaver())
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Throwable) {
+                        // Prefetch is best-effort only.
+                    }
+                }
+            }
+        }
     }
 
     Box(
@@ -1731,11 +1767,19 @@ private fun VerticalEpisodePlayer(
         error = null
         val start = store.progressMs(detail.drama.id, detail.drama.platform, ep)
         store.saveHistory(detail.drama, ep)
-        val result = runCatching { repo.resolveStream(detail, ep, store.dataSaver()) }
-        val stream = result.getOrNull()
-        if (stream == null || stream.url.isBlank()) {
+        val stream = try {
+            repo.resolveStreamCached(detail, ep, store.dataSaver())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
             loading = false
-            error = result.exceptionOrNull()?.message ?: "Video belum tersedia"
+            error = t.message ?: "Video belum tersedia"
+            player.stop()
+            return@LaunchedEffect
+        }
+        if (stream.url.isBlank()) {
+            loading = false
+            error = "Video belum tersedia"
             player.stop()
             return@LaunchedEffect
         }
@@ -1744,6 +1788,19 @@ private fun VerticalEpisodePlayer(
         if (start > 0) player.seekTo(start)
         player.playWhenReady = true
         loading = false
+
+        // Prefetch the next episode stream URL after the current episode starts resolving.
+        if (ep < total) {
+            launch {
+                try {
+                    repo.resolveStreamCached(detail, ep + 1, store.dataSaver())
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Throwable) {
+                    // Prefetch is best-effort only.
+                }
+            }
+        }
     }
 
     Box(
@@ -2221,6 +2278,39 @@ private class DramakuRepository {
         .readTimeout(18, TimeUnit.SECONDS)
         .callTimeout(24, TimeUnit.SECONDS)
         .build()
+
+    private val detailCache = ConcurrentHashMap<String, Detail>()
+    private val streamCache = ConcurrentHashMap<String, CachedStream>()
+
+    fun previewDetail(input: Drama): Detail {
+        detailCache[detailKey(input)]?.let { return it }
+        val total = input.episodes.coerceAtLeast(1)
+        return Detail(
+            input.copy(episodes = total),
+            (1..total).map { EpisodeInfo(it) }
+        )
+    }
+
+    suspend fun loadDetailCached(input: Drama): Detail {
+        val key = detailKey(input)
+        detailCache[key]?.let { return it }
+        return loadDetail(input).also { detailCache[key] = it }
+    }
+
+    suspend fun resolveStreamCached(detail: Detail, ep: Int, dataSaver: Boolean): StreamResult {
+        val key = streamKey(detail.drama, ep, dataSaver)
+        val now = System.currentTimeMillis()
+        streamCache[key]?.takeIf { it.expiresAtMs > now }?.let { return it.result }
+        return resolveStream(detail, ep, dataSaver).also { result ->
+            if (result.url.isNotBlank()) {
+                // Stream URLs are often signed/short-lived, so cache only briefly.
+                streamCache[key] = CachedStream(result, now + 2 * 60 * 1000L)
+            }
+        }
+    }
+
+    private fun detailKey(d: Drama): String = "${d.platform}|${d.id}"
+    private fun streamKey(d: Drama, ep: Int, dataSaver: Boolean): String = "${d.platform}|${d.id}|$ep|${if (dataSaver) "480" else "720"}"
 
     suspend fun loadHome(platformId: String): HomeBundle = loadHomePage(platformId, 1)
 
