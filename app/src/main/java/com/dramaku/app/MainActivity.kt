@@ -1495,6 +1495,10 @@ private fun ClipFeedPlayer(
             player.stop()
             return@LaunchedEffect
         }
+        runCatching {
+            player.stop()
+            player.clearMediaItems()
+        }
         player.setMediaItem(buildNativeMediaItem(stream))
         player.prepare()
         player.seekTo(0)
@@ -1708,15 +1712,8 @@ private fun VerticalEpisodePlayer(
             }
 
             override fun onPlayerError(errorValue: PlaybackException) {
-                val dur = player.duration.takeIf { it > 0 } ?: 0L
-                val nearEnd = dur > 0 && player.currentPosition >= dur - 1500L
-                if (nearEnd && store.autoNext() && pagerState.currentPage < total - 1) {
-                    saveProgress(pagerState.currentPage + 1)
-                    loading = false
-                    error = null
-                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                    return
-                }
+                // Never auto-skip on decoder/source errors. Show the error and let the user retry,
+                // otherwise HEVC/proxy glitches can look like random episode jumps.
                 loading = false
                 error = playerErrorMessage(errorValue)
             }
@@ -1801,7 +1798,9 @@ private fun VerticalEpisodePlayer(
         lastProgressSaveMs = 0L
         loading = true
         error = null
-        val start = store.progressMs(detail.drama.id, detail.drama.platform, ep)
+        val savedPos = store.progressMs(detail.drama.id, detail.drama.platform, ep)
+        val savedDur = store.progressDurationMs(detail.drama.id, detail.drama.platform, ep)
+        val start = if (savedDur > 0L && savedPos >= savedDur - 4_000L) 0L else savedPos
         store.saveHistory(detail.drama, ep)
         val stream = try {
             repo.resolveStreamCached(detail, ep, store.dataSaver())
@@ -1818,6 +1817,10 @@ private fun VerticalEpisodePlayer(
             error = "Video belum tersedia"
             player.stop()
             return@LaunchedEffect
+        }
+        runCatching {
+            player.stop()
+            player.clearMediaItems()
         }
         player.setMediaItem(buildNativeMediaItem(stream))
         player.prepare()
@@ -2831,7 +2834,7 @@ private class LocalStore(context: Context) {
     fun setPlatform(id: String) = prefs.edit().putString("platform", id).apply()
     fun dataSaver() = prefs.getBoolean("dataSaver", false)
     fun setDataSaver(v: Boolean) = prefs.edit().putBoolean("dataSaver", v).apply()
-    fun autoNext() = prefs.getBoolean("autoNext", true)
+    fun autoNext() = prefs.getBoolean("autoNext", false)
     fun setAutoNext(v: Boolean) = prefs.edit().putBoolean("autoNext", v).apply()
     fun fitContain() = prefs.getBoolean("fitContain", false)
     fun setFitContain(v: Boolean) = prefs.edit().putBoolean("fitContain", v).apply()
@@ -2890,6 +2893,20 @@ private class LocalStore(context: Context) {
             return legacyPos
         }
         return history?.pos ?: 0L
+    }
+
+    fun progressDurationMs(id: String, platform: String, ep: Int): Long {
+        val p = ProgressKeys.episodePrefix(platform, id, ep)
+        val saved = prefs.getLong(p + "dur", -1L)
+        if (saved >= 0L) return saved.coerceAtLeast(0L)
+        val history = parseHistory().firstOrNull { it.id == id && it.platform == platform && it.episode == ep }
+        val legacyPrefix = ProgressKeys.legacyEpisodePrefix(id, ep)
+        val legacyDur = prefs.getLong(legacyPrefix + "dur", -1L)
+        return when {
+            legacyDur >= 0L && history != null -> legacyDur.coerceAtLeast(0L)
+            history != null -> history.dur.coerceAtLeast(0L)
+            else -> 0L
+        }
     }
     fun clearHistory() {
         val editor = prefs.edit().remove("history")
