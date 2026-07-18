@@ -74,8 +74,10 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.Dispatcher
@@ -1351,9 +1353,34 @@ private fun buildDramakuPlayer(context: Context): ExoPlayer {
     val httpFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true)
+    val renderersFactory = DefaultRenderersFactory(context)
+        .setEnableDecoderFallback(true)
+    val trackSelector = DefaultTrackSelector(context).apply {
+        setParameters(
+            buildUponParameters()
+                // Prefer H.264 whenever the source exposes multiple variants. Some phones report
+                // HEVC support but still crash/lag on vertical hvc1 streams.
+                .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+        )
+    }
     return ExoPlayer.Builder(context)
+        .setRenderersFactory(renderersFactory)
+        .setTrackSelector(trackSelector)
         .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
         .build()
+}
+
+private fun playerErrorMessage(errorValue: PlaybackException): String {
+    val raw = errorValue.message.orEmpty()
+    return when {
+        raw.contains("video/hevc", true) || raw.contains("hvc1", true) ->
+            "Video ini memakai codec HEVC/H.265 dan decoder HP kamu gagal memutarnya. Coba Retry atau episode lain; kalau tetap gagal, sumber video perlu H.264 dari server."
+        raw.contains("MediaCodecVideoRenderer", true) ->
+            "Decoder video perangkat gagal memutar stream ini. Coba Retry atau aktifkan mode Hemat Data."
+        raw.contains("Source error", true) ->
+            "Sumber video lambat atau link stream expired. Coba Retry."
+        else -> raw.ifBlank { "Video belum tersedia" }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1401,7 +1428,7 @@ private fun ClipFeedPlayer(
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             override fun onPlayerError(errorValue: PlaybackException) {
                 loading = false
-                error = errorValue.message ?: "Video belum tersedia"
+                error = playerErrorMessage(errorValue)
             }
         }
         player.addListener(listener)
@@ -1681,8 +1708,17 @@ private fun VerticalEpisodePlayer(
             }
 
             override fun onPlayerError(errorValue: PlaybackException) {
+                val dur = player.duration.takeIf { it > 0 } ?: 0L
+                val nearEnd = dur > 0 && player.currentPosition >= dur - 1500L
+                if (nearEnd && store.autoNext() && pagerState.currentPage < total - 1) {
+                    saveProgress(pagerState.currentPage + 1)
+                    loading = false
+                    error = null
+                    scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                    return
+                }
                 loading = false
-                error = errorValue.message ?: "Video belum tersedia"
+                error = playerErrorMessage(errorValue)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
