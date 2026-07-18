@@ -57,6 +57,7 @@ import coil.compose.AsyncImage
 import com.dramaku.app.data.NativeRemoteConfig
 import com.dramaku.app.data.RemoteConfigRepository
 import com.dramaku.app.storage.ProgressKeys
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -245,8 +246,13 @@ private fun DramakuNativeApp() {
         homeLoadingMore = false
         homeAppendError = null
         homeState = Load.Loading
-        homeState = runCatching { repo.loadHome(selectedPlatform) }
-            .fold({ Load.Ok(it) }, { Load.Err(it.message ?: "Gagal memuat beranda") })
+        try {
+            homeState = Load.Ok(repo.loadHome(selectedPlatform))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            homeState = Load.Err(t.message ?: "Gagal memuat beranda")
+        }
     }
 
     LaunchedEffect(selectedDrama) {
@@ -274,17 +280,22 @@ private fun DramakuNativeApp() {
         homeLoadingMore = true
         homeAppendError = null
         scope.launch {
-            val result = runCatching { repo.loadHomePage(platformAtStart, nextPage) }
-            if (selectedPlatform == platformAtStart) {
-                result
-                    .onSuccess { next ->
-                        val latest = (homeState as? Load.Ok)?.data
-                        if (latest != null && next.loadedPage > latest.loadedPage) {
-                            homeState = Load.Ok(mergeHomeBundles(latest, next))
-                        }
+            try {
+                val next = repo.loadHomePage(platformAtStart, nextPage)
+                if (selectedPlatform == platformAtStart) {
+                    val latest = (homeState as? Load.Ok)?.data
+                    if (latest != null && next.loadedPage > latest.loadedPage) {
+                        homeState = Load.Ok(mergeHomeBundles(latest, next))
                     }
-                    .onFailure { homeAppendError = it.message ?: "Gagal memuat halaman berikutnya" }
-                homeLoadingMore = false
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                if (selectedPlatform == platformAtStart) {
+                    homeAppendError = t.message ?: "Gagal memuat halaman berikutnya"
+                }
+            } finally {
+                if (selectedPlatform == platformAtStart) homeLoadingMore = false
             }
         }
     }
@@ -2214,30 +2225,31 @@ private class DramakuRepository {
     suspend fun loadHome(platformId: String): HomeBundle = loadHomePage(platformId, 1)
 
     suspend fun loadHomePage(platformId: String, page: Int): HomeBundle = coroutineScope {
-        // Infinite scroll: initial home only fetches one page per section.
-        // The next pages are requested later when the user scrolls near the bottom.
-        val pageRange = pagesFor(platformId)
-        val safePage = page.coerceIn(pageRange.first, pageRange.last)
-        val urls = homeUrls(platformId, safePage)
-        val requests = listOf(
-            "recommended" to urls[0],
-            "popular" to urls[1],
-            "newest" to urls[2]
-        )
+        // True infinite scroll: one UI page = one API endpoint request.
+        // Page 1 loads the fastest/main section first, then scrolling loads the next sections/pages.
+        val request = homePageRequest(platformId, page)
+        var rec = emptyList<Drama>()
+        var pop = emptyList<Drama>()
+        var nw = emptyList<Drama>()
 
-        val results = fetchManyTagged(requests)
-        val homeJson = results.filter { it.first == "recommended" }.map { it.second }
-        val popularJson = results.filter { it.first == "popular" }.map { it.second }
-        val newestJson = results.filter { it.first == "newest" }.map { it.second }
+        val json = try {
+            getJson(request.url)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
+        val items = dedupe(json?.let { flat(it.dataOrSelf(), platformId) }.orEmpty())
+        when (request.section) {
+            HomeSection.Popular -> pop = items
+            HomeSection.Newest -> nw = items
+            HomeSection.Recommended -> rec = items
+        }
 
-        var rec = dedupe(homeJson.flatMap { flat(it.dataOrSelf(), platformId) })
-        var pop = dedupe(popularJson.flatMap { flat(it.dataOrSelf(), platformId) })
-        var nw = dedupe(newestJson.flatMap { flat(it.dataOrSelf(), platformId) })
-        var canLoadMore = safePage < pageRange.last
-
-        // DramaNova occasionally returns 503 on category endpoints. Only do a light
-        // page-1 fallback; do not repeat cross-platform fallback on every scroll page.
-        if (platformId == "dramanova" && safePage == 1 && rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) {
+        // DramaNova occasionally returns 503. Only do a light fallback on the first page;
+        // do not repeat cross-platform fallback on every scroll page.
+        var canLoadMore = request.hasMore
+        if (platformId == "dramanova" && request.virtualPage == 1 && rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) {
             val fallback = loadFallbackHomeForBrokenPlatform("dramanova")
             rec = fallback.recommended
             pop = fallback.popular
@@ -2246,26 +2258,15 @@ private class DramakuRepository {
         }
 
         val hasData = rec.isNotEmpty() || pop.isNotEmpty() || nw.isNotEmpty()
-        if (!hasData && safePage == 1) error("Data platform kosong / endpoint gagal")
+        if (!hasData && request.virtualPage == 1) error("Data platform kosong / endpoint gagal")
 
         HomeBundle(
             recommended = rec,
             popular = pop,
             newest = nw,
-            loadedPage = safePage,
-            hasMore = hasData && canLoadMore
+            loadedPage = request.virtualPage,
+            hasMore = canLoadMore
         )
-    }
-
-    private suspend fun fetchManyTagged(requests: List<Pair<String, String>>): List<Pair<String, JSONObject>> = coroutineScope {
-        // Fetch every unique URL once, but keep the section mapping. Some platforms share
-        // the same endpoint for recommended/newest, so this avoids duplicate requests.
-        val jobs = requests.map { it.second }.distinct().associateWith { url ->
-            async { runCatching { getJson(url) }.getOrNull() }
-        }
-        requests.mapNotNull { (section, url) ->
-            jobs[url]?.await()?.let { section to it }
-        }
     }
 
     private suspend fun loadFallbackHomeForBrokenPlatform(brokenPlatform: String): HomeBundle = coroutineScope {
@@ -2514,6 +2515,31 @@ private class DramakuRepository {
             JSONObject(r.body?.string().orEmpty())
         }
     }
+}
+
+private enum class HomeSection { Recommended, Popular, Newest }
+private data class HomePageRequest(val section: HomeSection, val url: String, val virtualPage: Int, val hasMore: Boolean)
+
+private fun homeSectionOrder(platformId: String): List<HomeSection> = when (platformId) {
+    // Popular tends to be the fastest/useful first screen for most short-drama sources.
+    // Newest and recommended are appended by infinite scroll after the first page is visible.
+    else -> listOf(HomeSection.Popular, HomeSection.Newest, HomeSection.Recommended)
+}
+
+private fun homePageRequest(platformId: String, page: Int): HomePageRequest {
+    val pageRange = pagesFor(platformId)
+    val sections = homeSectionOrder(platformId)
+    val totalVirtualPages = pageRange.count() * sections.size
+    val virtualPage = page.coerceIn(1, totalVirtualPages.coerceAtLeast(1))
+    val section = sections[(virtualPage - 1) % sections.size]
+    val realPage = pageRange.first + ((virtualPage - 1) / sections.size)
+    val urls = homeUrls(platformId, realPage)
+    val url = when (section) {
+        HomeSection.Recommended -> urls[0]
+        HomeSection.Popular -> urls[1]
+        HomeSection.Newest -> urls[2]
+    }
+    return HomePageRequest(section, url, virtualPage, virtualPage < totalVirtualPages)
 }
 
 private fun pagesFor(platformId: String): IntRange = when (platformId) {
