@@ -77,6 +77,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -146,7 +147,13 @@ private data class Drama(
 )
 private data class EpisodeInfo(val number: Int, val streaming: String = "")
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
-private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>)
+private data class HomeBundle(
+    val recommended: List<Drama>,
+    val popular: List<Drama>,
+    val newest: List<Drama>,
+    val loadedPage: Int = 1,
+    val hasMore: Boolean = true
+)
 private data class StreamResult(val url: String, val subtitle: String = "")
 private data class PlayerSession(val detail: Detail, val startEpisode: Int)
 private data class HistoryItem(
@@ -197,6 +204,8 @@ private fun DramakuNativeApp() {
     var selectedPlatform by remember { mutableStateOf(store.platform()) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var homeState by remember { mutableStateOf<Load<HomeBundle>>(Load.Idle) }
+    var homeLoadingMore by remember { mutableStateOf(false) }
+    var homeAppendError by remember { mutableStateOf<String?>(null) }
     var selectedDrama by remember { mutableStateOf<Drama?>(null) }
     var detailState by remember { mutableStateOf<Load<Detail>>(Load.Idle) }
     var remoteConfig by remember { mutableStateOf<NativeRemoteConfig?>(null) }
@@ -233,6 +242,8 @@ private fun DramakuNativeApp() {
     }
 
     LaunchedEffect(selectedPlatform, refreshKey) {
+        homeLoadingMore = false
+        homeAppendError = null
         homeState = Load.Loading
         homeState = runCatching { repo.loadHome(selectedPlatform) }
             .fold({ Load.Ok(it) }, { Load.Err(it.message ?: "Gagal memuat beranda") })
@@ -252,6 +263,29 @@ private fun DramakuNativeApp() {
             playerSession = PlayerSession(detail, pending.episode.coerceAtLeast(1))
             selectedDrama = null
             pendingResume = null
+        }
+    }
+
+    fun loadMoreHome() {
+        val current = (homeState as? Load.Ok)?.data ?: return
+        if (homeLoadingMore || !current.hasMore) return
+        val platformAtStart = selectedPlatform
+        val nextPage = current.loadedPage + 1
+        homeLoadingMore = true
+        homeAppendError = null
+        scope.launch {
+            val result = runCatching { repo.loadHomePage(platformAtStart, nextPage) }
+            if (selectedPlatform == platformAtStart) {
+                result
+                    .onSuccess { next ->
+                        val latest = (homeState as? Load.Ok)?.data
+                        if (latest != null && next.loadedPage > latest.loadedPage) {
+                            homeState = Load.Ok(mergeHomeBundles(latest, next))
+                        }
+                    }
+                    .onFailure { homeAppendError = it.message ?: "Gagal memuat halaman berikutnya" }
+                homeLoadingMore = false
+            }
         }
     }
 
@@ -306,6 +340,9 @@ private fun DramakuNativeApp() {
                         history = store.history(dataTick),
                         remoteConfig = remoteConfig,
                         remoteError = remoteError,
+                        loadingMore = homeLoadingMore,
+                        loadMoreError = homeAppendError,
+                        onLoadMore = { loadMoreHome() },
                         onPlatform = {
                             val allowed = remoteConfig?.isPlatformEnabled(it) ?: true
                             if (!allowed) {
@@ -472,6 +509,9 @@ private fun HomeScreen(
     history: List<HistoryItem>,
     remoteConfig: NativeRemoteConfig?,
     remoteError: String?,
+    loadingMore: Boolean,
+    loadMoreError: String?,
+    onLoadMore: () -> Unit,
     onPlatform: (String) -> Unit,
     onRefresh: () -> Unit,
     onDrama: (Drama) -> Unit,
@@ -481,27 +521,25 @@ private fun HomeScreen(
     onResume: (HistoryItem) -> Unit
 ) {
     val listState = rememberLazyListState()
-    var popularVisible by remember(platformId) { mutableIntStateOf(30) }
-    var newestVisible by remember(platformId) { mutableIntStateOf(45) }
-    var recommendedVisible by remember(platformId) { mutableIntStateOf(60) }
-    var loadMorePulse by remember(platformId) { mutableIntStateOf(0) }
+    var requestedPage by remember(platformId) { mutableIntStateOf(0) }
 
-    LaunchedEffect(listState, state, platformId) {
+    val loadedPage = (state as? Load.Ok)?.data?.loadedPage ?: 0
+    LaunchedEffect(platformId, loadedPage) {
+        if (loadedPage <= 1) requestedPage = loadedPage
+    }
+
+    LaunchedEffect(listState, state, platformId, loadingMore) {
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()
             if (last == null) false
-            else last.index >= info.totalItemsCount - 2 && (last.offset + last.size) <= info.viewportEndOffset + 900
+            else last.index >= info.totalItemsCount - 3 && (last.offset + last.size) <= info.viewportEndOffset + 900
         }.collect { nearBottom ->
-            if (nearBottom && state is Load.Ok) {
-                val data = state.data
-                val canMore = popularVisible < data.popular.size || newestVisible < data.newest.size || recommendedVisible < data.recommended.size
-                if (canMore) {
-                    popularVisible = min(data.popular.size, popularVisible + 18)
-                    newestVisible = min(data.newest.size, newestVisible + 24)
-                    recommendedVisible = min(data.recommended.size, recommendedVisible + 30)
-                    loadMorePulse++
-                }
+            val data = (state as? Load.Ok)?.data ?: return@collect
+            val nextPage = data.loadedPage + 1
+            if (nearBottom && data.hasMore && !loadingMore && requestedPage != nextPage) {
+                requestedPage = nextPage
+                onLoadMore()
             }
         }
     }
@@ -528,10 +566,10 @@ private fun HomeScreen(
                 if (history.isNotEmpty()) item { ContinueWatching(history, onResume) }
                 item { ForYouSection(history, (data.popular + data.newest + data.recommended), onDrama) }
                 if (data.popular.isNotEmpty()) item { Top10RankingRail("Top 10 Hari Ini", data.popular.take(10), onDrama) }
-                if (data.popular.size > 10) item { DramaGridSection("Paling Populer", data.popular.drop(10).take(popularVisible), onDrama) }
-                if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest.take(newestVisible), onDrama) }
-                if (data.recommended.isNotEmpty()) item { DramaGridSection("Rekomendasi", data.recommended.take(recommendedVisible), onDrama) }
-                item { HomeLoadMoreFooter(data, popularVisible, newestVisible, recommendedVisible, loadMorePulse) }
+                if (data.popular.size > 10) item { DramaGridSection("Paling Populer", data.popular.drop(10), onDrama) }
+                if (data.newest.isNotEmpty()) item { DramaGridSection("Drama Terbaru", data.newest, onDrama) }
+                if (data.recommended.isNotEmpty()) item { DramaGridSection("Rekomendasi", data.recommended, onDrama) }
+                item { HomeLoadMoreFooter(data, loadingMore, loadMoreError) }
                 item { Footer() }
             }
         }
@@ -636,23 +674,22 @@ private fun Top10RankingRail(title: String, items: List<Drama>, onDrama: (Drama)
 
 
 @Composable
-private fun HomeLoadMoreFooter(data: HomeBundle, popularVisible: Int, newestVisible: Int, recommendedVisible: Int, pulse: Int) {
-    val remaining = (data.popular.size - popularVisible).coerceAtLeast(0) +
-            (data.newest.size - newestVisible).coerceAtLeast(0) +
-            (data.recommended.size - recommendedVisible).coerceAtLeast(0)
-    if (remaining > 0) {
-        Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.height(8.dp))
-            Text("Memuat konten berikutnya... ($remaining tersisa)", color = Muted, fontSize = 12.sp)
+private fun HomeLoadMoreFooter(data: HomeBundle, loadingMore: Boolean, error: String?) {
+    Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        when {
+            loadingMore -> {
+                CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("Memuat page ${data.loadedPage + 1}...", color = Muted, fontSize = 12.sp)
+            }
+            data.hasMore -> {
+                if (error != null) Text(error, color = Danger, fontSize = 12.sp)
+                Text("Scroll untuk memuat halaman berikutnya", color = Muted, fontSize = 12.sp)
+            }
+            else -> {
+                Text("Semua konten yang tersedia sudah ditampilkan", color = Muted, fontSize = 12.sp)
+            }
         }
-    } else {
-        Text(
-            "Semua konten yang tersedia sudah ditampilkan",
-            color = Muted,
-            fontSize = 12.sp,
-            modifier = Modifier.fillMaxWidth().padding(20.dp)
-        )
     }
 }
 
@@ -2160,41 +2197,75 @@ private fun shareEpisodeReport(context: Context, drama: Drama, episode: Int, err
 }
 
 private class DramakuRepository {
+    // Home load fires many requests to the same API host. OkHttp's default maxRequestsPerHost is 5,
+    // so page/section requests are queued unless we raise it for this API client.
+    private val dispatcher = Dispatcher().apply {
+        maxRequests = 32
+        maxRequestsPerHost = 16
+    }
+
     private val client = OkHttpClient.Builder()
+        .dispatcher(dispatcher)
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(18, TimeUnit.SECONDS)
         .callTimeout(24, TimeUnit.SECONDS)
         .build()
 
-    suspend fun loadHome(platformId: String): HomeBundle = coroutineScope {
-        // Native home now loads several pages per section so the list does not feel empty
-        // compared with the old WebView version.
-        val pages = pagesFor(platformId)
-        val homeJson = fetchMany(pages.map { homeUrls(platformId, it)[0] })
-        val popularJson = fetchMany(pages.map { homeUrls(platformId, it)[1] })
-        val newestJson = fetchMany(pages.map { homeUrls(platformId, it)[2] })
+    suspend fun loadHome(platformId: String): HomeBundle = loadHomePage(platformId, 1)
 
-        var rec = dedupe(homeJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(160)
-        var pop = dedupe(popularJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(120)
-        var nw = dedupe(newestJson.flatMap { flat(it.dataOrSelf(), platformId) }).take(140)
+    suspend fun loadHomePage(platformId: String, page: Int): HomeBundle = coroutineScope {
+        // Infinite scroll: initial home only fetches one page per section.
+        // The next pages are requested later when the user scrolls near the bottom.
+        val pageRange = pagesFor(platformId)
+        val safePage = page.coerceIn(pageRange.first, pageRange.last)
+        val urls = homeUrls(platformId, safePage)
+        val requests = listOf(
+            "recommended" to urls[0],
+            "popular" to urls[1],
+            "newest" to urls[2]
+        )
 
-        // DramaNova occasionally returns 503 on category endpoints. If it is empty,
-        // show a temporary cross-platform fallback instead of a blank home.
-        if (platformId == "dramanova" && rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) {
+        val results = fetchManyTagged(requests)
+        val homeJson = results.filter { it.first == "recommended" }.map { it.second }
+        val popularJson = results.filter { it.first == "popular" }.map { it.second }
+        val newestJson = results.filter { it.first == "newest" }.map { it.second }
+
+        var rec = dedupe(homeJson.flatMap { flat(it.dataOrSelf(), platformId) })
+        var pop = dedupe(popularJson.flatMap { flat(it.dataOrSelf(), platformId) })
+        var nw = dedupe(newestJson.flatMap { flat(it.dataOrSelf(), platformId) })
+        var canLoadMore = safePage < pageRange.last
+
+        // DramaNova occasionally returns 503 on category endpoints. Only do a light
+        // page-1 fallback; do not repeat cross-platform fallback on every scroll page.
+        if (platformId == "dramanova" && safePage == 1 && rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) {
             val fallback = loadFallbackHomeForBrokenPlatform("dramanova")
             rec = fallback.recommended
             pop = fallback.popular
             nw = fallback.newest
+            canLoadMore = false
         }
 
-        if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) error("Data platform kosong / endpoint gagal")
-        HomeBundle(rec, pop, nw)
+        val hasData = rec.isNotEmpty() || pop.isNotEmpty() || nw.isNotEmpty()
+        if (!hasData && safePage == 1) error("Data platform kosong / endpoint gagal")
+
+        HomeBundle(
+            recommended = rec,
+            popular = pop,
+            newest = nw,
+            loadedPage = safePage,
+            hasMore = hasData && canLoadMore
+        )
     }
 
-    private suspend fun fetchMany(urls: List<String>): List<JSONObject> = coroutineScope {
-        urls.distinct().map { url -> async { runCatching { getJson(url) }.getOrNull() } }
-            .awaitAll()
-            .filterNotNull()
+    private suspend fun fetchManyTagged(requests: List<Pair<String, String>>): List<Pair<String, JSONObject>> = coroutineScope {
+        // Fetch every unique URL once, but keep the section mapping. Some platforms share
+        // the same endpoint for recommended/newest, so this avoids duplicate requests.
+        val jobs = requests.map { it.second }.distinct().associateWith { url ->
+            async { runCatching { getJson(url) }.getOrNull() }
+        }
+        requests.mapNotNull { (section, url) ->
+            jobs[url]?.await()?.let { section to it }
+        }
     }
 
     private suspend fun loadFallbackHomeForBrokenPlatform(brokenPlatform: String): HomeBundle = coroutineScope {
@@ -2204,7 +2275,7 @@ private class DramakuRepository {
         val recommended = dedupe(bundles.flatMap { it.recommended }).map { it.copy(description = "Fallback sementara untuk ${platformLabel(brokenPlatform)}") }.take(80)
         val popular = dedupe(bundles.flatMap { it.popular }).take(60)
         val newest = dedupe(bundles.flatMap { it.newest }).take(60)
-        HomeBundle(recommended, popular, newest)
+        HomeBundle(recommended, popular, newest, loadedPage = 1, hasMore = false)
     }
 
     suspend fun searchAll(query: String): List<Drama> = coroutineScope {
@@ -2508,6 +2579,14 @@ private fun dedupe(items: List<Drama>): List<Drama> = items
     .filter { it.id.isNotBlank() && it.title.isNotBlank() }
     .distinctBy { it.platform + "|" + it.id }
     .distinctBy { it.platform + "|" + normalizeKey(it.title) }
+
+private fun mergeHomeBundles(current: HomeBundle, next: HomeBundle): HomeBundle = HomeBundle(
+    recommended = dedupe(current.recommended + next.recommended),
+    popular = dedupe(current.popular + next.popular),
+    newest = dedupe(current.newest + next.newest),
+    loadedPage = max(current.loadedPage, next.loadedPage),
+    hasMore = next.hasMore
+)
 
 private fun detailUrl(d: Drama): String = when (d.platform) {
     "dramabox" -> "${apiBase(d.platform)}/detail?bookId=${enc(d.id)}&lang=in"
