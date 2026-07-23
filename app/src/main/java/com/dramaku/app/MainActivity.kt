@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color as AndroidColor
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
@@ -54,6 +56,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.input.pointer.pointerInput
 import coil.compose.AsyncImage
+import coil.Coil
+import coil.ImageLoader
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.dramaku.app.data.NativeRemoteConfig
 import com.dramaku.app.data.RemoteConfigRepository
 import com.dramaku.app.storage.ProgressKeys
@@ -104,6 +110,13 @@ private val Danger = Color(0xFFFB7185)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Setup Coil with disk cache so posters load from cache after first view
+        Coil.setImageLoader(ImageLoader.Builder(this)
+            .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
+            .diskCache { DiskCache.Builder().directory(cacheDir.resolve("coil_images")).maxSizePercent(0.05).build() }
+            .crossfade(true)
+            .build()
+        )
         window.statusBarColor = AndroidColor.BLACK
         window.navigationBarColor = AndroidColor.BLACK
         setContent {
@@ -204,6 +217,15 @@ private fun DramakuNativeApp() {
     val repo = remember { DramakuRepository() }
     val remoteRepo = remember { RemoteConfigRepository() }
     val scope = rememberCoroutineScope()
+
+    // Connectivity observer
+    var isOnline by remember { mutableStateOf(context.isNetworkAvailable()) }
+    DisposableEffect(context) {
+        val observer = LifecycleEventObserver { _, _ -> isOnline = context.isNetworkAvailable() }
+        val lifecycle = (context as? ComponentActivity)?.lifecycle
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
 
     var tab by remember { mutableStateOf(RootTab.Home) }
     var selectedPlatform by remember { mutableStateOf(store.platform()) }
@@ -312,7 +334,20 @@ private fun DramakuNativeApp() {
     BackHandler(enabled = selectedDrama != null) { selectedDrama = null; pendingResume = null }
 
     Box(Modifier.fillMaxSize().background(Bg)) {
-        Scaffold(
+        Column {
+            // Offline banner
+            AnimatedVisibility(!isOnline) {
+                Surface(color = Color(0xFFFB7185), contentColor = Color.White) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.WifiOff, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Tidak ada koneksi internet", fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { refreshKey++ }) { Text("Refresh", color = Color.White, fontWeight = FontWeight.Black, fontSize = 12.sp) }
+                    }
+                }
+            }
+            Box(Modifier.weight(1f)) {
+                Scaffold(
             containerColor = Bg,
             bottomBar = {
                 Surface(
@@ -400,7 +435,9 @@ private fun DramakuNativeApp() {
                     RootTab.Settings -> SettingsScreen(store, dataTick, bump = { dataTick++ })
                 }
             }
-        }
+            }
+            }
+            }
 
         AnimatedVisibility(selectedDrama != null) {
             val initial = selectedDrama
@@ -2346,7 +2383,7 @@ private class DramakuRepository {
         return resolveStream(detail, ep, dataSaver).also { result ->
             if (result.url.isNotBlank()) {
                 // Stream URLs are often signed/short-lived, so cache only briefly.
-                streamCache[key] = CachedStream(result, now + 2 * 60 * 1000L)
+                streamCache[key] = CachedStream(result, now + 5 * 60 * 1000L)
             }
         }
     }
@@ -3050,3 +3087,8 @@ private fun fixImg(u: String): String {
 private fun cleanText(s: String): String = s.replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ").trim()
 private fun enc(s: String): String = URLEncoder.encode(s, "UTF-8")
 private fun normalizeKey(s: String) = s.lowercase().replace(Regex("[^a-z0-9\\p{L}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
+
+private fun Context.isNetworkAvailable(): Boolean {
+    val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+    return cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+}
