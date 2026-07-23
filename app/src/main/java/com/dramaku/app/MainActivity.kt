@@ -394,7 +394,7 @@ private fun DramakuNativeApp() {
                             selectedDrama = Drama(h.id, h.title, poster = h.poster, platform = h.platform)
                         }
                     )
-                    RootTab.Search -> SearchScreen(repo, store, onDrama = { selectedDrama = it }, dataTick = dataTick, bump = { dataTick++ })
+                    RootTab.Search -> SearchScreen(repo, store, selectedPlatform, onDrama = { selectedDrama = it }, dataTick = dataTick, bump = { dataTick++ })
                     RootTab.Rewards -> RewardsScreen()
                     RootTab.Library -> LibraryScreen(store, dataTick, onDrama = { selectedDrama = it })
                     RootTab.Settings -> SettingsScreen(store, dataTick, bump = { dataTick++ })
@@ -1090,7 +1090,7 @@ private fun Footer() {
 }
 
 @Composable
-private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (Drama) -> Unit, dataTick: Int, bump: () -> Unit) {
+private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlatform: String, onDrama: (Drama) -> Unit, dataTick: Int, bump: () -> Unit) {
     var q by remember { mutableStateOf("") }
     var state by remember { mutableStateOf<Load<List<Drama>>>(Load.Idle) }
     var filter by remember { mutableStateOf("all") }
@@ -1107,7 +1107,7 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (D
         filter = "all"
         state = runCatching {
             store.saveRecent(query)
-            repo.searchAll(query)
+            repo.searchPlatform(query, currentPlatform)
         }.fold({ Load.Ok(it) }, { Load.Err(it.message ?: "Gagal mencari") })
         bump()
     }
@@ -1134,7 +1134,7 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (D
         }
         Spacer(Modifier.height(14.dp))
         when (state) {
-            Load.Idle -> SearchWelcome { q = it }
+            Load.Idle -> SearchWelcome(currentPlatform) { q = it }
             Load.Loading -> LinearProgressIndicator(color = Accent, trackColor = Bg3, modifier = Modifier.fillMaxWidth())
             is Load.Err -> ErrorBox((state as Load.Err).message) { q = q.trim() + " " }
             is Load.Ok -> {
@@ -1161,9 +1161,9 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, onDrama: (D
 
 
 @Composable
-private fun SearchWelcome(onPick: (String) -> Unit) {
+private fun SearchWelcome(currentPlatform: String, onPick: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 20.dp)) {
-        EmptyState("Ketik minimal 2 huruf buat cari di 10 platform.")
+        EmptyState("Ketik minimal 2 huruf buat cari di ${platformLabel(currentPlatform)}.")
         Text("Lagi viral", color = Text, fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.padding(top = 10.dp, bottom = 10.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(listOf("CEO", "Balas Dendam", "Romantis", "Korea", "China", "Comedy", "Action", "Cinta Kontrak", "Ongoing", "Drakor")) { q ->
@@ -2406,6 +2406,28 @@ private class DramakuRepository {
         val popular = dedupe(bundles.flatMap { it.popular }).take(60)
         val newest = dedupe(bundles.flatMap { it.newest }).take(60)
         HomeBundle(recommended, popular, newest, loadedPage = 1, hasMore = false)
+    }
+
+    suspend fun searchPlatform(query: String, platformId: String): List<Drama> = coroutineScope {
+        val encoded = enc(query)
+        val p = Platforms.firstOrNull { it.id == platformId } ?: Platforms.first()
+        val url = when (p.id) {
+            "melolo" -> "${p.base}/search?q=$encoded&page=1&lang=id"
+            "freereels" -> "${p.base}/search?q=$encoded&page=1&lang=id"
+            "flickreels" -> "${p.base}/search?q=$encoded"
+            "dramanova" -> "${p.base}/search?q=$encoded&page=1&size=10"
+            "reelshort" -> "${p.base}/search?q=$encoded&page=1&limit=10"
+            "netshort" -> "${p.base}/search?query=$encoded&page=1"
+            "dramabox" -> "${p.base}/search?q=$encoded&page=1&lang=in"
+            "goodshort" -> "${p.base}/search?q=$encoded&page=1"
+            "moviebox" -> "${p.base}/search?q=$encoded&page=1&perPage=10"
+            "drakor" -> "${p.base}/search?q=$encoded&page=1&limit=30&type=1&order=1"
+            else -> "${p.base}/search?q=$encoded"
+        }
+        val items = runCatching {
+            flat(getJson(url).dataOrSelf(), p.id)
+        }.getOrDefault(emptyList())
+        dedupeAndRank(items, query).take(80)
     }
 
     suspend fun searchAll(query: String): List<Drama> = coroutineScope {
