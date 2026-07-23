@@ -80,6 +80,9 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -1384,28 +1387,48 @@ private fun SettingSwitch(title: String, sub: String, checked: Boolean, onChecke
 
 
 
+// Singleton video segment cache — shared across all player instances.
+// Caches HLS .ts segments to disk so rewinds & replays are instant & save bandwidth.
+private object VideoCache {
+    private const val MAX_CACHE_MB = 256L
+    @Volatile private var instance: SimpleCache? = null
+
+    fun get(context: Context): SimpleCache {
+        return instance ?: synchronized(this) {
+            instance ?: SimpleCache(
+                context.cacheDir.resolve("exo_video_cache"),
+                LeastRecentlyUsedCacheEvictor(MAX_CACHE_MB * 1024 * 1024)
+            ).also { instance = it }
+        }
+    }
+}
+
 private fun buildDramakuPlayer(context: Context): ExoPlayer {
-    // Keep only User-Agent globally. Some signed CDN URLs (MovieBox/FlickReels)
-    // reject unexpected Origin/Referer headers and cause Media3 SOURCE errors.
+    // HTTP data source with timeouts & mobile User-Agent
     val httpFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(15_000)
         .setReadTimeoutMs(30_000)
+
+    // Cache wrapper: reads from disk cache first, falls back to HTTP
+    val cacheFactory = CacheDataSource.Factory()
+        .setCache(VideoCache.get(context))
+        .setUpstreamDataSourceFactory(httpFactory)
+        .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
     val renderersFactory = DefaultRenderersFactory(context)
         .setEnableDecoderFallback(true)
     val trackSelector = DefaultTrackSelector(context).apply {
         setParameters(
             buildUponParameters()
-                // Prefer H.264 whenever the source exposes multiple variants. Some phones report
-                // HEVC support but still crash/lag on vertical hvc1 streams.
                 .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
         )
     }
     return ExoPlayer.Builder(context)
         .setRenderersFactory(renderersFactory)
         .setTrackSelector(trackSelector)
-        .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+        .setMediaSourceFactory(DefaultMediaSourceFactory(cacheFactory))
         .build()
 }
 
