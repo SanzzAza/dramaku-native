@@ -1353,6 +1353,8 @@ private fun buildDramakuPlayer(context: Context): ExoPlayer {
     val httpFactory = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true)
+        .setConnectTimeoutMs(15_000)
+        .setReadTimeoutMs(30_000)
     val renderersFactory = DefaultRenderersFactory(context)
         .setEnableDecoderFallback(true)
     val trackSelector = DefaultTrackSelector(context).apply {
@@ -2313,9 +2315,10 @@ private class DramakuRepository {
 
     private val client = OkHttpClient.Builder()
         .dispatcher(dispatcher)
-        .connectTimeout(12, TimeUnit.SECONDS)
-        .readTimeout(18, TimeUnit.SECONDS)
-        .callTimeout(24, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private val detailCache = ConcurrentHashMap<String, Detail>()
