@@ -2594,12 +2594,10 @@ private class DramakuRepository {
         return when (p) {
             "melolo" -> {
                 val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep")
-                val direct = v2.stringAny("url")
-                if (direct.isNotBlank() && v2.optBoolean("playable", true) != false) {
+                val direct = extractStreamV2Url(v2)
+                if (direct.isNotBlank()) {
                     StreamResult(direct)
                 } else {
-                    // /stream returns CENC AES-CTR encrypted ByteDance assets. Standard ExoPlayer
-                    // cannot decrypt them, so do not fallback to encrypted quality URLs.
                     error("Stream Melolo tidak tersedia. Coba Retry untuk ambil link baru.")
                 }
             }
@@ -2700,7 +2698,12 @@ private class DramakuRepository {
                 StreamResult(data.stringAny("videoUrl").ifBlank { q?.stringAny("videoPath").orEmpty() })
             }
             "netshort" -> {
-                val data = getJson("$base/streamv2?id=${enc(id)}&ep=$ep").optJSONObject("data") ?: error("Video belum tersedia")
+                val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep")
+                // Try new nested format first (same as melolo streamv2)
+                val nested = extractStreamV2Url(v2)
+                if (nested.isNotBlank()) return StreamResult(nested)
+                // Fallback: legacy data.play_url / data.streams
+                val data = v2.optJSONObject("data") ?: error("Video belum tersedia")
                 val s = data.optJSONArray("streams")?.objects()?.firstOrNull { it.stringAny("encode") == "H264" } ?: data.optJSONArray("streams")?.optJSONObject(0)
                 StreamResult(data.stringAny("play_url").ifBlank { s?.stringAny("url").orEmpty() })
             }
@@ -2713,8 +2716,13 @@ private class DramakuRepository {
             }
             else -> {
                 val v2 = runCatching { getJson("$base/streamv2?id=${enc(id)}&ep=$ep") }.getOrNull()
-                val direct = v2?.stringAny("url").orEmpty()
-                if (direct.isNotBlank() && v2?.optBoolean("playable", true) != false) return StreamResult(direct)
+                if (v2 != null) {
+                    val nested = extractStreamV2Url(v2)
+                    if (nested.isNotBlank()) return StreamResult(nested)
+                    // Legacy root-level playable check
+                    val legacy = v2.stringAny("url")
+                    if (legacy.isNotBlank() && v2.optBoolean("playable", true) != false) return StreamResult(legacy)
+                }
                 val j = getJson("$base/stream?id=${enc(id)}&ep=$ep")
                 val q = j.optJSONArray("qualities")?.objects()?.firstOrNull { it.stringAny("codec") == "h264" } ?: j.optJSONArray("qualities")?.optJSONObject(0)
                 StreamResult(q?.stringAny("url").orEmpty())
@@ -3099,6 +3107,36 @@ private fun JSONObject.coverUrl(): String {
 private fun subtitleFrom(arr: JSONArray?): String {
     val list = arr?.objects().orEmpty()
     return (list.firstOrNull { it.stringAny("language", "lang").startsWith("id", true) } ?: list.firstOrNull())?.stringAny("url", "label").orEmpty()
+}
+
+/**
+ * Extract a playable video URL from the new /streamv2 response format.
+ *
+ * New format (post-API migration):
+ * { "episodes": [{ "cdnList": [{ "videoPathList": [{ "videoPath": "https://..." }] }] }] }
+ *
+ * Legacy format:
+ * { "url": "https://..." }
+ */
+private fun extractStreamV2Url(json: JSONObject): String {
+    // 1. Try new nested format: episodes[*].cdnList[*].videoPathList[*].videoPath
+    val episodes = json.optJSONArray("episodes")?.objects().orEmpty()
+    for (ep in episodes) {
+        val cdnList = ep.optJSONArray("cdnList")?.objects().orEmpty()
+        for (cdn in cdnList) {
+            val paths = cdn.optJSONArray("videoPathList")?.objects().orEmpty()
+            // Prefer HD, then first available
+            val hd = paths.firstOrNull { it.stringAny("sharpnessName").contains("HD", true) }
+            val picked = hd ?: paths.firstOrNull()
+            val vp = picked?.stringAny("videoPath").orEmpty()
+            if (vp.isNotBlank()) return vp
+        }
+        // Also check for direct "playUrl" or "url" in episode object
+        val epDirect = ep.stringAny("playUrl", "url", "videoPath")
+        if (epDirect.isNotBlank()) return epDirect
+    }
+    // 2. Fallback: legacy root-level "url" field
+    return json.stringAny("url")
 }
 private fun fixImg(u: String): String {
     if (u.contains("fizzopic.org") && u.contains(".heic")) {
