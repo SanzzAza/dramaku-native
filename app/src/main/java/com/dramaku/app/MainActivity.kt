@@ -1663,21 +1663,44 @@ private class DramakuRepository {
             "moviebox" -> {
                 val resolutions = listOf(res, 720, 1080, 480, 360).distinct()
                 if (drama.subjectType == 2) {
+                    // Series: request tanpa resolution filter, filter episode & codec di client
                     var url = ""; var sub = ""
                     for (r in resolutions) {
                         val j = runCatching { getJson("$base/download-series?subjectId=${enc(id)}&se=1&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
-                        val e = j.optJSONArray("episodes")?.objects()?.firstOrNull { it.intAny("ep", 1) == ep } ?: j.optJSONArray("episodes")?.optJSONObject(0)
-                        url = e?.stringAny("resourceLink").orEmpty(); sub = e?.optJSONObject("subtitle")?.stringAny("url").orEmpty()
-                        if (url.isNotBlank()) break
+                        val eps = j.optJSONArray("episodes")?.objects().orEmpty()
+                        // Cari episode yang benar
+                        val target = eps.firstOrNull { it.intAny("ep", 1) == ep } ?: eps.firstOrNull()
+                        if (target == null) continue
+                        val link = target.stringAny("resourceLink").orEmpty()
+                        if (link.isBlank()) continue
+                        // Prioritas: H264 > HEVC
+                        val codec = target.stringAny("codecName").lowercase()
+                        url = link
+                        sub = target.optJSONObject("subtitle")?.stringAny("url").orEmpty()
+                        if (codec.contains("h264")) break // H264 ditemukan, stop
+                        // Kalau HEVC, coba resolution lain untuk cari H264
+                    }
+                    // Fallback: kalau semua HEVC, pakai yang pertama
+                    if (url.isBlank()) {
+                        val j = runCatching { getJson("$base/download-series?subjectId=${enc(id)}&se=1&resolution=720").optJSONObject("data") }.getOrNull()
+                        val eps = j?.optJSONArray("episodes")?.objects().orEmpty()
+                        val target = eps.firstOrNull { it.intAny("ep", 1) == ep } ?: eps.firstOrNull()
+                        url = target?.stringAny("resourceLink").orEmpty()
+                        sub = target?.optJSONObject("subtitle")?.stringAny("url").orEmpty()
                     }
                     StreamResult(url, sub)
                 } else {
+                    // Movie: cari H264 dulu
                     var url = ""; var sub = ""
                     for (r in resolutions) {
                         val j = runCatching { getJson("$base/download-movie?subjectId=${enc(id)}&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
                         val files = j.optJSONArray("files")?.objects().orEmpty()
-                        val f = files.firstOrNull { it.stringAny("codecName").contains("h264", true) } ?: files.firstOrNull { !it.stringAny("codecName").contains("hevc", true) } ?: files.firstOrNull()
-                        url = f?.stringAny("resourceLink").orEmpty(); sub = j.optJSONObject("subtitle")?.stringAny("url").orEmpty()
+                        // Prioritas: H264 > non-HEVC > apapun
+                        val f = files.firstOrNull { it.stringAny("codecName").contains("h264", true) }
+                            ?: files.firstOrNull { !it.stringAny("codecName").contains("hevc", true) }
+                            ?: files.firstOrNull()
+                        url = f?.stringAny("resourceLink").orEmpty()
+                        sub = j.optJSONObject("subtitle")?.stringAny("url").orEmpty()
                         if (url.isNotBlank()) break
                     }
                     StreamResult(url, sub)
