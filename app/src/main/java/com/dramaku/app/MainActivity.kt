@@ -1424,7 +1424,7 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
         Spacer(Modifier.height(14.dp))
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
-                q.trim().length >= 2 -> when (state) {
+                q.trim().length >= 2 -> when (val searchState = state) {
                     Load.Idle, Load.Loading -> {
                         Column {
                             LinearProgressIndicator(color = DS.Green, trackColor = DS.Bg4, modifier = Modifier.fillMaxWidth())
@@ -1432,9 +1432,9 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
                             Text("Mencari di ${platformLabel(searchPlatformId)}...", color = DS.Muted, fontSize = 12.sp)
                         }
                     }
-                    is Load.Err -> ErrorCard(state.message) { searchTick++ }
+                    is Load.Err -> ErrorCard(searchState.message) { searchTick++ }
                     is Load.Ok -> {
-                        val all = state.data
+                        val all = searchState.data
                         if (all.isEmpty()) {
                             Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 PlatformLogo(searchPlatformId, Modifier.size(38.dp))
