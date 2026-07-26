@@ -40,6 +40,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -55,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -406,7 +408,7 @@ private fun App() {
                                 },
                                 onResume = { h -> pendingResume = h; selectedDrama = Drama(h.id, h.title, poster = h.poster, platform = h.platform) }
                             )
-                            Tab.Search -> SearchScreen(repo, store, selPlatform, onDrama = { selectedDrama = it }, dataTick = dataTick, bump = { dataTick++ })
+                            Tab.Search -> SearchScreen(repo, store, selPlatform, onDrama = { selectedDrama = it }, onBack = { tab = Tab.Home }, dataTick = dataTick, bump = { dataTick++ })
                             Tab.Clips -> ClipsScreen(homeState, repo, store, onBack = { tab = Tab.Home }, onWatchFull = { playerSession = PlayerSession(it, 1) }, onOpenDetail = { selectedDrama = it })
                             Tab.Rewards -> PlaceholderScreen("Hadiah", "Fitur reward sedang disiapkan", Icons.Rounded.CardGiftcard)
                             Tab.Library -> LibraryScreen(store, dataTick, onDrama = { selectedDrama = it })
@@ -880,100 +882,61 @@ private fun HomePremiumHeader(
 ) {
     val message = remoteConfig?.message?.takeIf { it.enabled }
     val selectedState = remoteConfig?.platform(platformId)
-    val categoryTitle = category?.title.orEmpty()
-    val title = when {
-        category == null -> "Beranda Premium"
-        category?.platforms?.size == 1 -> categoryTitle.ifBlank { "Beranda Premium" }
-        else -> "$categoryTitle Premium"
-    }
+    val title = category?.title ?: "Beranda"
     val subtitle = when {
-        category?.platforms?.size == 1 -> category?.subtitle.orEmpty()
-        category != null -> "Kurasi mewah buat ${platformLabel(platformId)}"
-        else -> "Nonton lebih rapih, lebih mahal look-nya, lebih gacor feel-nya"
+        category?.platforms?.size == 1 -> category.subtitle
+        category != null -> "${platformLabel(platformId)} • siap buat maraton malam ini"
+        else -> platformLabel(platformId)
     }
 
-    Box(
-        Modifier
+    Surface(
+        color = Color(0xFF101823),
+        shape = RoundedCornerShape(26.dp),
+        modifier = Modifier
             .padding(horizontal = 20.dp, vertical = 14.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF1A2232), Color(0xFF101722), Color(0xFF0B0F16))
-                )
-            )
-            .border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(28.dp))
+            .border(1.dp, Color(0x16FFFFFF), RoundedCornerShape(26.dp))
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(190.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0x2200E5A0), Color(0x1600C4FF), Color.Transparent)
-                    )
-                )
-        )
-        Column(Modifier.padding(18.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (category != null) {
-                    Box(
-                        Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(Color(0x14FFFFFF))
-                            .clickable(onClick = onExitCategory),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Rounded.Apps, "Semua kategori", tint = DS.White, modifier = Modifier.size(20.dp))
-                    }
+                    HeaderCircleButton(Icons.Rounded.Apps, "Kategori", onExitCategory)
                     Spacer(Modifier.width(10.dp))
                 }
                 Column(Modifier.weight(1f)) {
-                    Text("Dramaku", color = DS.White, fontSize = 28.sp, fontWeight = FontWeight.Black)
-                    Text(title, color = Color(0xFF92A2BD), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    Text("Dramaku", color = DS.White, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                    Text("$title • $subtitle", color = Color(0xFF8EA0B9), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 HeaderCircleButton(Icons.Rounded.Search, "Cari", onSearch)
                 Spacer(Modifier.width(8.dp))
                 HeaderCircleButton(Icons.Rounded.Refresh, "Refresh", onRefresh)
             }
 
-            Spacer(Modifier.height(18.dp))
-            Text(subtitle, color = DS.White, fontSize = 24.sp, fontWeight = FontWeight.Black, lineHeight = 28.sp)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                selectedState?.reason?.takeIf { it.isNotBlank() && it != "Aktif" }
-                    ?: "Pilih platform yang lagi paling cocok, terus gas nonton tanpa ribet.",
-                color = Color(0xFFA7B5CB),
-                fontSize = 12.sp,
-                lineHeight = 17.sp
-            )
-
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeaderStatChip(if ((selectedState?.enabled ?: true)) "Aktif" else "Maintenance", if ((selectedState?.enabled ?: true)) DS.Green else DS.Amber)
                 HeaderStatChip("$historyCount riwayat", Color(0xFF7DD3FC))
-                HeaderStatChip(platformLabel(platformId), Color(0xFFFDA4AF))
+                PlatformBadge(platformId, compact = true)
             }
 
             val alertText = when {
                 message != null -> listOf(message.title, message.text).filter { it.isNotBlank() }.joinToString(" • ")
-                remoteError != null -> "Status server belum kebaca: $remoteError"
+                remoteError != null -> "Status server: $remoteError"
                 else -> ""
             }
             if (alertText.isNotBlank()) {
-                Spacer(Modifier.height(14.dp))
-                Surface(color = Color(0x12FFFFFF), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Campaign, null, tint = DS.Green, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.height(12.dp))
+                Surface(color = Color(0x14FFFFFF), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Info, null, tint = DS.Green, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(alertText, color = DS.Text, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
 
-            if (chips.size > 1) {
-                Spacer(Modifier.height(16.dp))
+            if (chips.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(chips, key = { it.id }) { p ->
                         val sel = p.id == platformId
@@ -985,23 +948,19 @@ private fun HomePremiumHeader(
                             modifier = Modifier.clickable(enabled = enabled) { onPlatform(p.id) }
                         ) {
                             Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                AsyncImage(p.logoUrl, p.label, Modifier.size(18.dp).clip(RoundedCornerShape(6.dp)))
+                                PlatformLogo(p.id, Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text(p.label, color = if (enabled) DS.White else DS.Hint, fontSize = 12.sp, fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium)
-                                if (!enabled) {
-                                    Spacer(Modifier.width(6.dp))
-                                    Box(Modifier.size(7.dp).clip(CircleShape).background(DS.Amber))
-                                }
                             }
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                QuickAction("Acak", Icons.Rounded.Shuffle, Modifier.weight(1f), onRandom)
-                QuickAction("Cuplikan", Icons.Rounded.PlayCircle, Modifier.weight(1f), onClips)
+                CompactQuickAction("Acak", Icons.Rounded.Shuffle, Modifier.weight(1f), onRandom)
+                CompactQuickAction("Cuplikan", Icons.Rounded.PlayCircle, Modifier.weight(1f), onClips)
             }
         }
     }
@@ -1033,6 +992,23 @@ private fun HeaderStatChip(text: String, color: Color) {
 }
 
 @Composable
+private fun CompactQuickAction(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
+    Surface(color = Color(0x14FFFFFF), shape = RoundedCornerShape(18.dp), modifier = modifier.clickable(onClick = onClick)) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(34.dp).clip(RoundedCornerShape(12.dp)).background(Brush.linearGradient(listOf(DS.Green, Color(0xFF00C4FF)))),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = Color.Black, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(label, color = DS.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Icon(Icons.Rounded.ChevronRight, null, tint = DS.Hint, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
 private fun PlatformLogo(platformId: String, modifier: Modifier = Modifier) {
     val info = platform(platformId)
     if (info.logoUrl.isNotBlank()) {
@@ -1059,25 +1035,36 @@ private fun PlatformBadge(platformId: String, compact: Boolean = false) {
 }
 
 @Composable
-private fun SearchDramaCard(drama: Drama, onClick: (Drama) -> Unit) {
-    Surface(
-        color = DS.Bg3,
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth().clickable { onClick(drama) }
-    ) {
-        Column(Modifier.padding(8.dp)) {
-            Box {
-                PosterImage(drama.poster, drama.title, Modifier.fillMaxWidth().aspectRatio(0.8f))
-                Box(Modifier.align(Alignment.TopStart).padding(8.dp)) {
-                    PlatformBadge(drama.platform, compact = true)
+private fun SearchDramaCard(drama: Drama, onClick: (Drama) -> Unit, rank: Int? = null) {
+    Column(Modifier.clickable { onClick(drama) }) {
+        Box {
+            PosterImage(drama.poster, drama.title, Modifier.fillMaxWidth().aspectRatio(0.7f))
+            rank?.let {
+                Surface(color = Color(0xFFF14D92), shape = RoundedCornerShape(bottomEnd = 10.dp), modifier = Modifier.align(Alignment.TopStart)) {
+                    Text(it.toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            Text(drama.title.ifBlank { "Tanpa Judul" }, color = DS.White, fontSize = 13.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(4.dp))
-            Text(drama.description.ifBlank { "Hasil pencarian dari ${platformLabel(drama.platform)}" }, color = DS.Muted, fontSize = 10.sp, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Box(Modifier.align(Alignment.TopEnd).padding(6.dp)) {
+                PlatformLogo(drama.platform, Modifier.size(18.dp))
+            }
         }
+        Spacer(Modifier.height(8.dp))
+        Text(drama.title.ifBlank { "Tanpa Judul" }, color = DS.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(3.dp))
+        Text(
+            drama.description.ifBlank { platformLabel(drama.platform) },
+            color = DS.Muted,
+            fontSize = 10.sp,
+            lineHeight = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
+}
+
+@Composable
+private fun SearchSectionTitle(title: String) {
+    Text(title, color = Color(0xFFFFE24A), fontSize = 17.sp, fontWeight = FontWeight.Black)
 }
 
 @Composable
@@ -1351,18 +1338,29 @@ private fun ClipsScreen(state: Load<HomeBundle>, repo: DramakuRepository, store:
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlatform: String, onDrama: (Drama) -> Unit, dataTick: Int, bump: () -> Unit) {
+private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlatform: String, onDrama: (Drama) -> Unit, onBack: () -> Unit, dataTick: Int, bump: () -> Unit) {
     var q by remember { mutableStateOf("") }
     var state by remember { mutableStateOf<Load<List<Drama>>>(Load.Idle) }
+    var showcase by remember { mutableStateOf<Load<HomeBundle>>(Load.Loading) }
     var searchPlatformId by remember { mutableStateOf(currentPlatform) }
+    var searchTick by remember { mutableIntStateOf(0) }
     val recent = remember(dataTick) { store.recentSearches() }
 
+    BackHandler { onBack() }
     LaunchedEffect(currentPlatform) { searchPlatformId = currentPlatform }
 
-    LaunchedEffect(q, searchPlatformId) {
+    LaunchedEffect(searchPlatformId) {
+        if (q.trim().length < 2) {
+            showcase = Load.Loading
+            showcase = runCatching { repo.loadHome(searchPlatformId) }
+                .fold({ Load.Ok(it) }, { Load.Err(it.message ?: "Gagal memuat" ) })
+        }
+    }
+
+    LaunchedEffect(q, searchPlatformId, searchTick) {
         val query = q.trim()
         if (query.length < 2) { state = Load.Idle; return@LaunchedEffect }
-        delay(400)
+        delay(260)
         state = Load.Loading
         state = runCatching {
             store.saveRecent(query)
@@ -1371,141 +1369,150 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
         bump()
     }
 
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
-        Surface(
-            color = DS.Bg3,
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(Modifier.padding(18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Cari yang Lagi Gacor", color = DS.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
-                        Spacer(Modifier.height(4.dp))
-                        Text("Pilih platform favorit lalu cari pakai logo brand aslinya", color = DS.Muted, fontSize = 12.sp, lineHeight = 17.sp)
+    Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Rounded.ArrowBack, "Kembali", tint = DS.White)
+            }
+            Spacer(Modifier.width(8.dp))
+            Surface(color = Color(0xFF2B2B2E), shape = RoundedCornerShape(16.dp), modifier = Modifier.weight(1f)) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Search, null, tint = Color(0xFFB7BBC6), modifier = Modifier.size(21.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Box(Modifier.weight(1f)) {
+                        if (q.isBlank()) {
+                            Text("Cari drama di ${platformLabel(searchPlatformId)}", color = Color(0xFF9AA1AD), fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        BasicTextField(
+                            value = q,
+                            onValueChange = { q = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = DS.White, fontSize = 15.sp, fontWeight = FontWeight.Medium),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
-                    PlatformBadge(searchPlatformId, compact = false)
+                    Box(Modifier.width(1.dp).height(24.dp).background(Color(0xFF4B515C)))
+                    Text(
+                        "Cari",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(start = 12.dp).clickable { searchTick++ }
+                    )
                 }
-                Spacer(Modifier.height(14.dp))
-                OutlinedTextField(
-                    value = q,
-                    onValueChange = { q = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Cari judul drama, movie, atau episode...", color = DS.Hint) },
-                    singleLine = true,
-                    leadingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            PlatformLogo(searchPlatformId, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Icon(Icons.Rounded.Search, null, tint = DS.Hint, modifier = Modifier.size(18.dp))
-                        }
-                    },
-                    trailingIcon = {
-                        if (q.isNotBlank()) {
-                            IconButton(onClick = { q = "" }) {
-                                Icon(Icons.Rounded.Close, "Hapus", tint = DS.Hint, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = DS.Green,
-                        unfocusedBorderColor = DS.Bg4,
-                        focusedTextColor = DS.White,
-                        unfocusedTextColor = DS.White,
-                        cursorColor = DS.Green,
-                        focusedLeadingIconColor = DS.Green,
-                        unfocusedLeadingIconColor = DS.Hint
-                    ),
-                    shape = RoundedCornerShape(18.dp)
-                )
-                Spacer(Modifier.height(14.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(Platforms, key = { it.id }) { p ->
-                        val selected = p.id == searchPlatformId
-                        Surface(
-                            color = if (selected) Color(0x1E00E5A0) else Color(0x14FFFFFF),
-                            shape = RoundedCornerShape(18.dp),
-                            modifier = Modifier.clickable { searchPlatformId = p.id }
-                        ) {
-                            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                PlatformLogo(p.id, Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(p.label, color = DS.White, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
-                            }
-                        }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(Platforms, key = { it.id }) { p ->
+                val selected = p.id == searchPlatformId
+                Surface(
+                    color = if (selected) Color(0x1E00E5A0) else Color(0x14FFFFFF),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.clickable { searchPlatformId = p.id }
+                ) {
+                    Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PlatformLogo(p.id, Modifier.size(16.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text(p.label, color = DS.White, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                     }
                 }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
-
+        Spacer(Modifier.height(14.dp))
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            when (state) {
-                Load.Idle -> {
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                        Text("Trending", color = DS.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
-                        Spacer(Modifier.height(10.dp))
-                        val trending = listOf("CEO", "Romantis", "Balas Dendam", "Korea", "China", "Action", "Cinta Kontrak", "Ongoing")
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            trending.forEach { keyword -> Chip(keyword) { q = keyword } }
+            when {
+                q.trim().length >= 2 -> when (state) {
+                    Load.Idle, Load.Loading -> {
+                        Column {
+                            LinearProgressIndicator(color = DS.Green, trackColor = DS.Bg4, modifier = Modifier.fillMaxWidth())
+                            Spacer(Modifier.height(12.dp))
+                            Text("Mencari di ${platformLabel(searchPlatformId)}...", color = DS.Muted, fontSize = 12.sp)
                         }
-
-                        if (recent.isNotEmpty()) {
-                            Spacer(Modifier.height(22.dp))
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("Terakhir Dicari", color = DS.White, fontSize = 16.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-                                Text("Hapus", color = DS.Red, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { store.clearRecentSearches(); bump() })
+                    }
+                    is Load.Err -> ErrorCard(state.message) { searchTick++ }
+                    is Load.Ok -> {
+                        val all = state.data
+                        if (all.isEmpty()) {
+                            Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                PlatformLogo(searchPlatformId, Modifier.size(38.dp))
+                                Spacer(Modifier.height(12.dp))
+                                Text("Tidak ada hasil", color = DS.White, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                                Text("Coba kata kunci lain atau pindah platform", color = DS.Hint, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                             }
-                            Spacer(Modifier.height(10.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                recent.forEach { keyword ->
-                                    Surface(color = DS.Bg3, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().clickable { q = keyword }) {
-                                        Row(Modifier.padding(horizontal = 14.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Rounded.History, null, tint = DS.Green, modifier = Modifier.size(17.dp))
-                                            Spacer(Modifier.width(10.dp))
-                                            Text(keyword, color = DS.Text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                                            PlatformBadge(searchPlatformId, compact = true)
-                                        }
-                                    }
+                        } else {
+                            Column(Modifier.fillMaxSize()) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("${all.size} hasil ditemukan", color = DS.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                                    PlatformBadge(searchPlatformId, compact = true)
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                LazyVerticalGrid(
+                                    columns = GridCells.Fixed(3),
+                                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.fillMaxSize()
+                                ) {
+                                    items(all, key = { it.platform + it.id }) { d -> SearchDramaCard(d, onDrama) }
                                 }
                             }
                         }
                     }
                 }
-                Load.Loading -> {
-                    Column {
-                        LinearProgressIndicator(color = DS.Green, trackColor = DS.Bg4, modifier = Modifier.fillMaxWidth())
-                        Spacer(Modifier.height(14.dp))
-                        Text("Mencari di ${platformLabel(searchPlatformId)}...", color = DS.Muted, fontSize = 12.sp)
-                    }
-                }
-                is Load.Err -> ErrorCard((state as Load.Err).message) { q = "$q " }
-                is Load.Ok -> {
-                    val all = (state as Load.Ok<List<Drama>>).data
-                    if (all.isEmpty()) {
-                        Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Surface(color = DS.Bg3, shape = RoundedCornerShape(18.dp), modifier = Modifier.size(64.dp)) {
-                                Box(contentAlignment = Alignment.Center) { PlatformLogo(searchPlatformId, Modifier.size(28.dp)) }
+                else -> {
+                    val popular = (showcase as? Load.Ok)?.data?.popular.orEmpty().take(6)
+                    val trend = ((showcase as? Load.Ok)?.data?.newest.orEmpty() + (showcase as? Load.Ok)?.data?.recommended.orEmpty())
+                        .distinctBy { it.platform + it.id }
+                        .take(6)
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        if (recent.isNotEmpty()) {
+                            recent.take(6).forEach { keyword ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Rounded.History, null, tint = Color(0xFF5B606B), modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(keyword, color = DS.White, fontSize = 16.sp, modifier = Modifier.weight(1f).clickable { q = keyword })
+                                    IconButton(onClick = { store.removeRecentSearch(keyword); bump() }, modifier = Modifier.size(28.dp)) {
+                                        Icon(Icons.Rounded.Close, "Hapus", tint = Color(0xFF7D8593), modifier = Modifier.size(18.dp))
+                                    }
+                                }
                             }
-                            Spacer(Modifier.height(14.dp))
-                            Text("Tidak ada hasil di ${platformLabel(searchPlatformId)}", color = DS.White, fontSize = 15.sp, fontWeight = FontWeight.Black)
-                            Text("Coba kata kunci lain atau pindah platform", color = DS.Hint, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF1D2430)).padding(top = 4.dp))
+                            Spacer(Modifier.height(16.dp))
                         }
-                    } else {
-                        Column(Modifier.fillMaxSize()) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("${all.size} ditemukan", color = DS.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                                PlatformBadge(searchPlatformId, compact = true)
-                            }
-                            Spacer(Modifier.height(10.dp))
+
+                        SearchSectionTitle("Drama Populer")
+                        Spacer(Modifier.height(12.dp))
+                        if (popular.isNotEmpty()) {
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(2),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                columns = GridCells.Fixed(3),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.fillMaxSize()
+                                userScrollEnabled = false,
+                                modifier = Modifier.height((((popular.size + 2) / 3) * 230).dp)
                             ) {
-                                items(all, key = { it.platform + it.id }) { d -> SearchDramaCard(d, onDrama) }
+                                items(popular.size) { index -> SearchDramaCard(popular[index], onDrama, index + 1) }
+                            }
+                        } else if (showcase is Load.Loading) {
+                            CircularProgressIndicator(color = DS.Green, modifier = Modifier.padding(top = 8.dp))
+                        }
+
+                        Spacer(Modifier.height(22.dp))
+                        SearchSectionTitle("Pencarian Sedang Tren")
+                        Spacer(Modifier.height(12.dp))
+                        if (trend.isNotEmpty()) {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(3),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                userScrollEnabled = false,
+                                modifier = Modifier.height((((trend.size + 2) / 3) * 230).dp)
+                            ) {
+                                items(trend.size) { index -> SearchDramaCard(trend[index], onDrama, index + 1) }
                             }
                         }
                     }
@@ -2847,6 +2854,7 @@ private class LocalStore(ctx: Context) {
     fun clearFavs() = p.edit().remove("favs").apply()
     fun recentSearches(): List<String> = JSONArray(p.getString("recent", "[]") ?: "[]").let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } } }
     fun saveRecent(q: String) { val list = recentSearches().filterNot { it.equals(q, true) }.toMutableList(); list.add(0, q); val a = JSONArray(); list.take(10).forEach { a.put(it) }; p.edit().putString("recent", a.toString()).apply() }
+    fun removeRecentSearch(q: String) { val a = JSONArray(); recentSearches().filterNot { it.equals(q, true) }.forEach { a.put(it) }; p.edit().putString("recent", a.toString()).apply() }
     fun clearRecentSearches() = p.edit().remove("recent").apply()
 }
 
