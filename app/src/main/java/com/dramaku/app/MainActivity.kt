@@ -22,6 +22,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -67,6 +68,8 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.dramaku.app.data.NativeRemoteConfig
 import com.dramaku.app.data.RemoteConfigRepository
+import com.dramaku.app.home.Greetings
+import com.dramaku.app.home.HomeCategory
 import com.dramaku.app.storage.ProgressKeys
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -100,6 +103,7 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
@@ -270,6 +274,8 @@ private fun App() {
     var playerSession by remember { mutableStateOf<PlayerSession?>(null) }
     var clipFeedItems by remember { mutableStateOf<List<Drama>>(emptyList()) }
     var pendingResume by remember { mutableStateOf<HistoryItem?>(null) }
+    var category by remember { mutableStateOf<HomeCategory?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
 
     val playerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
@@ -338,11 +344,32 @@ private fun App() {
     }
 
     BackHandler(enabled = selectedDrama != null) { selectedDrama = null; pendingResume = null }
+    BackHandler(enabled = showSettings) { showSettings = false }
+    // Back dari halaman kategori kembali ke layar awal kategori (pintu masuk)
+    BackHandler(enabled = category != null && !showSettings && selectedDrama == null && playerSession == null && clipFeedItems.isEmpty()) { category = null }
 
     Box(Modifier.fillMaxSize().background(DS.Bg)) {
         Column {
             if (!isOnline) OfflineBanner { refreshKey++ }
             Box(Modifier.weight(1f)) {
+                val activeCat = category
+                if (activeCat == null) {
+                    CategoryHomeScreen(
+                        onSelect = { picked ->
+                            if (picked.comingSoon) {
+                                Toast.makeText(ctx, "${picked.title} segera hadir", Toast.LENGTH_SHORT).show()
+                            } else {
+                                category = picked
+                                tab = Tab.Home
+                                val pref = store.categoryPlatform(picked.id, picked.defaultPlatform())
+                                selPlatform = if (picked.containsPlatform(pref)) pref else picked.defaultPlatform()
+                                store.setPlatform(selPlatform)
+                                refreshKey++
+                            }
+                        },
+                        onSettings = { showSettings = true }
+                    )
+                } else {
                 Scaffold(
                     containerColor = DS.Bg,
                     bottomBar = {
@@ -353,13 +380,14 @@ private fun App() {
                         when (tab) {
                             Tab.Home -> HomeScreen(
                                 platformId = selPlatform, state = homeState,
+                                category = activeCat, onExitCategory = { category = null },
                                 history = store.history(dataTick), remoteConfig = remoteConfig,
                                 remoteError = remoteError, loadingMore = homeLoadingMore,
                                 loadMoreError = homeAppendError, onLoadMore = ::loadMore,
                                 onPlatform = {
                                     val allowed = remoteConfig?.isPlatformEnabled(it) ?: true
                                     if (!allowed) Toast.makeText(ctx, "${platformLabel(it)}: Maintenance", Toast.LENGTH_SHORT).show()
-                                    else { selPlatform = it; store.setPlatform(it); refreshKey++ }
+                                    else { selPlatform = it; store.setPlatform(it); store.setCategoryPlatform(activeCat.id, it); refreshKey++ }
                                 },
                                 onRefresh = { refreshKey++ }, onDrama = { selectedDrama = it },
                                 onSearch = { tab = Tab.Search },
@@ -384,6 +412,7 @@ private fun App() {
                             Tab.Profile -> ProfileScreen(store, dataTick, bump = { dataTick++ })
                         }
                     }
+                }
                 }
             }
         }
@@ -411,6 +440,10 @@ private fun App() {
                 onWatchFull = { clipFeedItems = emptyList(); playerSession = PlayerSession(it, 1) },
                 onOpenDetail = { clipFeedItems = emptyList(); selectedDrama = it }
             )
+        }
+
+        if (showSettings) {
+            SettingsOverlay(store, dataTick, bump = { dataTick++ }, onClose = { showSettings = false })
         }
     }
 }
@@ -468,7 +501,8 @@ private fun HomeScreen(
     loadingMore: Boolean, loadMoreError: String?,
     onLoadMore: () -> Unit, onPlatform: (String) -> Unit, onRefresh: () -> Unit,
     onDrama: (Drama) -> Unit, onSearch: () -> Unit, onRandom: () -> Unit,
-    onClips: () -> Unit, onResume: (HistoryItem) -> Unit
+    onClips: () -> Unit, onResume: (HistoryItem) -> Unit,
+    category: HomeCategory? = null, onExitCategory: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var requestedPage by remember(platformId) { mutableIntStateOf(0) }
@@ -494,9 +528,18 @@ private fun HomeScreen(
         item {
             Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (category != null) {
+                        IconButton(onClick = onExitCategory, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Rounded.Apps, "Semua kategori", tint = DS.Text, modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(Modifier.width(2.dp))
+                    }
                     Column(Modifier.weight(1f)) {
                         Text("Dramaku", color = DS.White, fontSize = 26.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
-                        Text(platformLabel(platformId), color = DS.Muted, fontSize = 12.sp)
+                        Text(
+                            if (category != null && category.platforms.size == 1) category.subtitle else platformLabel(platformId),
+                            color = DS.Muted, fontSize = 12.sp
+                        )
                     }
                     IconButton(onClick = onSearch, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Rounded.Search, "Cari", tint = DS.Text, modifier = Modifier.size(20.dp))
@@ -508,10 +551,11 @@ private fun HomeScreen(
             }
         }
 
-        // Platform chips
-        item {
+        // Platform chips (difilter sesuai kategori; disembunyikan kalau kategori hanya punya 1 platform)
+        val chips = if (category == null) Platforms else Platforms.filter { category.platforms.contains(it.id) }
+        if (chips.size > 1) item {
             LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(Platforms) { p ->
+                items(chips) { p ->
                     val sel = p.id == platformId
                     val st = remoteConfig?.platform(p.id)
                     val enabled = st?.enabled ?: true
@@ -614,6 +658,173 @@ private fun HomeScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// CATEGORY HOME — layar awal pintu masuk (desain ala SonzaixBox)
+// ─────────────────────────────────────────────────────────────────
+
+@Composable
+private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () -> Unit) {
+    val ctx = LocalContext.current
+    val greeting = remember { Greetings.forHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
+    Box(Modifier.fillMaxSize().background(Color(0xFF05070C))) {
+        // Glow merah lembut di atas seperti referensi
+        Box(
+            Modifier.fillMaxWidth().height(280.dp)
+                .background(Brush.verticalGradient(listOf(Color(0x2EEF3A5F), Color.Transparent)))
+        )
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
+            Spacer(Modifier.height(56.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text("${greeting.text} ${greeting.emoji}", color = Color(0xFFB9C0CE), fontSize = 17.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Dramaku", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black)
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF171B25)).clickable(onClick = onSettings),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.Settings, "Pengaturan", tint = Color(0xFFAAB3C2), modifier = Modifier.size(22.dp))
+                }
+            }
+            Spacer(Modifier.height(26.dp))
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                CategoryMenuCard(
+                    HomeCategory.ShortDrama, Icons.Rounded.PlayArrow,
+                    tileColor = Color(0xFFF04469),
+                    gradient = listOf(Color(0xFF3B1120), Color(0xFF1B0911)),
+                    modifier = Modifier.weight(1f)
+                ) { onSelect(HomeCategory.ShortDrama) }
+                CategoryMenuCard(
+                    HomeCategory.MovieDrama, Icons.Rounded.Movie,
+                    tileColor = Color(0xFF3B9BF0),
+                    gradient = listOf(Color(0xFF12293E), Color(0xFF0A1622)),
+                    modifier = Modifier.weight(1f)
+                ) { onSelect(HomeCategory.MovieDrama) }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                CategoryMenuCard(
+                    HomeCategory.MovieBox, Icons.Rounded.Tv,
+                    tileColor = Color(0xFFF5832B),
+                    gradient = listOf(Color(0xFF3A240D), Color(0xFF1D1307)),
+                    modifier = Modifier.weight(1f)
+                ) { onSelect(HomeCategory.MovieBox) }
+                CategoryMenuCard(
+                    HomeCategory.Anime, Icons.Rounded.Toll,
+                    tileColor = Color(0xFF9D5CF0),
+                    gradient = listOf(Color(0xFF33124A), Color(0xFF1B0E2B)),
+                    modifier = Modifier.weight(1f)
+                ) { onSelect(HomeCategory.Anime) }
+            }
+            Spacer(Modifier.height(14.dp))
+
+            WideMenuCard(
+                HomeCategory.Manga, Icons.Rounded.Image,
+                tileColor = Color(0xFF5E6EE8),
+                gradient = listOf(Color(0xFF1A1E2E), Color(0xFF12151F))
+            ) { onSelect(HomeCategory.Manga) }
+
+            Spacer(Modifier.height(28.dp))
+            Row(
+                Modifier.fillMaxWidth()
+                    .clip(RoundedCornerShape(50))
+                    .border(1.dp, Color(0xFF2A3040), RoundedCornerShape(50))
+                    .clickable { Toast.makeText(ctx, "Link traktir kopi segera hadir ☕", Toast.LENGTH_SHORT).show() }
+                    .padding(vertical = 14.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("☕  Traktir Kopi untuk Developer", color = Color(0xFF98A1B3), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "Developed by Sonzai X シ", color = Color(0xFF4A5163), fontSize = 12.sp,
+                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@Composable
+private fun CategoryMenuCard(
+    category: HomeCategory,
+    icon: ImageVector,
+    tileColor: Color,
+    gradient: List<Color>,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier.height(184.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(Brush.linearGradient(gradient))
+            .clickable(onClick = onClick)
+            .padding(18.dp)
+    ) {
+        Box(
+            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(tileColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, category.title, tint = Color.White, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.height(14.dp))
+        Text(category.title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 23.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(category.subtitle, color = Color(0xFF94A0B5), fontSize = 12.sp, lineHeight = 15.sp)
+    }
+}
+
+@Composable
+private fun WideMenuCard(
+    category: HomeCategory,
+    icon: ImageVector,
+    tileColor: Color,
+    gradient: List<Color>,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(26.dp))
+            .background(Brush.linearGradient(gradient))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 20.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(tileColor),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, category.title, tint = Color.White, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(category.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(4.dp))
+            Text(category.subtitle, color = Color(0xFF94A0B5), fontSize = 12.sp)
+        }
+        Icon(Icons.Rounded.ChevronRight, null, tint = Color(0xFF6E7890), modifier = Modifier.size(22.dp))
+    }
+}
+
+@Composable
+private fun SettingsOverlay(store: LocalStore, dataTick: Int, bump: () -> Unit, onClose: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(DS.Bg)) {
+        Box(Modifier.fillMaxSize().padding(top = 54.dp)) {
+            ProfileScreen(store, dataTick, bump)
+        }
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier.padding(start = 12.dp, top = 10.dp).clip(CircleShape).background(DS.Bg3)
+        ) {
+            Icon(Icons.Rounded.ArrowBack, "Kembali", tint = DS.White, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -817,6 +1028,7 @@ private fun ClipsScreen(state: Load<HomeBundle>, repo: DramakuRepository, store:
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlatform: String, onDrama: (Drama) -> Unit, dataTick: Int, bump: () -> Unit) {
     var q by remember { mutableStateOf("") }
@@ -1925,6 +2137,8 @@ private class LocalStore(ctx: Context) {
     private val p = ctx.getSharedPreferences("dramaku_native", Context.MODE_PRIVATE)
     fun platform() = p.getString("platform", "melolo") ?: "melolo"
     fun setPlatform(id: String) = p.edit().putString("platform", id).apply()
+    fun categoryPlatform(cat: String, fallback: String) = p.getString("cat_platform_$cat", fallback) ?: fallback
+    fun setCategoryPlatform(cat: String, platformId: String) = p.edit().putString("cat_platform_$cat", platformId).apply()
     fun dataSaver() = p.getBoolean("dataSaver", false)
     fun setDataSaver(v: Boolean) = p.edit().putBoolean("dataSaver", v).apply()
     fun autoNext() = p.getBoolean("autoNext", false)
@@ -1973,6 +2187,25 @@ private class LocalStore(ctx: Context) {
     }
 
     fun clearHistory() { val ed = p.edit().remove("history"); p.all.keys.filter { it.startsWith("progress_") }.forEach { ed.remove(it) }; ed.apply() }
+
+    fun removeHistory(id: String, platform: String) {
+        val a = JSONArray()
+        history().filterNot { it.id == id && it.platform == platform }.forEach {
+            a.put(JSONObject().apply { put("id", it.id); put("title", it.title); put("poster", it.poster); put("platform", it.platform); put("episode", it.episode); put("pos", it.pos); put("dur", it.dur); put("updated", it.updated) })
+        }
+        val prefix = ProgressKeys.dramaPrefix(platform, id)
+        val ed = p.edit().putString("history", a.toString())
+        p.all.keys.filter { it.startsWith(prefix) }.forEach { ed.remove(it) }
+        ed.apply()
+    }
+
+    fun removeFav(id: String, platform: String) {
+        val a = JSONArray()
+        favs().filterNot { it.id == id && it.platform == platform }.forEach {
+            a.put(JSONObject().apply { put("id", it.id); put("title", it.title); put("description", it.description); put("poster", it.poster); put("episodes", it.episodes); put("views", it.views); put("platform", it.platform); put("subjectType", it.subjectType); put("tags", JSONArray(it.tags)) })
+        }
+        p.edit().putString("favs", a.toString()).apply()
+    }
 
     fun favs(): List<Drama> = runCatching { val a = JSONArray(p.getString("favs", "[]")); (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { o -> Drama(o.stringAny("id"), o.stringAny("title"), o.stringAny("description"), o.stringAny("poster"), o.intAny("episodes", 0), o.stringAny("views"), o.optJSONArray("tags")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } } }.orEmpty(), o.stringAny("platform").ifBlank { "melolo" }, o.intAny("subjectType", 1)) } } }.getOrDefault(emptyList())
     fun isFav(id: String, platform: String) = favs().any { it.id == id && it.platform == platform }

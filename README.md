@@ -21,6 +21,8 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
 ## Fitur Native MVP
 
+- Layar awal kategori (pintu masuk) ala SonzaixBox: sapaan waktu, grid Short Drama / Movie Drama / Movie Box, Anime & Manga "segera hadir", tombol traktir kopi
+- Chips platform difilter per kategori + preferensi platform tersimpan per kategori
 - Beranda native Compose
 - Spotlight / rekomendasi / populer / terbaru
 - Platform dropdown dengan placeholder “Pilih platform”
@@ -60,6 +62,7 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
 ```txt
 app/src/main/java/com/dramaku/app/MainActivity.kt     # UI native Compose + data repository MVP
+app/src/main/java/com/dramaku/app/home/HomeCategory.kt # Kategori layar awal + greeting waktu
 app/src/main/java/com/dramaku/app/PlayerActivity.java # Native ExoPlayer
 app/src/main/java/com/dramaku/app/SplashActivity.java # Native splash
 app/src/main/java/com/dramaku/app/storage/             # Storage key helpers
