@@ -198,16 +198,16 @@ private sealed class Load<out T> {
 }
 
 private val Platforms = listOf(
-    PlatformInfo("melolo", "Melolo", "https://api.sonzaix.indevs.in/melolo", "https://www.google.com/s2/favicons?sz=128&domain=melolo.id"),
-    PlatformInfo("freereels", "FreeReels", "https://api.sonzaix.indevs.in/freereels", "https://www.google.com/s2/favicons?sz=128&domain=mydramawave.com"),
-    PlatformInfo("flickreels", "FlickReels", "https://api.sonzaix.indevs.in/flickreels", "https://www.google.com/s2/favicons?sz=128&domain=flickreels.com"),
-    PlatformInfo("dramanova", "DramaNova", "https://api.sonzaix.indevs.in/dramanova", "https://www.google.com/s2/favicons?sz=128&domain=dramanova.app"),
-    PlatformInfo("reelshort", "ReelShort", "https://api.sonzaix.indevs.in/reelshort", "https://www.google.com/s2/favicons?sz=128&domain=reelshort.com"),
-    PlatformInfo("netshort", "NetShort", "https://api.sonzaix.indevs.in/netshort", "https://www.google.com/s2/favicons?sz=128&domain=netshort.com"),
-    PlatformInfo("dramabox", "DramaBox", "https://api.sonzaix.indevs.in/dramabox", "https://www.google.com/s2/favicons?sz=128&domain=dramaboxapp.com"),
-    PlatformInfo("goodshort", "GoodShort", "https://api.sonzaix.indevs.in/goodshort", "https://www.google.com/s2/favicons?sz=128&domain=goodshort.com"),
-    PlatformInfo("moviebox", "MovieBox", "https://api.sonzaix.indevs.in/moviebox", "https://www.google.com/s2/favicons?sz=128&domain=moviebox.ng"),
-    PlatformInfo("drakor", "Drakor", "https://api.sonzaix.indevs.in/drama", "https://www.google.com/s2/favicons?sz=128&domain=drakor.id")
+    PlatformInfo("melolo", "Melolo", "https://new-api.sonzaix.workers.dev/melolo", "https://www.google.com/s2/favicons?sz=128&domain=melolo.id"),
+    PlatformInfo("freereels", "FreeReels", "https://new-api.sonzaix.workers.dev/freereels", "https://www.google.com/s2/favicons?sz=128&domain=mydramawave.com"),
+    PlatformInfo("flickreels", "FlickReels", "https://new-api.sonzaix.workers.dev/flickreels", "https://www.google.com/s2/favicons?sz=128&domain=flickreels.com"),
+    PlatformInfo("dramanova", "DramaNova", "https://new-api.sonzaix.workers.dev/dramanova", "https://www.google.com/s2/favicons?sz=128&domain=dramanova.app"),
+    PlatformInfo("reelshort", "ReelShort", "https://new-api.sonzaix.workers.dev/reelshort", "https://www.google.com/s2/favicons?sz=128&domain=reelshort.com"),
+    PlatformInfo("netshort", "NetShort", "https://new-api.sonzaix.workers.dev/netshort", "https://www.google.com/s2/favicons?sz=128&domain=netshort.com"),
+    PlatformInfo("dramabox", "DramaBox", "https://new-api.sonzaix.workers.dev/dramabox", "https://www.google.com/s2/favicons?sz=128&domain=dramaboxapp.com"),
+    PlatformInfo("goodshort", "GoodShort", "https://new-api.sonzaix.workers.dev/goodshort", "https://www.google.com/s2/favicons?sz=128&domain=goodshort.com"),
+    PlatformInfo("moviebox", "MovieBox", "https://new-api.sonzaix.workers.dev/moviebox", "https://www.google.com/s2/favicons?sz=128&domain=moviebox.ng"),
+    PlatformInfo("drakor", "Drakor", "https://new-api.sonzaix.workers.dev/drama", "https://www.google.com/s2/favicons?sz=128&domain=drakor.id")
 )
 private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
 private fun platformLabel(id: String) = platform(id).label
