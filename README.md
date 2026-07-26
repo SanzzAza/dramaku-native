@@ -4,7 +4,7 @@ Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
 Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
-**Versi saat ini: 4.7.1**
+**Versi saat ini: 4.8.1**
 
 ## Platform
 
@@ -21,7 +21,7 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
 ## Fitur Native MVP
 
-- Layar awal kategori (pintu masuk) ala SonzaixBox: sapaan waktu, grid Short Drama / Movie Drama / Movie Box, Anime & Manga "segera hadir", tombol traktir kopi
+- Layar awal kategori (pintu masuk): sapaan waktu, grid Short Drama / Movie Drama / Movie Box, badge "Segera hadir" untuk Anime & Manga, tombol traktir kopi
 - Chips platform difilter per kategori + preferensi platform tersimpan per kategori
 - Beranda native Compose
 - Spotlight / rekomendasi / populer / terbaru
@@ -55,6 +55,8 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 - Unit test dasar untuk key progress dan parser remote config
 - Target Android API 35 dan Gradle Wrapper 8.4 tersedia di repo
 - Home lebih bersih tanpa section quick action yang tidak perlu
+- Badge "Segera hadir" pada kartu Anime & Manga di layar awal
+- Retry otomatis + deteksi error JSON untuk endpoint MovieBox & Drakor
 - Stream resolver 10 platform di Kotlin
 - HTTPS-only network config
 
@@ -81,8 +83,8 @@ version.properties
 ```
 
 ```properties
-VERSION_NAME=4.7.1
-VERSION_CODE=62
+VERSION_NAME=4.8.1
+VERSION_CODE=69
 ```
 
 ## Build APK

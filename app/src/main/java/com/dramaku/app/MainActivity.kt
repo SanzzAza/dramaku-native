@@ -745,7 +745,7 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "Developed by Sonzai X シ", color = Color(0xFF4A5163), fontSize = 12.sp,
+                "Developed by SanzzXD", color = Color(0xFF4A5163), fontSize = 12.sp,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(28.dp))
@@ -779,7 +779,25 @@ private fun CategoryMenuCard(
         Text(category.title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 23.sp)
         Spacer(Modifier.height(6.dp))
         Text(category.subtitle, color = Color(0xFF94A0B5), fontSize = 12.sp, lineHeight = 15.sp)
+        if (category.comingSoon) {
+            Spacer(Modifier.height(8.dp))
+            ComingSoonBadge()
+        }
     }
+}
+
+@Composable
+private fun ComingSoonBadge() {
+    Text(
+        "Segera hadir",
+        color = Color(0xFF8C93A5),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color(0x14FFFFFF))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    )
 }
 
 @Composable
@@ -806,7 +824,13 @@ private fun WideMenuCard(
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(category.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(category.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                if (category.comingSoon) {
+                    Spacer(Modifier.width(8.dp))
+                    ComingSoonBadge()
+                }
+            }
             Spacer(Modifier.height(4.dp))
             Text(category.subtitle, color = Color(0xFF94A0B5), fontSize = 12.sp)
         }
@@ -2038,10 +2062,32 @@ private class DramakuRepository {
     }
 
     private suspend fun getJson(url: String): JSONObject = withContext(Dispatchers.IO) {
-        client.newCall(Request.Builder().url(url).header("User-Agent", "DramakuNative/5.0 Android").build()).execute().use { r ->
-            if (!r.isSuccessful) error("HTTP ${r.code}")
-            JSONObject(r.body?.string().orEmpty())
+        // Endpoint MovieBox/Drakor kadang balas 5xx sementara (Cloudflare origin).
+        // Retry singkat supaya kategori Movie Drama & Movie Box tidak langsung error.
+        var last: Throwable? = null
+        repeat(3) { attempt ->
+            if (attempt > 0) delay(450L * attempt)
+            try {
+                return@withContext client.newCall(
+                    Request.Builder().url(url)
+                        .header("User-Agent", "DramakuNative/5.0 Android")
+                        .header("Accept", "application/json, text/plain, */*")
+                        .build()
+                ).execute().use { r ->
+                    val body = r.body?.string().orEmpty()
+                    if (!r.isSuccessful) error("HTTP ${r.code}")
+                    val json = JSONObject(body)
+                    val code = json.optInt("code", 200)
+                    if (code >= 400) error(json.stringAny("message", "error").ifBlank { "HTTP $code" })
+                    json
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                last = t
+            }
         }
+        throw (last ?: IllegalStateException("Gagal memuat data"))
     }
 }
 
