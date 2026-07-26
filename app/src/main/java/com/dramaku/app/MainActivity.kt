@@ -106,9 +106,12 @@ private val Bg3 = Color(0xFF101B27)
 private val Card = Color(0xFF0D1722)
 private val Accent = Color(0xFF10F5A6)
 private val Accent2 = Color(0xFF34D399)
-private val Text = Color(0xFFEFFFF7)
-private val Muted = Color(0xFF91A4BA)
+private val AccentGradient = listOf(Color(0xFF10F5A6), Color(0xFF34D399))
+private val Text = Color(0xFFF0F6F3)
+private val Muted = Color(0xFFA8BDCF)  // Improved contrast
 private val Danger = Color(0xFFFB7185)
+private val Success = Color(0xFF22C55E)
+private val Warning = Color(0xFFFBBF24)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -135,11 +138,17 @@ private fun DramakuTheme(content: @Composable () -> Unit) {
     val colors = darkColorScheme(
         primary = Accent,
         secondary = Accent2,
+        tertiary = Accent2,
         background = Bg,
         surface = Bg2,
+        surfaceVariant = Bg3,
         onPrimary = Color.Black,
+        onSecondary = Color.Black,
         onBackground = Text,
-        onSurface = Text
+        onSurface = Text,
+        onSurfaceVariant = Muted,
+        error = Danger,
+        outline = Color(0xFF1E293B)
     )
     MaterialTheme(colorScheme = colors, typography = Typography(), content = content)
 }
@@ -757,22 +766,76 @@ private fun HomeLoadMoreFooter(data: HomeBundle, loadingMore: Boolean, error: St
 private fun Header(platformId: String, onSearch: () -> Unit, onRefresh: () -> Unit) {
     Column(
         Modifier.fillMaxWidth()
-            .background(Brush.verticalGradient(listOf(Color(0xFF062018), Bg)))
-            .padding(18.dp, 18.dp, 18.dp, 10.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF062018),
+                        Color(0xFF051510),
+                        Bg
+                    )
+                )
+            )
+            .padding(18.dp, 18.dp, 18.dp, 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(Accent), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = "Dramaku", tint = Color.Black, modifier = Modifier.size(24.dp))
+            // Brand logo with gradient background
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Brush.linearGradient(AccentGradient)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = "Dramaku", tint = Color.Black, modifier = Modifier.size(28.dp))
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Dramaku", color = Text, fontSize = 27.sp, fontWeight = FontWeight.Black)
-                Text("Sumber · ${platformLabel(platformId)}", color = Muted, fontSize = 12.sp)
+                Text(
+                    "Dramaku",
+                    color = Text,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    "Sumber · ${platformLabel(platformId)}",
+                    color = Muted,
+                    fontSize = 12.sp,
+                    letterSpacing = 0.3.sp
+                )
             }
-            IconButton(onClick = onSearch) { Icon(Icons.Rounded.Search, contentDescription = "Cari", tint = Text, modifier = Modifier.size(24.dp)) }
-            IconButton(onClick = onRefresh) { Icon(Icons.Rounded.Refresh, contentDescription = "Refresh", tint = Text, modifier = Modifier.size(24.dp)) }
+            // Action buttons with better styling
+            Surface(
+                color = Color(0x15FFFFFF),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.clickable(onClick = onSearch)
+            ) {
+                Icon(Icons.Rounded.Search, contentDescription = "Cari", tint = Text, modifier = Modifier.padding(10.dp).size(22.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            Surface(
+                color = Color(0x15FFFFFF),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.clickable(onClick = onRefresh)
+            ) {
+                Icon(Icons.Rounded.Refresh, contentDescription = "Refresh", tint = Text, modifier = Modifier.padding(10.dp).size(22.dp))
+            }
         }
-        Text("Drama pendek, film, dan drakor pilihan dalam satu aplikasi.", color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+        Spacer(Modifier.height(12.dp))
+        // Tagline with accent
+        Text(
+            "Nonton Drama Tanpa Batas",
+            color = Accent,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+        Text(
+            "Drama pendek, film, dan drakor pilihan dalam satu aplikasi.",
+            color = Muted,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 4.dp)
+        )
     }
 }
 
@@ -881,14 +944,15 @@ private fun ShimmerEffect(modifier: Modifier = Modifier, shape: androidx.compose
         initialValue = 0f,
         targetValue = 1000f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            animation = tween(durationMillis = 1500, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "shimmer_anim"
     )
     val shimmerColors = listOf(
         Bg3,
-        Color(0xFF1D2F42),
+        Color(0xFF1A2D3D),
+        Color(0xFF152535),
         Bg3
     )
     val brush = Brush.linearGradient(
@@ -1109,24 +1173,127 @@ private fun Badge(text: String, modifier: Modifier = Modifier, dark: Boolean = f
 @Composable
 private fun LoadingHome() {
     Column(Modifier.padding(16.dp)) {
-        repeat(4) {
-            ShimmerEffect(shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().height(if (it == 0) 180.dp else 120.dp).padding(vertical = 8.dp))
+        // Header shimmer
+        ShimmerEffect(
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .padding(vertical = 8.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        // Chips shimmer
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            repeat(4) {
+                ShimmerEffect(
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier.width(80.dp).height(36.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        // Cards shimmer
+        repeat(3) {
+            ShimmerEffect(
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .padding(vertical = 6.dp)
+            )
         }
     }
 }
 
 @Composable
 private fun ErrorBox(message: String, onRetry: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Gagal memuat data", color = Text, fontWeight = FontWeight.Black, fontSize = 21.sp)
-        Text(message, color = Muted, modifier = Modifier.padding(8.dp))
-        Button(onClick = onRetry, colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Color.Black)) { Text("Coba Lagi") }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Error icon
+        Surface(
+            color = Color(0x22FB7185),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier.size(64.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Rounded.ErrorOutline,
+                    contentDescription = null,
+                    tint = Danger,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "Ups, ada masalah",
+            color = Text,
+            fontWeight = FontWeight.Black,
+            fontSize = 20.sp
+        )
+        Text(
+            message,
+            color = Muted,
+            fontSize = 13.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp, bottom = 20.dp)
+        )
+        Button(
+            onClick = onRetry,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Accent,
+                contentColor = Color.Black
+            ),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.height(48.dp)
+        ) {
+            Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Coba Lagi", fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Composable
 private fun Footer() {
-    Text("Dramaku native MVP · Semua konten milik platform masing-masing", color = Muted, fontSize = 11.sp, modifier = Modifier.fillMaxWidth().padding(22.dp))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Brand mark
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(20.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Brush.linearGradient(AccentGradient)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.Black, modifier = Modifier.size(12.dp))
+            }
+            Spacer(Modifier.width(6.dp))
+            Text("Dramaku", color = Text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Nonton Drama Tanpa Batas",
+            color = Accent,
+            fontSize = 11.sp,
+            letterSpacing = 0.5.sp
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Semua konten milik platform masing-masing",
+            color = Muted.copy(alpha = 0.7f),
+            fontSize = 10.sp
+        )
+    }
 }
 
 @Composable
@@ -1215,8 +1382,34 @@ private fun SearchWelcome(currentPlatform: String, onPick: (String) -> Unit) {
 
 @Composable
 private fun EmptyState(text: String) {
-    Box(Modifier.fillMaxWidth().padding(30.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = Muted)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(
+            color = Color(0x1510F5A6),
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.size(72.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Rounded.VideoLibrary,
+                    contentDescription = null,
+                    tint = Accent.copy(alpha = 0.7f),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text,
+            color = Muted,
+            fontSize = 14.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 20.sp
+        )
     }
 }
 
@@ -1292,15 +1485,33 @@ private fun SettingsScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
     val favCount = remember(dataTick) { store.favs().size }
     val recentCount = remember(dataTick) { store.recentSearches().size }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-        Text("Saya", color = Text, fontSize = 27.sp, fontWeight = FontWeight.Black)
-        Text("Dramaku native final polish", color = Muted, modifier = Modifier.padding(bottom = 18.dp))
+        // Profile header
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 24.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("Profil", color = Text, fontSize = 28.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+                Text("Pengaturan & koleksi", color = Muted, fontSize = 13.sp)
+            }
+            // Brand mark
+            Box(
+                Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.linearGradient(AccentGradient)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = "Dramaku", tint = Color.Black, modifier = Modifier.size(24.dp))
+            }
+        }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        // Stats cards
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
             StatTile("Riwayat", historyCount.toString(), Modifier.weight(1f))
             StatTile("Favorit", favCount.toString(), Modifier.weight(1f))
             StatTile("Recent", recentCount.toString(), Modifier.weight(1f))
         }
 
+        // Section: Playback
+        SectionHeader("Pemutaran")
         SettingSwitch("Mode hemat data", "Prioritaskan stream 480p kalau tersedia", dataSaver) {
             dataSaver = it
             store.setDataSaver(it)
@@ -1311,14 +1522,24 @@ private fun SettingsScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
             store.setAutoNext(it)
             bump()
         }
-        SettingSwitch("Mode video default Asli", "Mati = Full layar, aktif = rasio asli", fitContainDefault) {
+        SettingSwitch("Rasio video asli", "Mati = Full layar, aktif = rasio asli", fitContainDefault) {
             fitContainDefault = it
             store.setFitContain(it)
             bump()
         }
+
+        Spacer(Modifier.height(16.dp))
+
+        // Section: Data
+        SectionHeader("Data & Penyimpanan")
         SettingRow("Riwayat", "$historyCount item tersimpan") {}
         SettingRow("Favorit", "$favCount judul") {}
         SettingRow("Recent search", "$recentCount kata kunci tersimpan") {}
+
+        Spacer(Modifier.height(8.dp))
+
+        // Section: Danger zone
+        SectionHeader("Hapus Data", danger = true)
         SettingRow("Bersihkan recent search", "Hapus kata kunci pencarian terakhir", danger = true) {
             store.clearRecentSearches(); bump(); Toast.makeText(context, "Recent search dihapus", Toast.LENGTH_SHORT).show()
         }
@@ -1328,6 +1549,11 @@ private fun SettingsScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
         SettingRow("Bersihkan favorit", "Kosongkan daftar favorit", danger = true) {
             store.clearFavs(); bump(); Toast.makeText(context, "Favorit dihapus", Toast.LENGTH_SHORT).show()
         }
+
+        Spacer(Modifier.height(16.dp))
+
+        // Section: Info
+        SectionHeader("Info")
         SettingRow("Tentang Dramaku", "Versi, platform, dan info aplikasi") { dialog = "about" }
         SettingRow("Privasi", "Data lokal, cache, history, favorit") { dialog = "privacy" }
         SettingRow("Disclaimer", "Aplikasi agregator, tidak meng-host konten") { dialog = "disclaimer" }
@@ -1352,34 +1578,103 @@ private fun SettingsScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
 }
 
 @Composable
+private fun SectionHeader(title: String, danger: Boolean = false) {
+    Text(
+        title,
+        color = if (danger) Danger else Text,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.3.sp,
+        modifier = Modifier.padding(bottom = 8.dp, top = 4.dp)
+    )
+}
+
+@Composable
 private fun StatTile(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(color = Bg3, shape = RoundedCornerShape(18.dp), modifier = modifier) {
-        Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, color = Accent, fontWeight = FontWeight.Black, fontSize = 20.sp)
-            Text(label, color = Muted, fontSize = 11.sp)
+    Surface(
+        color = Bg3,
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier
+    ) {
+        Column(
+            Modifier.padding(16.dp, 14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                value,
+                color = Accent,
+                fontWeight = FontWeight.Black,
+                fontSize = 22.sp
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                label,
+                color = Muted,
+                fontSize = 11.sp,
+                letterSpacing = 0.3.sp
+            )
         }
     }
 }
 
 @Composable
 private fun SettingRow(title: String, sub: String, danger: Boolean = false, onClick: () -> Unit) {
-    Surface(color = Bg3, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable(onClick = onClick)) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, color = if (danger) Danger else Text, fontWeight = FontWeight.Bold)
-            Text(sub, color = Muted, fontSize = 12.sp)
+    Surface(
+        color = if (danger) Color(0x12FB7185) else Bg3,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, color = if (danger) Danger else Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(sub, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+            if (!danger) {
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = Muted.copy(alpha = 0.5f),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun SettingSwitch(title: String, sub: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    Surface(color = Bg3, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Surface(
+        color = Bg3,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+    ) {
+        Row(
+            Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(Modifier.weight(1f)) {
-                Text(title, color = Text, fontWeight = FontWeight.Bold)
-                Text(sub, color = Muted, fontSize = 12.sp)
+                Text(title, color = Text, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(sub, color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
             }
-            Switch(checked = checked, onCheckedChange = onChecked, colors = SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = Accent))
+            Switch(
+                checked = checked,
+                onCheckedChange = onChecked,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.Black,
+                    checkedTrackColor = Accent,
+                    uncheckedThumbColor = Muted,
+                    uncheckedTrackColor = Bg2,
+                    uncheckedBorderColor = Color(0xFF2D3748)
+                )
+            )
         }
     }
 }
@@ -1436,11 +1731,15 @@ private fun playerErrorMessage(errorValue: PlaybackException): String {
     val raw = errorValue.message.orEmpty()
     return when {
         raw.contains("video/hevc", true) || raw.contains("hvc1", true) ->
-            "Video ini memakai codec HEVC/H.265 dan decoder HP kamu gagal memutarnya. Coba Retry atau episode lain; kalau tetap gagal, sumber video perlu H.264 dari server."
+            "Video ini memakai codec HEVC/H.265 yang tidak didukung HP kamu. Coba episode lain atau aktifkan mode Hemat Data."
         raw.contains("MediaCodecVideoRenderer", true) ->
-            "Decoder video perangkat gagal memutar stream ini. Coba Retry atau aktifkan mode Hemat Data."
+            "Decoder video gagal. Coba Retry, pindah episode, atau aktifkan mode Hemat Data."
         raw.contains("Source error", true) ->
-            "Sumber video lambat atau link stream expired. Coba Retry."
+            "Link stream expired atau server lambat. Tekan Coba Lagi untuk ambil link baru."
+        raw.contains("timeout", true) || raw.contains("Unable to connect", true) ->
+            "Koneksi timeout. Cek internet kamu lalu tekan Coba Lagi."
+        raw.contains("403", true) || raw.contains("401", true) ->
+            "Akses ditolak server. Link mungkin expired — tekan Coba Lagi."
         else -> raw.ifBlank { "Video belum tersedia" }
     }
 }
