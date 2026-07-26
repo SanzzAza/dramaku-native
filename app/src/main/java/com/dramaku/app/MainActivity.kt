@@ -622,86 +622,136 @@ private fun HomeScreen(
 private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () -> Unit) {
     val ctx = LocalContext.current
     val greeting = remember { Greetings.forHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
-    Box(Modifier.fillMaxSize().background(Color(0xFF05070C))) {
-        // Glow merah lembut di atas seperti referensi
+    Box(Modifier.fillMaxSize().background(Color(0xFF060910))) {
         Box(
-            Modifier.fillMaxWidth().height(280.dp)
-                .background(Brush.verticalGradient(listOf(Color(0x2EEF3A5F), Color.Transparent)))
+            Modifier.fillMaxWidth().height(260.dp)
+                .background(Brush.verticalGradient(listOf(Color(0x33F04469), Color.Transparent)))
         )
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-            Spacer(Modifier.height(56.dp))
+        Box(
+            Modifier.fillMaxWidth().height(420.dp)
+                .background(Brush.horizontalGradient(listOf(Color(0x1400E5A0), Color.Transparent, Color(0x1400C4FF))))
+        )
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
+        ) {
+            Spacer(Modifier.height(44.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
                     Text("${greeting.text} ${greeting.emoji}", color = Color(0xFFB9C0CE), fontSize = 17.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(6.dp))
-                    Text("Dramaku", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black)
+                    Text("Dramaku", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.height(6.dp))
+                    Text("Masuk ke mode nonton yang paling cocok buat kamu malam ini.", color = Color(0xFF8EA0B9), fontSize = 13.sp, lineHeight = 18.sp)
                 }
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(10.dp))
                 Box(
-                    Modifier.size(44.dp).clip(CircleShape).background(Color(0xFF171B25)).clickable(onClick = onSettings),
+                    Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF171B25)).clickable(onClick = onSettings),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Rounded.Settings, "Pengaturan", tint = Color(0xFFAAB3C2), modifier = Modifier.size(22.dp))
+                    Icon(Icons.Rounded.Settings, "Pengaturan", tint = Color(0xFFD6DDEA), modifier = Modifier.size(22.dp))
                 }
             }
-            Spacer(Modifier.height(26.dp))
 
+            Spacer(Modifier.height(20.dp))
+            Surface(
+                color = Color(0xFF0D1320),
+                shape = RoundedCornerShape(28.dp),
+                tonalElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x1FFFFFFF), RoundedCornerShape(28.dp))
+            ) {
+                Column(Modifier.padding(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFFF04469), Color(0xFF8B1E46)))),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.PlayCircle, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Pilih pintu masuk", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                            Text("Short drama, serial, atau film layar lebar dalam satu flow yang lebih premium.", color = Color(0xFF8EA0B9), fontSize = 12.sp, lineHeight = 17.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CategoryInfoPill("10 Platform")
+                        CategoryInfoPill("Native Player")
+                        CategoryInfoPill("Premium UI")
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 CategoryMenuCard(
-                    HomeCategory.ShortDrama, Icons.Rounded.PlayArrow,
+                    HomeCategory.ShortDrama,
+                    Icons.Rounded.PlayArrow,
                     tileColor = Color(0xFFF04469),
-                    gradient = listOf(Color(0xFF3B1120), Color(0xFF1B0911)),
+                    gradient = listOf(Color(0xFF34101D), Color(0xFF180910)),
                     modifier = Modifier.weight(1f)
                 ) { onSelect(HomeCategory.ShortDrama) }
                 CategoryMenuCard(
-                    HomeCategory.MovieDrama, Icons.Rounded.Movie,
+                    HomeCategory.MovieDrama,
+                    Icons.Rounded.Movie,
                     tileColor = Color(0xFF3B9BF0),
-                    gradient = listOf(Color(0xFF12293E), Color(0xFF0A1622)),
+                    gradient = listOf(Color(0xFF12293E), Color(0xFF09131D)),
                     modifier = Modifier.weight(1f)
                 ) { onSelect(HomeCategory.MovieDrama) }
             }
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 CategoryMenuCard(
-                    HomeCategory.MovieBox, Icons.Rounded.Tv,
+                    HomeCategory.MovieBox,
+                    Icons.Rounded.Tv,
                     tileColor = Color(0xFFF5832B),
-                    gradient = listOf(Color(0xFF3A240D), Color(0xFF1D1307)),
+                    gradient = listOf(Color(0xFF39240E), Color(0xFF1C1208)),
                     modifier = Modifier.weight(1f)
                 ) { onSelect(HomeCategory.MovieBox) }
                 CategoryMenuCard(
-                    HomeCategory.Anime, Icons.Rounded.Toll,
+                    HomeCategory.Anime,
+                    Icons.Rounded.AutoAwesome,
                     tileColor = Color(0xFF9D5CF0),
-                    gradient = listOf(Color(0xFF33124A), Color(0xFF1B0E2B)),
+                    gradient = listOf(Color(0xFF31134A), Color(0xFF180A28)),
                     modifier = Modifier.weight(1f)
                 ) { onSelect(HomeCategory.Anime) }
             }
             Spacer(Modifier.height(14.dp))
 
             WideMenuCard(
-                HomeCategory.Manga, Icons.Rounded.Image,
+                HomeCategory.Manga,
+                Icons.Rounded.MenuBook,
                 tileColor = Color(0xFF5E6EE8),
-                gradient = listOf(Color(0xFF1A1E2E), Color(0xFF12151F))
+                gradient = listOf(Color(0xFF1A1E2E), Color(0xFF10141F))
             ) { onSelect(HomeCategory.Manga) }
 
-            Spacer(Modifier.height(28.dp))
-            Row(
-                Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(50))
-                    .border(1.dp, Color(0xFF2A3040), RoundedCornerShape(50))
-                    .clickable { Toast.makeText(ctx, "Link traktir kopi segera hadir ☕", Toast.LENGTH_SHORT).show() }
-                    .padding(vertical = 14.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+            Spacer(Modifier.height(24.dp))
+            Surface(
+                color = Color.Transparent,
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.fillMaxWidth().border(1.dp, Color(0xFF2A3040), RoundedCornerShape(50)).clickable {
+                    Toast.makeText(ctx, "Link traktir kopi segera hadir ☕", Toast.LENGTH_SHORT).show()
+                }
             ) {
-                Text("☕  Traktir Kopi untuk Developer", color = Color(0xFF98A1B3), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("☕  Traktir Kopi untuk Developer", color = Color(0xFFAFBACB), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
             }
-            Spacer(Modifier.height(16.dp))
-            Text(
-                "Developed by SanzzXD", color = Color(0xFF4A5163), fontSize = 12.sp,
-                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(14.dp))
+            Text("Built by SanzzXD • Native Android", color = Color(0xFF4A5163), fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun CategoryInfoPill(text: String) {
+    Surface(color = Color(0x14FFFFFF), shape = RoundedCornerShape(50)) {
+        Text(text, color = Color(0xFFD6DDEA), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
     }
 }
 
@@ -715,26 +765,34 @@ private fun CategoryMenuCard(
     onClick: () -> Unit
 ) {
     Column(
-        modifier.height(184.dp)
-            .clip(RoundedCornerShape(26.dp))
+        modifier
+            .height(196.dp)
+            .clip(RoundedCornerShape(28.dp))
             .background(Brush.linearGradient(gradient))
+            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(28.dp))
             .clickable(onClick = onClick)
             .padding(18.dp)
     ) {
-        Box(
-            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(tileColor),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, category.title, tint = Color.White, modifier = Modifier.size(24.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(tileColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, category.title, tint = Color.White, modifier = Modifier.size(24.dp))
+            }
+            Spacer(Modifier.weight(1f))
+            if (category.comingSoon) {
+                ComingSoonBadge()
+            } else {
+                Icon(Icons.Rounded.NorthEast, null, tint = Color(0xFF7B879A), modifier = Modifier.size(18.dp))
+            }
         }
-        Spacer(Modifier.height(14.dp))
-        Text(category.title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, lineHeight = 23.sp)
-        Spacer(Modifier.height(6.dp))
-        Text(category.subtitle, color = Color(0xFF94A0B5), fontSize = 12.sp, lineHeight = 15.sp)
-        if (category.comingSoon) {
-            Spacer(Modifier.height(8.dp))
-            ComingSoonBadge()
-        }
+        Spacer(Modifier.height(18.dp))
+        Text(category.title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Black, lineHeight = 23.sp)
+        Spacer(Modifier.height(8.dp))
+        Text(category.subtitle, color = Color(0xFF9BA6B7), fontSize = 12.sp, lineHeight = 16.sp)
+        Spacer(Modifier.weight(1f))
+        Text(if (category.comingSoon) "Segera aktif" else "Masuk sekarang", color = if (category.comingSoon) Color(0xFF8C93A5) else Color(0xFFD7E0EE), fontSize = 11.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -742,13 +800,10 @@ private fun CategoryMenuCard(
 private fun ComingSoonBadge() {
     Text(
         "Segera hadir",
-        color = Color(0xFF8C93A5),
+        color = Color(0xFFB8A7D4),
         fontSize = 10.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color(0x14FFFFFF))
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0x20FFFFFF)).padding(horizontal = 10.dp, vertical = 5.dp)
     )
 }
 
@@ -762,31 +817,30 @@ private fun WideMenuCard(
 ) {
     Row(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(26.dp))
+            .clip(RoundedCornerShape(28.dp))
             .background(Brush.linearGradient(gradient))
+            .border(1.dp, Color(0x14FFFFFF), RoundedCornerShape(28.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(tileColor),
+            Modifier.size(50.dp).clip(RoundedCornerShape(16.dp)).background(tileColor),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, category.title, tint = Color.White, modifier = Modifier.size(24.dp))
+            Icon(icon, category.title, tint = Color.White, modifier = Modifier.size(25.dp))
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(category.title, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                if (category.comingSoon) {
-                    Spacer(Modifier.width(8.dp))
-                    ComingSoonBadge()
-                }
+                Text(category.title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                Spacer(Modifier.width(8.dp))
+                if (category.comingSoon) ComingSoonBadge()
             }
             Spacer(Modifier.height(4.dp))
-            Text(category.subtitle, color = Color(0xFF94A0B5), fontSize = 12.sp)
+            Text(category.subtitle, color = Color(0xFF9BA6B7), fontSize = 12.sp, lineHeight = 16.sp)
         }
-        Icon(Icons.Rounded.ChevronRight, null, tint = Color(0xFF6E7890), modifier = Modifier.size(22.dp))
+        Icon(Icons.Rounded.ChevronRight, null, tint = Color(0xFF7A8698), modifier = Modifier.size(22.dp))
     }
 }
 
@@ -2025,7 +2079,7 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
             val display = if (page == pager.currentPage) curDetail?.drama ?: drama else drama
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 if (page == pager.currentPage) {
-                    AndroidView({ PlayerView(it).apply { useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; this.player = player } }, modifier = Modifier.fillMaxSize())
+                    AndroidView(factory = { PlayerView(it).apply { useController = false; resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM; this.player = player } }, update = { view -> view.player = player; view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM }, modifier = Modifier.fillMaxSize())
                 } else { AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color(0xAA000000)), startY = 400f)))
                 Column(Modifier.align(Alignment.BottomStart).padding(14.dp, 14.dp, 76.dp, 20.dp)) {
@@ -2184,7 +2238,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         VerticalPager(pager, Modifier.fillMaxSize()) { page ->
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 if (page == pager.currentPage) {
-                    AndroidView({ PlayerView(it).apply { useController = false; this.player = player; resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM } }, modifier = Modifier.fillMaxSize())
+                    AndroidView(factory = { PlayerView(it).apply { useController = false; this.player = player; resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM } }, update = { view -> view.player = player; view.resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM }, modifier = Modifier.fillMaxSize())
                 }
                 if (uiVis || loading || error != null) {
                     Box(
