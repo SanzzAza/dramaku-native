@@ -2817,7 +2817,12 @@ private fun homeUrls(p: String, page: Int = 1): List<String> {
         "netshort" -> { h = "$base/home?page=1"; pop = "$base/populer"; nw = "$base/new" }
         "dramabox" -> { h = "$base/home?page=$sp&lang=in"; pop = "$base/populer?page=$sp&lang=in"; nw = "$base/new?page=$sp&lang=in" }
         "goodshort" -> { h = "$base/home?page=$sp"; pop = "$base/populer?page=$sp"; nw = "$base/new?page=$sp&channelId=563" }
-        "moviebox" -> { h = "$base/indonesia?page=$sp&perPage=20"; pop = "$base/global?page=$sp&perPage=20"; nw = "$base/horror?page=$sp&perPage=20" }
+        "moviebox" -> {
+            // /global sering timeout/stale di API MovieBox. Pakai endpoint yang stabil supaya home tidak nyangkut shimmer.
+            h = "$base/homepage?tabId=0"
+            pop = "$base/indonesia?page=$sp&perPage=20"
+            nw = "$base/horror?page=$sp&perPage=20"
+        }
         "drakor" -> { h = "$base/home/korea?page=$sp&limit=30&sort=LATEST"; pop = "$base/trending?page=$sp&limit=30&days=30"; nw = "$base/terbaru?page=$sp&limit=30" }
     }
     return listOf(h, pop, nw)
