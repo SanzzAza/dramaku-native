@@ -203,7 +203,7 @@ private data class Drama(
     val episodes: Int = 0, val views: String = "", val tags: List<String> = emptyList(),
     val platform: String = "melolo", val subjectType: Int = 1
 )
-private data class EpisodeInfo(val number: Int, val streaming: String = "")
+private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false)
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
 private data class StreamResult(val url: String, val subtitle: String = "")
@@ -2112,10 +2112,13 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                             (startEp..endEp).chunked(4).forEach { row ->
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     row.forEach { ep ->
+                                        val epInfo = detail.episodes.firstOrNull { it.number == ep } ?: detail.episodes.getOrNull(ep - 1)
+                                        val locked = epInfo?.locked == true
                                         val isResume = hist != null && resumeEp == ep
                                         Surface(
                                             color = when {
                                                 resolvingEpisode == ep -> DS.Green
+                                                locked -> DS.Bg3.copy(alpha = 0.58f)
                                                 isResume -> DS.GreenDim
                                                 else -> DS.Bg4
                                             },
@@ -2124,17 +2127,23 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(52.dp)
-                                                .clickable(enabled = resolvingEpisode == 0 && state is Load.Ok) { onPlay(detail, ep) }
+                                                .clickable(enabled = !locked && resolvingEpisode == 0 && state is Load.Ok) { onPlay(detail, ep) }
                                         ) {
                                             Column(
                                                 Modifier.fillMaxSize().padding(horizontal = 6.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally,
                                                 verticalArrangement = Arrangement.Center
                                             ) {
-                                                Text(if (resolvingEpisode == ep) "..." else "Ep $ep", fontWeight = FontWeight.Black, fontSize = 13.sp)
-                                                if (isResume && resolvingEpisode != ep) {
-                                                    Spacer(Modifier.height(2.dp))
-                                                    Text("Lanjut", color = DS.Green, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                Text(if (resolvingEpisode == ep) "..." else "Ep $ep", fontWeight = FontWeight.Black, fontSize = 13.sp, color = if (locked) DS.Hint else Color.Unspecified)
+                                                when {
+                                                    locked -> {
+                                                        Spacer(Modifier.height(2.dp))
+                                                        Text("Premium", color = DS.Hint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                    isResume && resolvingEpisode != ep -> {
+                                                        Spacer(Modifier.height(2.dp))
+                                                        Text("Lanjut", color = DS.Green, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                    }
                                                 }
                                             }
                                         }
@@ -2706,7 +2715,12 @@ private class DramakuRepository {
         if (p == "drakor") {
             val info = json.optJSONObject("info") ?: error("Detail tidak ditemukan")
             val epsArr = json.optJSONObject("episodes")?.optJSONArray("data") ?: JSONArray()
-            val eps = epsArr.objects().mapIndexed { i, o -> EpisodeInfo(o.intAny("episode_number", i + 1), o.stringAny("streaming")) }
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                val label = o.stringAny("episode_label", "title", "label")
+                val streamId = o.stringAny("streaming")
+                val locked = label.contains("premium", true) || streamId.isBlank() || !o.optBoolean("cdn_ready", true)
+                EpisodeInfo(o.intAny("episode_number", i + 1), streamId, label, locked)
+            }
             val d = normalize(info, p).copy(id = info.stringAny("id").ifBlank { input.id }, title = info.stringAny("title").ifBlank { input.title }, poster = fixImg(info.stringAny("image").ifBlank { input.poster }), description = cleanText(info.stringAny("meta_sinopsis", "shoot", "content", "meta_description")).ifBlank { input.description }, episodes = eps.size.takeIf { it > 0 } ?: info.intAny("meta_episode", input.episodes), platform = p, subjectType = 2)
             return Detail(d, eps)
         }
@@ -2723,7 +2737,7 @@ private class DramakuRepository {
         }
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
-        val eps = epsArr?.objects()?.mapIndexed { i, o -> EpisodeInfo(o.intAny("episode", "episode_no", "chapterIndex", i + 1), o.stringAny("streaming")) }.orEmpty()
+        val eps = epsArr?.objects()?.mapIndexed { i, o -> EpisodeInfo(o.intAny("episode", "episode_no", "chapterIndex", i + 1), o.stringAny("streaming"), o.stringAny("episode_label", "title", "label")) }.orEmpty()
         val total = max(d.episodes, eps.size)
         return Detail(d.copy(episodes = total), if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
     }
@@ -2755,10 +2769,19 @@ private class DramakuRepository {
                 StreamResult(pick?.stringAny("playUrl").orEmpty().ifBlank { data.stringAny("play_url") })
             }
             "drakor" -> {
-                val streaming = d.episodes.firstOrNull { it.number == ep }?.streaming ?: d.episodes.getOrNull(ep - 1)?.streaming.orEmpty()
-                if (streaming.isBlank()) error("Episode belum punya stream")
+                val info = d.episodes.firstOrNull { it.number == ep } ?: d.episodes.getOrNull(ep - 1)
+                if (info?.locked == true) {
+                    error("Episode Drakor ini masih premium / belum dibuka gratis. Coba episode lain atau tunggu jadwal gratisnya.")
+                }
+                val streaming = info?.streaming.orEmpty()
+                if (streaming.isBlank()) error("Episode Drakor belum punya link stream")
                 val j = getJson("$base/stream?streaming=${enc(streaming)}")
-                StreamResult(if (ds) j.stringAny("480p", "360p", "720p") else j.stringAny("720p", "480p", "360p"))
+                val url = if (ds) {
+                    j.stringAny("480p", "360p", "720p", "1080p", "url")
+                } else {
+                    j.stringAny("720p", "1080p", "480p", "360p", "url")
+                }
+                StreamResult(url)
             }
             "moviebox" -> {
                 val resolutions = listOf(res, 720, 1080, 480, 360).distinct()
@@ -2866,11 +2889,16 @@ private class DramakuRepository {
                         .build()
                 ).execute().use { r ->
                     val body = r.body?.string().orEmpty()
-                    if (!r.isSuccessful) error("HTTP ${r.code}")
-                    val json = JSONObject(body)
-                    val code = json.optInt("code", 200)
-                    if (code >= 400) error(json.stringAny("message", "error").ifBlank { "HTTP $code" })
-                    json
+                    val json = runCatching { JSONObject(body) }.getOrNull()
+                    if (!r.isSuccessful) {
+                        val msg = json?.stringAny("error_msg", "error", "message").orEmpty()
+                        error(msg.ifBlank { "HTTP ${r.code}" })
+                    }
+                    val parsed = json ?: JSONObject(body)
+                    val code = parsed.optInt("code", 200)
+                    if (code >= 400) error(parsed.stringAny("error_msg", "error", "message").ifBlank { "HTTP $code" })
+                    if (parsed.optInt("status", 1) == 0) error(parsed.stringAny("error_msg", "error", "message").ifBlank { "Gagal memuat data" })
+                    parsed
                 }
             } catch (e: CancellationException) {
                 throw e
