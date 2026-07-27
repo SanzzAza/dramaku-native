@@ -2277,7 +2277,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                         )
                     )
                     Column(
-                        Modifier.align(Alignment.BottomStart).padding(start = 18.dp, end = 96.dp, bottom = 78.dp)
+                        Modifier.align(Alignment.BottomStart).padding(start = 18.dp, end = 18.dp, bottom = 132.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             PlayerChip(platformLabel(detail.drama.platform), DS.Green)
@@ -2313,31 +2313,34 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             }
         }
 
-        // Side buttons
-        AnimatedVisibility(uiVis || loading || error != null, Modifier.align(Alignment.CenterEnd)) {
-            Column(Modifier.padding(end = 14.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                SideBtn(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play") { uiVis = true; if (player.isPlaying) player.pause() else player.play() }
-                SideBtn(Icons.Rounded.List, "Episode") { uiVis = true; epSheet = true }
-                SideBtn(if (fitContain) Icons.Rounded.AspectRatio else Icons.Rounded.Fullscreen, if (fitContain) "Asli" else "Penuh") { uiVis = true; fitContain = !fitContain; if (!preferLandscape) store.setFitContain(fitContain) }
-                SideBtn(Icons.Rounded.Refresh, "Retry") { uiVis = true; retryKey++ }
-            }
-        }
-
-        // Seekbar
+        // Bottom controls — satu area kontrol, tanpa tombol yang menumpuk di sisi video.
         AnimatedVisibility(uiVis || loading || error != null, Modifier.align(Alignment.BottomCenter)) {
-            Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 10.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(formatMs(curMs), color = DS.White, fontSize = 10.sp, fontWeight = FontWeight.Black)
-                    Spacer(Modifier.weight(1f))
-                    Text(if (durMs > 0) formatMs(durMs) else "", color = DS.Text, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Surface(color = Color(0xD80A0B0F), shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(formatMs(curMs), color = DS.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        Text(if (durMs > 0) formatMs(durMs) else "", color = DS.Text, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Slider(
+                        value = if (durMs > 0) (curMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f) else 0f,
+                        onValueChange = { isSeeking = true; curMs = (it * durMs).toLong().coerceAtLeast(0) },
+                        onValueChangeFinished = { player.seekTo(curMs); saveProgress(pager.currentPage + 1); isSeeking = false },
+                        enabled = durMs > 0,
+                        colors = SliderDefaults.colors(thumbColor = DS.White, activeTrackColor = DS.Green, inactiveTrackColor = Color(0x55FFFFFF)),
+                        modifier = Modifier.fillMaxWidth().height(24.dp)
+                    )
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { uiVis = true; epSheet = true }) { Icon(Icons.Rounded.List, "Episode", tint = DS.Text) }
+                        IconButton(onClick = { uiVis = true; retryKey++ }) { Icon(Icons.Rounded.Refresh, "Muat ulang", tint = DS.Text) }
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { uiVis = true; fitContain = !fitContain; if (!preferLandscape) store.setFitContain(fitContain) }) { Icon(if (fitContain) Icons.Rounded.AspectRatio else Icons.Rounded.Fullscreen, "Ukuran layar", tint = DS.Text) }
+                        Spacer(Modifier.width(8.dp))
+                        Surface(color = DS.White, contentColor = DS.Bg, shape = CircleShape, modifier = Modifier.size(44.dp).clickable { uiVis = true; if (player.isPlaying) player.pause() else player.play() }) {
+                            Box(contentAlignment = Alignment.Center) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Jeda" else "Putar", modifier = Modifier.size(23.dp)) }
+                        }
+                    }
                 }
-                Slider(
-                    value = if (durMs > 0) (curMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f) else 0f,
-                    onValueChange = { isSeeking = true; curMs = (it * durMs).toLong().coerceAtLeast(0) },
-                    onValueChangeFinished = { player.seekTo(curMs); saveProgress(pager.currentPage + 1); isSeeking = false },
-                    enabled = durMs > 0,
-                    colors = SliderDefaults.colors(thumbColor = DS.White, activeTrackColor = DS.Green, inactiveTrackColor = Color(0x55FFFFFF))
-                )
             }
         }
 
