@@ -197,7 +197,7 @@ private enum class Tab(val label: String, val icon: ImageVector, val showNav: Bo
     Search("Cari", Icons.Rounded.Search, false)
 }
 
-private data class PlatformInfo(val id: String, val label: String, val base: String, val logoUrl: String = "")
+private data class PlatformInfo(val id: String, val label: String, val base: String, val logoUrl: String = "", val logoRes: Int = 0)
 private data class Drama(
     val id: String, val title: String, val description: String = "", val poster: String = "",
     val episodes: Int = 0, val views: String = "", val tags: List<String> = emptyList(),
@@ -228,10 +228,10 @@ private sealed class Load<out T> {
 // ─────────────────────────────────────────────────────────────────
 
 private val Platforms = listOf(
-    PlatformInfo("melolo", "Melolo", "https://new-api.sonzaix.workers.dev/melolo", "https://www.google.com/s2/favicons?sz=256&domain=melolo.id"),
-    PlatformInfo("freereels", "FreeReels", "https://new-api.sonzaix.workers.dev/freereels", "https://static-v1.mydramawave.com/frontend_static/Logo.png"),
-    PlatformInfo("flickreels", "FlickReels", "https://new-api.sonzaix.workers.dev/flickreels", "https://www.google.com/s2/favicons?sz=256&domain=flickreels.com"),
-    PlatformInfo("dramanova", "DramaNova", "https://new-api.sonzaix.workers.dev/dramanova", "https://www.google.com/s2/favicons?sz=256&domain=dramanova.app"),
+    PlatformInfo("melolo", "Melolo", "https://new-api.sonzaix.workers.dev/melolo", logoRes = R.drawable.logo_melolo),
+    PlatformInfo("freereels", "FreeReels", "https://new-api.sonzaix.workers.dev/freereels", logoRes = R.drawable.logo_freereels),
+    PlatformInfo("flickreels", "FlickReels", "https://new-api.sonzaix.workers.dev/flickreels", logoRes = R.drawable.logo_flickreels),
+    PlatformInfo("dramanova", "DramaNova", "https://new-api.sonzaix.workers.dev/dramanova", logoRes = R.drawable.logo_dramanova),
     PlatformInfo("reelshort", "ReelShort", "https://new-api.sonzaix.workers.dev/reelshort", "https://v-mps.crazymaplestudios.com/images/211d3420-d721-11f0-84ad-6b5693b490dc.png"),
     PlatformInfo("netshort", "NetShort", "https://new-api.sonzaix.workers.dev/netshort", "https://netshort.com/assets/logo/logo.png"),
     PlatformInfo("dramabox", "DramaBox", "https://new-api.sonzaix.workers.dev/dramabox", "https://www.google.com/s2/favicons?sz=256&domain=dramaboxapp.com"),
@@ -961,11 +961,17 @@ private fun CompactQuickAction(label: String, icon: ImageVector, modifier: Modif
 @Composable
 private fun PlatformLogo(platformId: String, modifier: Modifier = Modifier) {
     val info = platform(platformId)
-    if (info.logoUrl.isNotBlank()) {
-        AsyncImage(info.logoUrl, info.label, modifier.clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Fit)
-    } else {
-        Box(modifier.clip(RoundedCornerShape(8.dp)).background(DS.Bg4), contentAlignment = Alignment.Center) {
-            Text(info.label.take(1), color = DS.White, fontWeight = FontWeight.Black, fontSize = 10.sp)
+    when {
+        info.logoRes != 0 -> {
+            AsyncImage(info.logoRes, info.label, modifier.clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+        }
+        info.logoUrl.isNotBlank() -> {
+            AsyncImage(info.logoUrl, info.label, modifier.clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Fit)
+        }
+        else -> {
+            Box(modifier.clip(RoundedCornerShape(8.dp)).background(DS.Bg4), contentAlignment = Alignment.Center) {
+                Text(info.label.take(1), color = DS.White, fontWeight = FontWeight.Black, fontSize = 10.sp)
+            }
         }
     }
 }
