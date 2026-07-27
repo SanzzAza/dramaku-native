@@ -2611,7 +2611,9 @@ private class DramakuRepository {
         val drama = d.drama; val p = drama.platform; val base = apiBase(p); val id = drama.id; val res = if (ds) 480 else 720
         return when (p) {
             "melolo" -> {
-                val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep")
+                // streamv2 bisa meng-cache proxy URL ByteDance yang masa berlakunya singkat.
+                // Cache buster membuat Worker membangun ulang URL playable setiap kali Play/Retry.
+                val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep&_=${System.currentTimeMillis()}")
                 val url = extractStreamV2Url(v2)
                 if (url.isNotBlank()) StreamResult(url) else error("Stream Melolo tidak tersedia")
             }
