@@ -2659,9 +2659,9 @@ private class DramakuRepository {
                 StreamResult(url)
             }
             "moviebox" -> {
-                // URL download MovieBox kadang di-cache Worker walaupun signed CDN link-nya sudah habis.
-                // Cache buster memastikan setiap Play/Retry meminta signed link baru.
-                val cacheBust = System.currentTimeMillis()
+                // Listing/detail memakai Worker baru, tetapi URL stream memakai origin SonzaiX lama
+                // karena Worker baru saat ini kerap mengembalikan signed CDN link yang sudah expired.
+                val streamBase = "https://api.sonzaix.indevs.in/moviebox"
                 val resolutions = listOf(res, 720, 1080, 480, 360).distinct()
                 var sawExpiredLink = false
                 fun linkOf(o: JSONObject?): String {
@@ -2682,7 +2682,7 @@ private class DramakuRepository {
                     var fallbackSub = ""
                     var fallbackCodec = ""
                     for (r in resolutions) {
-                        val data = runCatching { getJson("$base/download-series?subjectId=${enc(id)}&se=1&resolution=$r&_=$cacheBust").optJSONObject("data") }.getOrNull() ?: continue
+                        val data = runCatching { getJson("$streamBase/download-series?subjectId=${enc(id)}&se=1&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
                         val eps = data.optJSONArray("episodes")?.objects().orEmpty()
                         val candidates = eps.filter { it.intAny("ep", 1) == ep }.ifEmpty { listOfNotNull(eps.getOrNull(ep - 1), eps.firstOrNull()) }
                             .filter { linkOf(it).isNotBlank() }
@@ -2712,7 +2712,7 @@ private class DramakuRepository {
                     var fallbackUrl = ""
                     var fallbackSub = ""
                     for (r in resolutions) {
-                        val data = runCatching { getJson("$base/download-movie?subjectId=${enc(id)}&resolution=$r&_=$cacheBust").optJSONObject("data") }.getOrNull() ?: continue
+                        val data = runCatching { getJson("$streamBase/download-movie?subjectId=${enc(id)}&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
                         val files = data.optJSONArray("files")?.objects().orEmpty().filter { linkOf(it).isNotBlank() }
                         val picked = files.firstOrNull { codecOf(it).contains("h264") }
                             ?: files.firstOrNull { !codecOf(it).contains("hevc") }
