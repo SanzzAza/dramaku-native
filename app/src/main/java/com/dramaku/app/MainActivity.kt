@@ -2318,29 +2318,25 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                             )
                         )
                     )
-                    Surface(
-                        color = Color(0x5A0B1220),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 92.dp, bottom = 28.dp)
+                    Column(
+                        Modifier.align(Alignment.BottomStart).padding(start = 18.dp, end = 96.dp, bottom = 78.dp)
                     ) {
-                        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                DetailMetaPill(platformLabel(detail.drama.platform), DS.Green)
-                                DetailMetaPill("Ep ${page + 1}/$total", Color(0xFF7DD3FC))
-                                if (preferLandscape) DetailMetaPill("Wide", Color(0xFFF59E0B))
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            Text(detail.drama.title, color = DS.White, fontSize = 16.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                if (playing) "Sedang diputar • swipe untuk ganti episode" else "Tap layar untuk kontrol",
-                                color = DS.Text,
-                                fontSize = 11.sp,
-                                lineHeight = 15.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PlayerChip(platformLabel(detail.drama.platform), DS.Green)
+                            PlayerChip("Ep ${page + 1}/$total", DS.Sky)
+                            if (preferLandscape) PlayerChip("Wide", DS.Amber)
                         }
+                        Spacer(Modifier.height(10.dp))
+                        Text(detail.drama.title, color = DS.White, fontSize = 20.sp, fontWeight = FontWeight.Black, lineHeight = 24.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Spacer(Modifier.height(5.dp))
+                        Text(
+                            if (playing) "Swipe naik/turun untuk episode lain" else "Tap layar untuk kontrol",
+                            color = DS.Text,
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }
@@ -2361,7 +2357,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
 
         // Side buttons
         AnimatedVisibility(uiVis || loading || error != null, Modifier.align(Alignment.CenterEnd)) {
-            Column(Modifier.padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.padding(end = 14.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 SideBtn(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play") { uiVis = true; if (player.isPlaying) player.pause() else player.play() }
                 SideBtn(Icons.Rounded.List, "Episode") { uiVis = true; epSheet = true }
                 SideBtn(if (fitContain) Icons.Rounded.AspectRatio else Icons.Rounded.Fullscreen, if (fitContain) "Asli" else "Penuh") { uiVis = true; fitContain = !fitContain; if (!preferLandscape) store.setFitContain(fitContain) }
@@ -2371,27 +2367,19 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
 
         // Seekbar
         AnimatedVisibility(uiVis || loading || error != null, Modifier.align(Alignment.BottomCenter)) {
-            Surface(
-                color = Color(0x720B1220),
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
-            ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(formatMs(curMs), color = DS.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.weight(1f))
-                        Text(if (durMs > 0) "Sisa ${formatMs((durMs - curMs).coerceAtLeast(0L))}" else "", color = DS.Muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.width(8.dp))
-                        Text(formatMs(durMs), color = DS.Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Slider(
-                        value = if (durMs > 0) (curMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f) else 0f,
-                        onValueChange = { isSeeking = true; curMs = (it * durMs).toLong().coerceAtLeast(0) },
-                        onValueChangeFinished = { player.seekTo(curMs); saveProgress(pager.currentPage + 1); isSeeking = false },
-                        enabled = durMs > 0,
-                        colors = SliderDefaults.colors(thumbColor = DS.Green, activeTrackColor = DS.Green, inactiveTrackColor = DS.Bg4)
-                    )
+            Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, bottom = 10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(formatMs(curMs), color = DS.White, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.weight(1f))
+                    Text(if (durMs > 0) formatMs(durMs) else "", color = DS.Text, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
+                Slider(
+                    value = if (durMs > 0) (curMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f) else 0f,
+                    onValueChange = { isSeeking = true; curMs = (it * durMs).toLong().coerceAtLeast(0) },
+                    onValueChangeFinished = { player.seekTo(curMs); saveProgress(pager.currentPage + 1); isSeeking = false },
+                    enabled = durMs > 0,
+                    colors = SliderDefaults.colors(thumbColor = DS.White, activeTrackColor = DS.Green, inactiveTrackColor = Color(0x55FFFFFF))
+                )
             }
         }
 
@@ -2439,17 +2427,27 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
 }
 
 @Composable
-private fun SideBtn(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Surface(
-        color = Color(0x660B1020),
-        shape = RoundedCornerShape(18.dp),
-        modifier = Modifier.width(62.dp).border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp)).clickable(onClick = onClick)
-    ) {
-        Column(Modifier.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(icon, label, tint = DS.White, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.height(4.dp))
-            Text(label, color = DS.Text, fontSize = 9.sp, fontWeight = FontWeight.Black, maxLines = 1)
+private fun PlayerChip(text: String, dot: Color) {
+    Surface(color = Color(0x66000000), shape = RoundedCornerShape(50)) {
+        Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(dot))
+            Spacer(Modifier.width(6.dp))
+            Text(text, color = DS.White, fontSize = 11.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
+    }
+}
+
+@Composable
+private fun SideBtn(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(58.dp).clickable(onClick = onClick)) {
+        Box(
+            Modifier.size(52.dp).clip(CircleShape).background(Color(0x66000000)).border(1.dp, Color(0x22FFFFFF), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, label, tint = DS.White, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(label, color = DS.White, fontSize = 9.sp, fontWeight = FontWeight.Black, maxLines = 1, textAlign = TextAlign.Center)
     }
 }
 
@@ -2582,7 +2580,12 @@ private class DramakuRepository {
     }
 
     suspend fun loadDetail(input: Drama): Detail {
-        val p = input.platform; val url = detailUrl(input); val json = getJson(url)
+        val p = input.platform
+        if (p == "moviebox" && input.subjectType != 2 && input.title.isNotBlank()) {
+            val d = input.copy(episodes = 1, subjectType = 1, platform = p)
+            return Detail(d, listOf(EpisodeInfo(1)))
+        }
+        val url = detailUrl(input); val json = getJson(url)
         if (p == "drakor") {
             val info = json.optJSONObject("info") ?: error("Detail tidak ditemukan")
             val epsArr = json.optJSONObject("episodes")?.optJSONArray("data") ?: JSONArray()
