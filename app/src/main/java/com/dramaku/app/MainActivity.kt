@@ -2510,6 +2510,10 @@ private class DramakuRepository {
     }
 
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
+        // Signed URL dari provider cepat expired. Jangan cache supaya Retry selalu ambil link/token baru.
+        if (d.drama.platform in setOf("melolo", "moviebox", "drakor", "dramanova", "goodshort")) {
+            return resolveStream(d, ep, ds)
+        }
         val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
         streamCache[k]?.takeIf { it.expiresAtMs > now }?.let { return it.result }
         return resolveStream(d, ep, ds).also { r -> if (r.url.isNotBlank()) streamCache[k] = CachedStream(r, now + 300_000) }
@@ -2575,7 +2579,8 @@ private class DramakuRepository {
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         if (p == "goodshort" && data.has("book")) {
             val book = data.optJSONObject("book") ?: data; val list = data.optJSONArray("list") ?: JSONArray()
-            val d = normalize(book, p).copy(id = book.stringAny("bookId").ifBlank { input.id }, title = book.stringAny("bookName").ifBlank { input.title }, description = book.stringAny("introduction").ifBlank { input.description }, episodes = book.intAny("chapterCount", list.length()), poster = fixImg(book.stringAny("cover").ifBlank { input.poster }), platform = p)
+            val intro = book.stringAny("introduction").takeUnless { it == "1" || it.equals("success", true) }.orEmpty()
+            val d = normalize(book, p).copy(id = book.stringAny("bookId").ifBlank { input.id }, title = book.stringAny("bookName").ifBlank { input.title }, description = intro.ifBlank { input.description }, episodes = book.intAny("chapterCount", list.length()), poster = fixImg(book.stringAny("cover").ifBlank { input.poster }), platform = p)
             return Detail(d, (0 until list.length()).map { EpisodeInfo(it + 1) })
         }
         if (p == "moviebox") {
@@ -2725,7 +2730,9 @@ private class DramakuRepository {
                 val data = getJson("$base/stream?id=${enc(id)}&ep=$ep").optJSONObject("data") ?: error("Video belum tersedia")
                 val play = data.optJSONObject("play") ?: data
                 val q = play.optJSONArray("qualities")?.objects()?.firstOrNull { it.stringAny("codec") == "h264" } ?: play.optJSONArray("qualities")?.optJSONObject(0)
-                StreamResult(play.stringAny("video_url", "backup_url").ifBlank { q?.stringAny("main_url", "backup_url").orEmpty() }, subtitleFrom(data.optJSONObject("info")?.optJSONArray("subtitle_tracks")))
+                val url = play.stringAny("videoUrl", "video_url", "main_url", "backup_url")
+                    .ifBlank { q?.stringAny("main_url", "backup_url").orEmpty() }
+                StreamResult(cleanUrl(url), subtitleFrom(data.optJSONObject("info")?.optJSONArray("subtitle_tracks")))
             }
             else -> {
                 val v2 = runCatching { getJson("$base/streamv2?id=${enc(id)}&ep=$ep") }.getOrNull()
@@ -2759,7 +2766,9 @@ private class DramakuRepository {
                     val parsed = json ?: JSONObject(body)
                     val code = parsed.optInt("code", 200)
                     if (code >= 400) error(parsed.stringAny("error_msg", "error", "message").ifBlank { "HTTP $code" })
-                    if (parsed.optInt("status", 1) == 0) error(parsed.stringAny("error_msg", "error", "message").ifBlank { "Gagal memuat data" })
+                    val statusZero = parsed.optInt("status", 1) == 0
+                    val explicitSuccess = parsed.optBoolean("success", false) || parsed.stringAny("message").equals("success", true)
+                    if (statusZero && !explicitSuccess) error(parsed.stringAny("error_msg", "error", "message").ifBlank { "Gagal memuat data" })
                     parsed
                 }
             } catch (e: CancellationException) {
@@ -2964,6 +2973,7 @@ private fun cleanUrl(u: String): String {
     return raw
         .replace("&amp;", "&")
         .replace("\\u0026", "&")
+        .replace("http://sulao.montagehub.xyz", "https://sulao.montagehub.xyz")
         .replace(" ", "%20")
 }
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
