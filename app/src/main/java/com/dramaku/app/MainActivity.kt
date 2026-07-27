@@ -190,9 +190,9 @@ private fun DramakuApp() {
 
 private enum class Tab(val label: String, val icon: ImageVector, val showNav: Boolean = true) {
     Clips("Cuplikan", Icons.Rounded.PlayCircle),
-    Home("Beranda", Icons.Rounded.Home),
+    Home("Temukan", Icons.Rounded.Home),
     Rewards("Hadiah", Icons.Rounded.CardGiftcard),
-    Library("Koleksi", Icons.Rounded.Bookmark),
+    Library("Daftar Saya", Icons.Rounded.Bookmark),
     Profile("Profil", Icons.Rounded.Person),
     Search("Cari", Icons.Rounded.Search, false)
 }
@@ -527,7 +527,7 @@ private fun HomeScreen(
         snapshotFlow {
             val info = listState.layoutInfo
             val last = info.visibleItemsInfo.lastOrNull()
-            last != null && last.index >= info.totalItemsCount - 3 && (last.offset + last.size) <= info.viewportEndOffset + 900
+            last != null && last.index >= info.totalItemsCount - 4 && (last.offset + last.size) <= info.viewportEndOffset + 900
         }.collect { near ->
             val data = (state as? Load.Ok)?.data ?: return@collect
             val np = data.loadedPage + 1
@@ -537,9 +537,13 @@ private fun HomeScreen(
         }
     }
 
-    LazyColumn(state = listState, modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 18.dp)) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize().background(DS.Bg),
+        contentPadding = PaddingValues(bottom = 20.dp)
+    ) {
         item {
-HomeHeader(
+            HomeHeader(
                 platformId = platformId,
                 category = category,
                 remoteConfig = remoteConfig,
@@ -560,51 +564,50 @@ HomeHeader(
             is Load.Err -> item { ErrorCard(state.message, onRefresh) }
             is Load.Ok -> {
                 val data = state.data
-                val all = data.popular + data.newest + data.recommended
-                val spotlight = all.firstOrNull { it.poster.isNotBlank() }
+                val newKeys = data.newest.map { it.platform + "|" + it.id }.toSet()
+                val all = (data.newest + data.popular + data.recommended)
+                    .filter { it.id.isNotBlank() && it.title.isNotBlank() }
+                    .distinctBy { it.platform + "|" + it.id }
+                    .distinctBy { it.platform + "|" + normalizeKey(it.title) }
 
-                if (spotlight != null) item { HeroCard(spotlight, onDrama) }
+                if (all.isEmpty()) {
+                    item { EmptyState("Belum ada judul", "Coba refresh atau pindah sumber dulu", Icons.Rounded.Movie) }
+                } else {
+                    item {
+                        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.Bottom) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Temukan", color = DS.White, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.4).sp)
+                                Text("${platformLabel(platformId)} • ${all.size} judul", color = DS.Muted, fontSize = 11.sp)
+                            }
+                            Text("Lihat semua", color = DS.Green, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.clickable(onClick = onRandom))
+                        }
+                    }
+
+                    all.chunked(2).forEachIndexed { index, row ->
+                        item(key = "grid_${platformId}_${data.loadedPage}_$index") {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                row.forEach { d ->
+                                    DiscoverDramaCard(
+                                        drama = d,
+                                        isNew = newKeys.contains(d.platform + "|" + d.id),
+                                        onClick = onDrama,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                            Spacer(Modifier.height(16.dp))
+                        }
+                    }
+                }
 
                 if (history.isNotEmpty()) item {
-                    Section("Lanjutkan", "Terakhir kamu tonton, siap dilanjutkan") {
+                    Section("Lanjutkan", "Terakhir kamu tonton") {
                         LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             items(history.take(8), key = { it.platform + it.id }) { h -> ContinueCard(h, onResume) }
-                        }
-                    }
-                }
-
-                if (data.popular.isNotEmpty()) item {
-                    Section("Paling Ramai", "Judul yang lagi sering diputar") {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            items(data.popular.take(20), key = { it.platform + it.id }) { d -> DramaCard(d, onDrama, Modifier.width(150.dp)) }
-                        }
-                    }
-                }
-
-                if (data.newest.isNotEmpty()) item {
-                    Section("Rilis Terbaru", "Judul baru masuk dan episode yang baru update") {
-                        Column(Modifier.padding(horizontal = 20.dp)) {
-                            data.newest.chunked(2).forEach { row ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    row.forEach { d -> DramaCard(d, onDrama, Modifier.weight(1f)) }
-                                    repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
-                                }
-                                Spacer(Modifier.height(12.dp))
-                            }
-                        }
-                    }
-                }
-
-                if (data.recommended.isNotEmpty()) item {
-                    Section("Pilihan Buat Kamu", "Campuran judul yang cocok buat dicoba") {
-                        Column(Modifier.padding(horizontal = 20.dp)) {
-                            data.recommended.chunked(2).forEach { row ->
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    row.forEach { d -> DramaCard(d, onDrama, Modifier.weight(1f)) }
-                                    repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
-                                }
-                                Spacer(Modifier.height(12.dp))
-                            }
                         }
                     }
                 }
@@ -614,7 +617,7 @@ HomeHeader(
                         if (loadingMore) {
                             CircularProgressIndicator(color = DS.Green, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text("Memuat daftar berikutnya...", color = DS.Hint, fontSize = 11.sp)
+                            Text("Memuat lagi...", color = DS.Hint, fontSize = 11.sp)
                         } else if (!data.hasMore) {
                             Text("Semua daftar sudah ditampilkan", color = DS.Hint, fontSize = 11.sp)
                         }
@@ -825,58 +828,88 @@ private fun HomeHeader(
     val message = remoteConfig?.message?.takeIf { it.enabled }
     val selectedState = remoteConfig?.platform(platformId)
     val online = selectedState?.enabled ?: true
+    val singleSourceTabs = when (platformId) {
+        "moviebox" -> listOf("MovieBox", "Indonesia", "Horror", "Asia", "Animasi", "Baru")
+        "drakor" -> listOf("Drama Asia", "Korea", "China", "Terbaru", "Populer")
+        else -> listOf(platformLabel(platformId), "Populer", "Baru", "Romantis", "Aksi", "Fantasi")
+    }
+
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (category != null) HeaderCircleButton(Icons.Rounded.Apps, "Kategori", onExitCategory) else BrandLogoMini(Modifier.size(40.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Dramaku", color = DS.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp)
-                Text("${category?.title ?: "Beranda"} • ${platformLabel(platformId)}", color = DS.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Surface(
+                color = DS.Bg3,
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.weight(1f).height(56.dp).border(1.dp, DS.Line, RoundedCornerShape(18.dp)).clickable(onClick = onSearch)
+            ) {
+                Row(Modifier.fillMaxSize().padding(horizontal = 15.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Search, null, tint = DS.Text, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "Cari drama favoritmu",
+                        color = DS.Muted,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Box(Modifier.width(1.dp).height(26.dp).background(DS.Line))
+                    Text("Cari", color = DS.White, fontSize = 14.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 14.dp))
+                }
             }
-            HeaderCircleButton(Icons.Rounded.Search, "Cari", onSearch)
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(10.dp))
             HeaderCircleButton(Icons.Rounded.Refresh, "Refresh", onRefresh)
         }
 
-        Spacer(Modifier.height(14.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(chips, key = { it.id }) { p ->
-                val sel = p.id == platformId
-                val st = remoteConfig?.platform(p.id)
-                val enabled = st?.enabled ?: true
-                Surface(
-                    color = if (sel) DS.White else DS.Bg2,
-                    shape = RoundedCornerShape(50),
-                    modifier = Modifier.border(1.dp, if (sel) Color.Transparent else DS.Line, RoundedCornerShape(50)).clickable(enabled = enabled) { onPlatform(p.id) }
-                ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlatformLogo(p.id, Modifier.size(17.dp))
-                        Spacer(Modifier.width(7.dp))
-                        Text(p.label, color = if (sel) Color.Black else if (enabled) DS.Text else DS.Hint, fontSize = 12.sp, fontWeight = FontWeight.Black)
-                    }
+        Spacer(Modifier.height(15.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (chips.size > 1) {
+                items(chips, key = { it.id }) { p ->
+                    val selected = p.id == platformId
+                    val enabled = remoteConfig?.platform(p.id)?.enabled ?: true
+                    Text(
+                        p.label,
+                        color = when {
+                            selected -> DS.Green
+                            enabled -> DS.Text
+                            else -> DS.Hint
+                        },
+                        fontSize = 15.sp,
+                        fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                        modifier = Modifier.clickable(enabled = enabled) { onPlatform(p.id) }
+                    )
                 }
+            } else {
+                items(singleSourceTabs) { label ->
+                    val selected = label == singleSourceTabs.first()
+                    Text(
+                        label,
+                        color = if (selected) DS.Green else DS.Text,
+                        fontSize = 15.sp,
+                        fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
+                        maxLines = 1,
+                        modifier = if (selected) Modifier else Modifier.clickable(onClick = onRandom)
+                    )
+                }
+            }
+            item {
+                Icon(Icons.Rounded.KeyboardArrowDown, null, tint = DS.Text, modifier = Modifier.size(22.dp).clickable(onClick = onRefresh))
             }
         }
 
         val alertText = when {
             message != null -> listOf(message.title, message.text).filter { it.isNotBlank() }.joinToString(" • ")
             remoteError != null -> "Status server: $remoteError"
+            !online -> "${platformLabel(platformId)} sedang gangguan"
             else -> ""
         }
         if (alertText.isNotBlank()) {
             Spacer(Modifier.height(10.dp))
-            Text(alertText, color = DS.Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            HomeTinyAction("Acak", Icons.Rounded.Shuffle, Modifier.weight(1f), onRandom)
-            HomeTinyAction("Cuplikan", Icons.Rounded.PlayCircle, Modifier.weight(1f), onClips)
-            Surface(color = if (online) DS.GreenDim else Color(0x20F59E0B), shape = RoundedCornerShape(50)) {
-                Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = DS.Bg2, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().border(1.dp, DS.Line, RoundedCornerShape(14.dp))) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(7.dp).clip(CircleShape).background(if (online) DS.Green else DS.Amber))
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (online) "Online" else "Gangguan", color = if (online) DS.Green else DS.Amber, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    Spacer(Modifier.width(8.dp))
+                    Text(alertText, color = DS.Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -1046,50 +1079,7 @@ private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier, on
 
 @Composable
 private fun HeroCard(drama: Drama, onClick: (Drama) -> Unit) {
-    Box(
-        Modifier
-            .padding(horizontal = 20.dp, vertical = 8.dp)
-            .height(238.dp)
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .background(DS.Bg3)
-            .clickable { onClick(drama) }
-    ) {
-        AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x22000000), Color.Transparent, Color(0xF2050506)), startY = 30f)))
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xBB050506), Color.Transparent))))
-        Row(Modifier.align(Alignment.TopStart).padding(14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Surface(color = DS.White, shape = RoundedCornerShape(50)) {
-                Text("Pilihan", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
-            }
-            Surface(color = Color(0x66000000), shape = RoundedCornerShape(50)) {
-                Text(platformLabel(drama.platform), color = DS.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
-            }
-        }
-        Column(Modifier.align(Alignment.BottomStart).padding(18.dp)) {
-            Text(drama.title, color = DS.White, fontSize = 25.sp, fontWeight = FontWeight.Black, lineHeight = 29.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(7.dp))
-            Text(
-                drama.description.take(110).ifBlank { "Dari ${platformLabel(drama.platform)}" },
-                color = DS.Text,
-                fontSize = 12.sp,
-                lineHeight = 17.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.height(13.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = DS.Green, shape = RoundedCornerShape(50)) {
-                    Row(Modifier.padding(horizontal = 15.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Tonton", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
-                    }
-                }
-                Text("${drama.episodes.coerceAtLeast(1)} Episode", color = DS.Text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
+    DiscoverDramaCard(drama = drama, isNew = false, onClick = onClick, modifier = Modifier.padding(horizontal = 20.dp))
 }
 
 @Composable
@@ -1116,22 +1106,45 @@ private fun ContinueCard(h: HistoryItem, onClick: (HistoryItem) -> Unit) {
 
 @Composable
 private fun DramaCard(drama: Drama, onClick: (Drama) -> Unit, modifier: Modifier = Modifier.width(120.dp)) {
-    Column(modifier.clickable { onClick(drama) }) {
-        Box {
-            PosterImage(drama.poster, drama.title, Modifier.fillMaxWidth().aspectRatio(0.70f))
-            Surface(color = Color(0xCC050506), shape = RoundedCornerShape(8.dp), modifier = Modifier.align(Alignment.BottomStart).padding(7.dp)) {
-                Text(platformLabel(drama.platform), color = DS.White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
+    DiscoverDramaCard(drama = drama, isNew = false, onClick = onClick, modifier = modifier)
+}
+
+@Composable
+private fun DiscoverDramaCard(
+    drama: Drama,
+    isNew: Boolean,
+    onClick: (Drama) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(DS.Bg2)
+            .clickable { onClick(drama) }
+    ) {
+        Box(Modifier.fillMaxWidth().aspectRatio(0.72f)) {
+            AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0x66000000)), startY = 260f)))
+            if (isNew) {
+                Surface(color = Color(0xFFFFC4F6), shape = RoundedCornerShape(8.dp), modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)) {
+                    Text("Baru", color = Color(0xFF1A1018), fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                }
             }
-            if (drama.episodes > 0) {
-                Surface(color = DS.Green, shape = RoundedCornerShape(8.dp), modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)) {
-                    Text("${drama.episodes}", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
+            if (drama.views.isNotBlank()) {
+                Surface(color = Color(0x88000000), shape = RoundedCornerShape(8.dp), modifier = Modifier.align(Alignment.BottomStart).padding(8.dp)) {
+                    Text(drama.views, color = DS.White, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(drama.title.ifBlank { "Tanpa Judul" }, color = DS.White, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(3.dp))
-        Text(drama.description.ifBlank { "Drama" }, color = DS.Muted, fontSize = 10.sp, lineHeight = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.fillMaxWidth().background(DS.Bg2).padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(drama.title.ifBlank { "Tanpa Judul" }, color = DS.White, fontSize = 15.sp, fontWeight = FontWeight.Black, lineHeight = 20.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(5.dp))
+            val meta = listOfNotNull(
+                platformLabel(drama.platform).takeIf { it.isNotBlank() },
+                if (drama.episodes > 0) "${drama.episodes} episode" else null
+            ).joinToString(" | ")
+            Text(meta.ifBlank { drama.description.ifBlank { "Drama" } }, color = DS.Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
