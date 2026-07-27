@@ -18,7 +18,7 @@ enum class HomeCategory(
     ShortDrama(
         id = "short_drama",
         title = "Short Drama",
-        subtitle = "Tonton Short Drama",
+        subtitle = "Episode pendek buat jeda cepat",
         platforms = listOf(
             "melolo", "freereels", "flickreels", "dramanova",
             "reelshort", "netshort", "dramabox", "goodshort"
@@ -26,20 +26,20 @@ enum class HomeCategory(
     ),
     MovieDrama(
         id = "movie_drama",
-        title = "Movie Drama",
-        subtitle = "Serial Korea & China",
+        title = "Drama Asia",
+        subtitle = "Serial Korea & China buat maraton",
         platforms = listOf("drakor")
     ),
     MovieBox(
         id = "movie_box",
         title = "Movie Box",
-        subtitle = "Film layar lebar",
+        subtitle = "Film layar lebar buat santai",
         platforms = listOf("moviebox")
     ),
     Anime(
         id = "anime",
         title = "Anime",
-        subtitle = "Streaming Anime",
+        subtitle = "Slot anime sedang disiapkan",
         platforms = emptyList(),
         comingSoon = true
     ),
