@@ -2201,15 +2201,26 @@ private object VideoCache {
     }
 }
 
-private fun buildPlayer(ctx: Context): ExoPlayer {
+private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = emptyMap()): ExoPlayer {
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15_000).setReadTimeoutMs(30_000)
+    if (requestHeaders.isNotEmpty()) http.setDefaultRequestProperties(requestHeaders)
     val cache = CacheDataSource.Factory().setCache(VideoCache.get(ctx)).setUpstreamDataSourceFactory(http).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     return ExoPlayer.Builder(ctx)
         .setRenderersFactory(DefaultRenderersFactory(ctx).setEnableDecoderFallback(true))
         .setTrackSelector(DefaultTrackSelector(ctx).apply { setParameters(buildUponParameters().setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)) })
         .setMediaSourceFactory(DefaultMediaSourceFactory(cache)).build()
+}
+
+private fun streamHeaders(platformId: String): Map<String, String> = when (platformId) {
+    "drakor" -> mapOf(
+        "Accept" to "*/*",
+        "Referer" to "https://drakor.id/",
+        "Origin" to "https://drakor.id",
+        "Cookie" to "DRIVE_STREAM=drakor.id"
+    )
+    else -> emptyMap()
 }
 
 private fun playerError(e: PlaybackException): String {
@@ -2231,7 +2242,8 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
     val act = ctx as? Activity
     val compAct = ctx as? ComponentActivity
     val pager = rememberPagerState(pageCount = { items.size })
-    val player = remember { buildPlayer(ctx) }
+    val clipHeaders = remember(items) { if (items.any { it.platform == "drakor" }) streamHeaders("drakor") else emptyMap() }
+    val player = remember(clipHeaders) { buildPlayer(ctx, clipHeaders) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var curDetail by remember { mutableStateOf<Detail?>(null) }
@@ -2347,7 +2359,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     val scope = rememberCoroutineScope()
     val total = episodeCount(detail).coerceAtLeast(1)
     val pager = rememberPagerState(initialPage = (startEp - 1).coerceIn(0, total - 1), pageCount = { total })
-    val player = remember { buildPlayer(ctx) }
+    val player = remember(detail.drama.platform) { buildPlayer(ctx, streamHeaders(detail.drama.platform)) }
     val preferLandscape = remember(detail.drama.platform, detail.drama.subjectType) { prefersLandscapePlayback(detail.drama) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -2599,11 +2611,13 @@ private fun SideBtn(icon: ImageVector, label: String, onClick: () -> Unit) {
 private fun prefersLandscapePlayback(drama: Drama): Boolean = drama.platform == "moviebox" || drama.platform == "drakor"
 
 private fun buildMediaItem(s: StreamResult): MediaItem {
-    val b = MediaItem.Builder().setUri(Uri.parse(s.url))
-    if (s.url.lowercase().contains("m3u8")) b.setMimeType(MimeTypes.APPLICATION_M3U8)
-    if (s.subtitle.isNotBlank()) {
-        val mime = if (s.subtitle.lowercase().endsWith(".vtt")) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
-        b.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.subtitle)).setMimeType(mime).setLanguage("id").setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
+    val url = cleanUrl(s.url)
+    val b = MediaItem.Builder().setUri(Uri.parse(url))
+    if (url.lowercase().contains("m3u8")) b.setMimeType(MimeTypes.APPLICATION_M3U8)
+    val subtitle = cleanUrl(s.subtitle)
+    if (subtitle.isNotBlank()) {
+        val mime = if (subtitle.lowercase().endsWith(".vtt")) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+        b.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle)).setMimeType(mime).setLanguage("id").setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
     }
     return b.build()
 }
@@ -3094,5 +3108,12 @@ private fun JSONObject.coverUrl(): String { val c = opt("cover"); return if (c i
 private fun subtitleFrom(arr: JSONArray?): String { val list = arr?.objects().orEmpty(); return (list.firstOrNull { it.stringAny("language", "lang").startsWith("id", true) } ?: list.firstOrNull())?.stringAny("url", "label").orEmpty() }
 private fun fixImg(u: String): String { if (u.contains("fizzopic.org") && u.contains(".heic")) { val m = Regex("novel-images-apsoutheast/([a-f0-9]+)~").find(u); if (m != null) return "https://p19-novel-sg.ibyteimg.com/img/novel-images-sg/${m.groupValues[1]}~tplv-resize:570:810.jpg" }; return u }
 private fun cleanText(s: String) = s.replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ").trim()
+private fun cleanUrl(u: String): String {
+    val t = u.trim()
+    if (t.startsWith("[") && t.contains("](http")) {
+        Regex("\\]\\((https?://[^)]+)\\)").find(t)?.let { return it.groupValues[1] }
+    }
+    return t
+}
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 private fun normalizeKey(s: String) = s.lowercase().replace(Regex("[^a-z0-9\\p{L}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
