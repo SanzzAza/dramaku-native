@@ -572,6 +572,14 @@ private fun HomeScreen(
                     item { EmptyState("Belum ada judul", "Coba refresh atau pindah sumber dulu", Icons.Rounded.Movie) }
                 } else {
                     item { HeroCard(all.first(), onDrama) }
+                    if (history.isNotEmpty()) item {
+                        Section("Lanjutkan menonton", "Lanjut dari tempat terakhir") {
+                            LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                items(history.take(8), key = { it.platform + it.id }) { watched -> ContinueCard(watched, onResume) }
+                            }
+                        }
+                    }
+
                     item {
                         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 26.dp, bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
                             Column(Modifier.weight(1f)) {
@@ -599,14 +607,6 @@ private fun HomeScreen(
                                 repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
                             }
                             Spacer(Modifier.height(16.dp))
-                        }
-                    }
-                }
-
-                if (history.isNotEmpty()) item {
-                    Section("Lanjutkan", "Terakhir kamu tonton") {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                            items(history.take(8), key = { it.platform + it.id }) { h -> ContinueCard(h, onResume) }
                         }
                     }
                 }
