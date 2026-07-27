@@ -2039,6 +2039,11 @@ private fun streamHeaders(platformId: String): Map<String, String> = when (platf
         "Origin" to "https://drakor.id",
         "Cookie" to "DRIVE_STREAM=drakor.id"
     )
+    "moviebox" -> mapOf(
+        "Accept" to "video/mp4,video/*;q=0.9,*/*;q=0.8",
+        "Referer" to "https://www.moviebox.ng/",
+        "Origin" to "https://www.moviebox.ng"
+    )
     else -> emptyMap()
 }
 
@@ -2061,7 +2066,13 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
     val act = ctx as? Activity
     val compAct = ctx as? ComponentActivity
     val pager = rememberPagerState(pageCount = { items.size })
-    val clipHeaders = remember(items) { if (items.any { it.platform == "drakor" }) streamHeaders("drakor") else emptyMap() }
+    val clipHeaders = remember(items) {
+        when {
+            items.any { it.platform == "drakor" } -> streamHeaders("drakor")
+            items.any { it.platform == "moviebox" } -> streamHeaders("moviebox")
+            else -> emptyMap()
+        }
+    }
     val player = remember(clipHeaders) { buildPlayer(ctx, clipHeaders) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -2432,7 +2443,11 @@ private fun prefersLandscapePlayback(drama: Drama): Boolean = drama.platform == 
 private fun buildMediaItem(s: StreamResult): MediaItem {
     val url = cleanUrl(s.url)
     val b = MediaItem.Builder().setUri(Uri.parse(url))
-    if (url.lowercase().contains("m3u8")) b.setMimeType(MimeTypes.APPLICATION_M3U8)
+    val lower = url.lowercase()
+    when {
+        lower.contains("m3u8") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
+        lower.contains(".mp4") -> b.setMimeType(MimeTypes.APPLICATION_MP4)
+    }
     val subtitle = cleanUrl(s.subtitle)
     if (subtitle.isNotBlank()) {
         val mime = if (subtitle.lowercase().endsWith(".vtt")) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
@@ -2618,48 +2633,62 @@ private class DramakuRepository {
             }
             "moviebox" -> {
                 val resolutions = listOf(res, 720, 1080, 480, 360).distinct()
+                fun linkOf(o: JSONObject?): String = cleanUrl(o?.stringAny("resourceLink").orEmpty())
+                fun subOf(o: JSONObject?): String = cleanUrl(o?.optJSONObject("subtitle")?.stringAny("url").orEmpty())
+                fun codecOf(o: JSONObject?): String = o?.stringAny("codecName", "codec").orEmpty().lowercase()
+
                 if (drama.subjectType == 2) {
-                    // Series: request tanpa resolution filter, filter episode & codec di client
-                    var url = ""; var sub = ""
+                    // Series MovieBox kadang balas HEVC untuk beberapa episode.
+                    // Cari H264 dulu dari beberapa resolution endpoint, fallback ke link yang tersedia.
+                    var fallbackUrl = ""
+                    var fallbackSub = ""
+                    var fallbackCodec = ""
                     for (r in resolutions) {
-                        val j = runCatching { getJson("$base/download-series?subjectId=${enc(id)}&se=1&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
-                        val eps = j.optJSONArray("episodes")?.objects().orEmpty()
-                        // Cari episode yang benar
-                        val target = eps.firstOrNull { it.intAny("ep", 1) == ep } ?: eps.firstOrNull()
-                        if (target == null) continue
-                        val link = target.stringAny("resourceLink").orEmpty()
-                        if (link.isBlank()) continue
-                        // Prioritas: H264 > HEVC
-                        val codec = target.stringAny("codecName").lowercase()
-                        url = link
-                        sub = target.optJSONObject("subtitle")?.stringAny("url").orEmpty()
-                        if (codec.contains("h264")) break // H264 ditemukan, stop
-                        // Kalau HEVC, coba resolution lain untuk cari H264
+                        val data = runCatching { getJson("$base/download-series?subjectId=${enc(id)}&se=1&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
+                        val eps = data.optJSONArray("episodes")?.objects().orEmpty()
+                        val candidates = eps.filter { it.intAny("ep", 1) == ep }.ifEmpty { listOfNotNull(eps.getOrNull(ep - 1), eps.firstOrNull()) }
+                            .filter { linkOf(it).isNotBlank() }
+                        val picked = candidates.firstOrNull { codecOf(it).contains("h264") }
+                            ?: candidates.firstOrNull { !codecOf(it).contains("hevc") }
+                            ?: candidates.firstOrNull()
+                        if (picked != null) {
+                            val pickedUrl = linkOf(picked)
+                            val pickedSub = subOf(picked)
+                            val pickedCodec = codecOf(picked)
+                            if (pickedCodec.contains("h264")) return StreamResult(pickedUrl, pickedSub)
+                            if (fallbackUrl.isBlank()) {
+                                fallbackUrl = pickedUrl
+                                fallbackSub = pickedSub
+                                fallbackCodec = pickedCodec
+                            }
+                        }
                     }
-                    // Fallback: kalau semua HEVC, pakai yang pertama
-                    if (url.isBlank()) {
-                        val j = runCatching { getJson("$base/download-series?subjectId=${enc(id)}&se=1&resolution=720").optJSONObject("data") }.getOrNull()
-                        val eps = j?.optJSONArray("episodes")?.objects().orEmpty()
-                        val target = eps.firstOrNull { it.intAny("ep", 1) == ep } ?: eps.firstOrNull()
-                        url = target?.stringAny("resourceLink").orEmpty()
-                        sub = target?.optJSONObject("subtitle")?.stringAny("url").orEmpty()
+                    if (fallbackUrl.isNotBlank() && fallbackCodec.contains("hevc")) {
+                        // Tetap return HEVC sebagai fallback; player akan kasih pesan decoder kalau device tidak support.
+                        return StreamResult(fallbackUrl, fallbackSub)
                     }
-                    StreamResult(url, sub)
+                    StreamResult(fallbackUrl, fallbackSub)
                 } else {
-                    // Movie: cari H264 dulu
-                    var url = ""; var sub = ""
+                    // Movie: response bisa berisi 360/480 HEVC + 1080 H264. Ambil H264 dulu.
+                    var fallbackUrl = ""
+                    var fallbackSub = ""
                     for (r in resolutions) {
-                        val j = runCatching { getJson("$base/download-movie?subjectId=${enc(id)}&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
-                        val files = j.optJSONArray("files")?.objects().orEmpty()
-                        // Prioritas: H264 > non-HEVC > apapun
-                        val f = files.firstOrNull { it.stringAny("codecName").contains("h264", true) }
-                            ?: files.firstOrNull { !it.stringAny("codecName").contains("hevc", true) }
+                        val data = runCatching { getJson("$base/download-movie?subjectId=${enc(id)}&resolution=$r").optJSONObject("data") }.getOrNull() ?: continue
+                        val files = data.optJSONArray("files")?.objects().orEmpty().filter { linkOf(it).isNotBlank() }
+                        val picked = files.firstOrNull { codecOf(it).contains("h264") }
+                            ?: files.firstOrNull { !codecOf(it).contains("hevc") }
                             ?: files.firstOrNull()
-                        url = f?.stringAny("resourceLink").orEmpty()
-                        sub = j.optJSONObject("subtitle")?.stringAny("url").orEmpty()
-                        if (url.isNotBlank()) break
+                        if (picked != null) {
+                            val pickedUrl = linkOf(picked)
+                            val pickedSub = cleanUrl(data.optJSONObject("subtitle")?.stringAny("url").orEmpty())
+                            if (codecOf(picked).contains("h264")) return StreamResult(pickedUrl, pickedSub)
+                            if (fallbackUrl.isBlank()) {
+                                fallbackUrl = pickedUrl
+                                fallbackSub = pickedSub
+                            }
+                        }
                     }
-                    StreamResult(url, sub)
+                    StreamResult(fallbackUrl, fallbackSub)
                 }
             }
             "goodshort" -> {
@@ -2929,10 +2958,13 @@ private fun fixImg(u: String): String { if (u.contains("fizzopic.org") && u.cont
 private fun cleanText(s: String) = s.replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ").trim()
 private fun cleanUrl(u: String): String {
     val t = u.trim()
-    if (t.startsWith("[") && t.contains("](http")) {
-        Regex("\\]\\((https?://[^)]+)\\)").find(t)?.let { return it.groupValues[1] }
-    }
-    return t
+    val raw = if (t.startsWith("[") && t.contains("](http")) {
+        Regex("\\]\\((https?://[^)]+)\\)").find(t)?.groupValues?.getOrNull(1) ?: t
+    } else t
+    return raw
+        .replace("&amp;", "&")
+        .replace("\\u0026", "&")
+        .replace(" ", "%20")
 }
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 private fun normalizeKey(s: String) = s.lowercase().replace(Regex("[^a-z0-9\\p{L}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
