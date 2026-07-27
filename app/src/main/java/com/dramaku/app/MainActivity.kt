@@ -236,7 +236,7 @@ private val Platforms = listOf(
     PlatformInfo("netshort", "NetShort", "https://new-api.sonzaix.workers.dev/netshort", "https://netshort.com/assets/logo/logo.png"),
     PlatformInfo("dramabox", "DramaBox", "https://new-api.sonzaix.workers.dev/dramabox", "https://www.google.com/s2/favicons?sz=256&domain=dramaboxapp.com"),
     PlatformInfo("goodshort", "GoodShort", "https://new-api.sonzaix.workers.dev/goodshort", "https://acfs3.goodshort.com/dist/src/assets/images/pc/common/1b3b5f4e-logo.png"),
-    PlatformInfo("moviebox", "MovieBox", "https://new-api.sonzaix.workers.dev/moviebox", "https://www.google.com/s2/favicons?sz=256&domain=moviebox.ng"),
+    PlatformInfo("moviebox", "MovieBox", "https://api.sonzaix.indevs.in/moviebox", "https://www.google.com/s2/favicons?sz=256&domain=moviebox.ng"),
     PlatformInfo("drakor", "Drakor", "https://new-api.sonzaix.workers.dev/drama", "https://www.google.com/s2/favicons?sz=256&domain=drakor.id")
 )
 
@@ -2638,7 +2638,15 @@ private class DramakuRepository {
             }
             "moviebox" -> {
                 val resolutions = listOf(res, 720, 1080, 480, 360).distinct()
-                fun linkOf(o: JSONObject?): String = cleanUrl(o?.stringAny("resourceLink").orEmpty())
+                var sawExpiredLink = false
+                fun linkOf(o: JSONObject?): String {
+                    val u = cleanUrl(o?.stringAny("resourceLink").orEmpty())
+                    if (u.isNotBlank() && isExpiredSignedUrl(u)) {
+                        sawExpiredLink = true
+                        return ""
+                    }
+                    return u
+                }
                 fun subOf(o: JSONObject?): String = cleanUrl(o?.optJSONObject("subtitle")?.stringAny("url").orEmpty())
                 fun codecOf(o: JSONObject?): String = o?.stringAny("codecName", "codec").orEmpty().lowercase()
 
@@ -2672,6 +2680,7 @@ private class DramakuRepository {
                         // Tetap return HEVC sebagai fallback; player akan kasih pesan decoder kalau device tidak support.
                         return StreamResult(fallbackUrl, fallbackSub)
                     }
+                    if (fallbackUrl.isBlank() && sawExpiredLink) error("MovieBox sedang mengirim link video yang sudah expired. Tekan Retry nanti atau coba judul lain dulu.")
                     StreamResult(fallbackUrl, fallbackSub)
                 } else {
                     // Movie: response bisa berisi 360/480 HEVC + 1080 H264. Ambil H264 dulu.
@@ -2693,6 +2702,7 @@ private class DramakuRepository {
                             }
                         }
                     }
+                    if (fallbackUrl.isBlank() && sawExpiredLink) error("MovieBox sedang mengirim link video yang sudah expired. Tekan Retry nanti atau coba judul lain dulu.")
                     StreamResult(fallbackUrl, fallbackSub)
                 }
             }
@@ -2975,6 +2985,13 @@ private fun cleanUrl(u: String): String {
         .replace("\\u0026", "&")
         .replace("http://sulao.montagehub.xyz", "https://sulao.montagehub.xyz")
         .replace(" ", "%20")
+}
+private fun isExpiredSignedUrl(url: String, bufferSeconds: Long = 45L): Boolean {
+    val now = System.currentTimeMillis() / 1000L
+    val match = Regex("[?&](?:t|expires|expiredTime)=([0-9]{10,13})").find(url) ?: return false
+    val raw = match.groupValues[1].toLongOrNull() ?: return false
+    val expiresAt = if (raw > 9_999_999_999L) raw / 1000L else raw
+    return expiresAt <= now + bufferSeconds
 }
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 private fun normalizeKey(s: String) = s.lowercase().replace(Regex("[^a-z0-9\\p{L}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
