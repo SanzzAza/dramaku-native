@@ -189,12 +189,12 @@ private fun DramakuApp() {
 // ─────────────────────────────────────────────────────────────────
 
 private enum class Tab(val label: String, val icon: ImageVector, val showNav: Boolean = true) {
-    Clips("Cuplikan", Icons.Rounded.PlayCircle),
-    Home("Temukan", Icons.Rounded.Home),
-    Rewards("Hadiah", Icons.Rounded.CardGiftcard),
-    Library("Daftar Saya", Icons.Rounded.Bookmark),
+    Clips("Cuplikan", Icons.Rounded.PlayCircle, false),
+    Home("Beranda", Icons.Rounded.Home),
+    Rewards("Hadiah", Icons.Rounded.CardGiftcard, false),
+    Library("Koleksi", Icons.Rounded.Bookmark),
     Profile("Profil", Icons.Rounded.Person),
-    Search("Cari", Icons.Rounded.Search, false)
+    Search("Cari", Icons.Rounded.Search)
 }
 
 private data class PlatformInfo(val id: String, val label: String, val base: String, val logoUrl: String = "", val logoRes: Int = 0)
@@ -571,17 +571,18 @@ private fun HomeScreen(
                 if (all.isEmpty()) {
                     item { EmptyState("Belum ada judul", "Coba refresh atau pindah sumber dulu", Icons.Rounded.Movie) }
                 } else {
+                    item { HeroCard(all.first(), onDrama) }
                     item {
-                        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.Bottom) {
+                        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 26.dp, bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
                             Column(Modifier.weight(1f)) {
-                                Text("Temukan", color = DS.White, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.4).sp)
-                                Text("${platformLabel(platformId)} • ${all.size} judul", color = DS.Muted, fontSize = 11.sp)
+                                Text("Pilihan untukmu", color = DS.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+                                Text("${platformLabel(platformId)} · ${all.size} judul", color = DS.Muted, fontSize = 11.sp)
                             }
-                            Text("Lihat semua", color = DS.Green, fontSize = 12.sp, fontWeight = FontWeight.Black, modifier = Modifier.clickable(onClick = onRandom))
+                            Text("Acak", color = DS.Green, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onRandom))
                         }
                     }
 
-                    all.chunked(2).forEachIndexed { index, row ->
+                    all.drop(1).chunked(2).forEachIndexed { index, row ->
                         item(key = "grid_${platformId}_${data.loadedPage}_$index") {
                             Row(
                                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -823,92 +824,52 @@ private fun HomeHeader(
     onClips: () -> Unit,
     onPlatform: (String) -> Unit
 ) {
-    val message = remoteConfig?.message?.takeIf { it.enabled }
     val selectedState = remoteConfig?.platform(platformId)
     val online = selectedState?.enabled ?: true
-    val singleSourceTabs = when (platformId) {
-        "moviebox" -> listOf("MovieBox", "Indonesia", "Horror", "Asia", "Animasi", "Baru")
-        "drakor" -> listOf("Drama Asia", "Korea", "China", "Terbaru", "Populer")
-        else -> listOf(platformLabel(platformId), "Populer", "Baru", "Romantis", "Aksi", "Fantasi")
-    }
+    val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
+    val greeting = when (hour) { in 5..10 -> "Selamat pagi"; in 11..14 -> "Selamat siang"; in 15..17 -> "Selamat sore"; else -> "Selamat malam" }
+    val alert = remoteConfig?.message?.takeIf { it.enabled }?.let { listOf(it.title, it.text).filter { it.isNotBlank() }.joinToString(" · ") }
+        ?: remoteError?.let { "Status server: $it" }
+        ?: if (!online) "${platformLabel(platformId)} sedang gangguan" else ""
 
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                color = DS.Bg3,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.weight(1f).height(56.dp).border(1.dp, DS.Line, RoundedCornerShape(18.dp)).clickable(onClick = onSearch)
-            ) {
-                Row(Modifier.fillMaxSize().padding(horizontal = 15.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Search, null, tint = DS.Text, modifier = Modifier.size(24.dp))
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "Cari drama favoritmu",
-                        color = DS.Muted,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Box(Modifier.width(1.dp).height(26.dp).background(DS.Line))
-                    Text("Cari", color = DS.White, fontSize = 14.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 14.dp))
+    Column(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(greeting, color = DS.Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.height(2.dp))
+                Text("Dramaku", color = DS.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.8).sp)
+            }
+            HeaderCircleButton(Icons.Rounded.Search, "Cari", onSearch)
+            Spacer(Modifier.width(9.dp))
+            HeaderCircleButton(Icons.Rounded.Refresh, "Muat ulang", onRefresh)
+        }
+        Spacer(Modifier.height(18.dp))
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items(chips, key = { it.id }) { source ->
+                val selected = source.id == platformId
+                val enabled = remoteConfig?.platform(source.id)?.enabled ?: true
+                Surface(
+                    color = if (selected) DS.Green else DS.Bg3,
+                    contentColor = if (selected) Color.White else DS.Text,
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.border(if (selected) 0.dp else 1.dp, DS.Line, RoundedCornerShape(10.dp))
+                        .clickable(enabled = enabled) { onPlatform(source.id) }
+                ) {
+                    Text(source.label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 9.dp))
                 }
             }
-            Spacer(Modifier.width(10.dp))
-            HeaderCircleButton(Icons.Rounded.Refresh, "Refresh", onRefresh)
         }
-
-        Spacer(Modifier.height(15.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (chips.size > 1) {
-                items(chips, key = { it.id }) { p ->
-                    val selected = p.id == platformId
-                    val enabled = remoteConfig?.platform(p.id)?.enabled ?: true
-                    Text(
-                        p.label,
-                        color = when {
-                            selected -> DS.Green
-                            enabled -> DS.Text
-                            else -> DS.Hint
-                        },
-                        fontSize = 15.sp,
-                        fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                        modifier = Modifier.clickable(enabled = enabled) { onPlatform(p.id) }
-                    )
-                }
-            } else {
-                items(singleSourceTabs) { label ->
-                    val selected = label == singleSourceTabs.first()
-                    Text(
-                        label,
-                        color = if (selected) DS.Green else DS.Text,
-                        fontSize = 15.sp,
-                        fontWeight = if (selected) FontWeight.Black else FontWeight.SemiBold,
-                        maxLines = 1,
-                        modifier = if (selected) Modifier else Modifier.clickable(onClick = onRandom)
-                    )
-                }
-            }
-            item {
-                Icon(Icons.Rounded.KeyboardArrowDown, null, tint = DS.Text, modifier = Modifier.size(22.dp).clickable(onClick = onRefresh))
-            }
-        }
-
-        val alertText = when {
-            message != null -> listOf(message.title, message.text).filter { it.isNotBlank() }.joinToString(" • ")
-            remoteError != null -> "Status server: $remoteError"
-            !online -> "${platformLabel(platformId)} sedang gangguan"
-            else -> ""
-        }
-        if (alertText.isNotBlank()) {
-            Spacer(Modifier.height(10.dp))
-            Surface(color = DS.Bg2, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().border(1.dp, DS.Line, RoundedCornerShape(14.dp))) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (online) DS.Green else DS.Amber))
-                    Spacer(Modifier.width(8.dp))
-                    Text(alertText, color = DS.Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
+        if (alert.isNotBlank()) {
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(6.dp).clip(CircleShape).background(if (online) DS.Amber else DS.Red))
+                Spacer(Modifier.width(7.dp))
+                Text(alert, color = DS.Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -1083,7 +1044,28 @@ private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier, on
 
 @Composable
 private fun HeroCard(drama: Drama, onClick: (Drama) -> Unit) {
-    DiscoverDramaCard(drama = drama, isNew = false, onClick = onClick, modifier = Modifier.padding(horizontal = 20.dp))
+    Box(
+        Modifier.fillMaxWidth().height(360.dp).clickable { onClick(drama) }
+    ) {
+        AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x10000000), Color(0x30000000), DS.Bg), startY = 0f, endY = 850f)))
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(DS.Bg.copy(alpha = 0.42f), Color.Transparent))))
+        Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 20.dp, vertical = 20.dp)) {
+            Text(platformLabel(drama.platform).uppercase(), color = DS.Warm, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(drama.title, color = DS.White, fontSize = 28.sp, lineHeight = 31.sp, fontWeight = FontWeight.Black, letterSpacing = (-1).sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(7.dp))
+            Text(listOfNotNull(drama.views.takeIf { it.isNotBlank() }, drama.episodes.takeIf { it > 0 }?.let { "$it episode" }).joinToString("  ·  ").ifBlank { "Pilihan untuk malam ini" }, color = DS.Text, fontSize = 12.sp)
+            Spacer(Modifier.height(15.dp))
+            Surface(color = DS.White, contentColor = DS.Bg, shape = RoundedCornerShape(10.dp)) {
+                Row(Modifier.padding(horizontal = 15.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Mulai nonton", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 @Composable
