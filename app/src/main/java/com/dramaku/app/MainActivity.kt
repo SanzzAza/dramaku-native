@@ -117,25 +117,25 @@ import kotlin.math.min
 // ─────────────────────────────────────────────────────────────────
 
 private object DS {
-    // Backgrounds — midnight cinema, lembut di mata
-    val Bg = Color(0xFF070A12)
-    val Bg2 = Color(0xFF0D1220)
-    val Bg3 = Color(0xFF141B2A)
-    val Bg4 = Color(0xFF20283A)
-    val Line = Color(0x1AFFFFFF)
+    // Graphite cinema — gelap, bersih, tidak ramai
+    val Bg = Color(0xFF050506)
+    val Bg2 = Color(0xFF0E1014)
+    val Bg3 = Color(0xFF171A20)
+    val Bg4 = Color(0xFF242833)
+    val Line = Color(0x1FFFFFFF)
 
-    // Brand — tetap bold, tapi tidak terlalu neon/AI
-    val Green = Color(0xFFFF4D6D)
-    val GreenDark = Color(0xFFE43D5C)
-    val GreenDim = Color(0xFFFF4D6D).copy(alpha = 0.14f)
-    val Warm = Color(0xFFFFB86C)
-    val Sky = Color(0xFF7DD3FC)
+    // Brand
+    val Green = Color(0xFFFF304F)
+    val GreenDark = Color(0xFFE11D3F)
+    val GreenDim = Color(0xFFFF304F).copy(alpha = 0.14f)
+    val Warm = Color(0xFFF4C56A)
+    val Sky = Color(0xFF9CB5D2)
 
     // Text
-    val White = Color(0xFFF8FAFC)
-    val Text = Color(0xFFD6DEEA)
-    val Muted = Color(0xFF8B98AA)
-    val Hint = Color(0xFF586579)
+    val White = Color(0xFFF7F7F8)
+    val Text = Color(0xFFD5D8DF)
+    val Muted = Color(0xFF8E95A3)
+    val Hint = Color(0xFF596171)
 
     // Semantic
     val Red = Color(0xFFEF4444)
@@ -143,10 +143,10 @@ private object DS {
     val Amber = Color(0xFFF59E0B)
 
     // Gradients
-    val GreenGrad = listOf(Color(0xFFFF4D6D), Color(0xFFFFB86C))
-    val CardGrad = listOf(Color(0xFF151D2E), Color(0xFF0B1020))
-    val OverlayBottom = listOf(Color.Transparent, Color(0xE6070A12))
-    val OverlayFull = listOf(Color.Transparent, Color.Transparent, Color(0xC4070A12))
+    val GreenGrad = listOf(Color(0xFFFF304F), Color(0xFFFF6A3D))
+    val CardGrad = listOf(Color(0xFF171A20), Color(0xFF0E1014))
+    val OverlayBottom = listOf(Color.Transparent, Color(0xEE050506))
+    val OverlayFull = listOf(Color.Transparent, Color.Transparent, Color(0xCC050506))
 }
 // ─────────────────────────────────────────────────────────────────
 // APP ENTRY
@@ -459,50 +459,43 @@ private fun App() {
 
 @Composable
 private fun BottomNavBar(selected: Tab, onSelect: (Tab) -> Unit) {
-    Box(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
-        Surface(
-            color = Color(0xE60A1020),
-            tonalElevation = 0.dp,
-            shape = RoundedCornerShape(28.dp),
-            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(28.dp))
-        ) {
+    Surface(color = DS.Bg.copy(alpha = 0.96f), tonalElevation = 0.dp) {
+        Column {
+            Box(Modifier.fillMaxWidth().height(0.6.dp).background(DS.Line))
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Tab.values().filter { it.showNav }.forEach { t ->
                     val active = t == selected
-                    if (active) {
-                        Surface(
-                            color = DS.Green,
-                            shape = RoundedCornerShape(22.dp),
-                            modifier = Modifier.weight(1.28f).height(50.dp).clickable { onSelect(t) }
-                        ) {
-                            Row(
-                                Modifier.fillMaxSize().padding(horizontal = 12.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(t.icon, contentDescription = t.label, tint = Color.Black, modifier = Modifier.size(21.dp))
-                                Spacer(Modifier.width(7.dp))
-                                Text(t.label, color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                            }
-                        }
-                    } else {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(50.dp)
-                                .clip(RoundedCornerShape(20.dp))
-                                .clickable { onSelect(t) }
-                                .padding(top = 7.dp)
-                        ) {
-                            Icon(t.icon, contentDescription = t.label, tint = DS.Hint, modifier = Modifier.size(21.dp))
-                            Spacer(Modifier.height(3.dp))
-                            Text(t.label, color = DS.Hint, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                        }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onSelect(t) }
+                            .padding(vertical = 6.dp)
+                    ) {
+                        Icon(
+                            t.icon,
+                            contentDescription = t.label,
+                            tint = if (active) DS.Green else DS.Hint,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            t.label,
+                            color = if (active) DS.White else DS.Hint,
+                            fontSize = 10.sp,
+                            fontWeight = if (active) FontWeight.Black else FontWeight.SemiBold,
+                            maxLines = 1
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Box(
+                            Modifier.width(if (active) 18.dp else 0.dp).height(2.5.dp)
+                                .clip(RoundedCornerShape(50)).background(if (active) DS.Green else Color.Transparent)
+                        )
                     }
                 }
             }
@@ -634,7 +627,7 @@ HomeHeader(
 }
 
 // ─────────────────────────────────────────────────────────────────
-// CATEGORY HOME — layar awal pintu masuk, lebih editorial & manusiawi
+// CATEGORY HOME — clean entry screen
 // ─────────────────────────────────────────────────────────────────
 
 @Composable
@@ -643,151 +636,79 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
     val greeting = remember { Greetings.forHour(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
     Box(Modifier.fillMaxSize().background(DS.Bg)) {
         Box(
-            Modifier.fillMaxWidth().height(360.dp)
-                .background(Brush.verticalGradient(listOf(Color(0x33FF4D6D), Color.Transparent)))
+            Modifier.align(Alignment.TopEnd).size(220.dp).offset(x = 80.dp, y = (-80).dp)
+                .clip(CircleShape).background(DS.Green.copy(alpha = 0.10f))
         )
-        Box(
-            Modifier.align(Alignment.TopEnd).size(210.dp).offset(x = 70.dp, y = (-48).dp)
-                .clip(CircleShape).background(DS.Green.copy(alpha = 0.13f))
-        )
-        Box(
-            Modifier.align(Alignment.TopStart).size(180.dp).offset(x = (-64).dp, y = 140.dp)
-                .clip(CircleShape).background(DS.Sky.copy(alpha = 0.08f))
-        )
-
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
         ) {
-            Spacer(Modifier.height(42.dp))
+            Spacer(Modifier.height(40.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                BrandLogoMini(Modifier.size(48.dp))
+                BrandLogoMini(Modifier.size(44.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("Dramaku", color = DS.White, fontSize = 25.sp, fontWeight = FontWeight.Black)
-                    Text("Nonton singkat, lanjut gampang", color = DS.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Dramaku", color = DS.White, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                    Text("${greeting.text}, mau nonton apa?", color = DS.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
-                IconButton(
-                    onClick = onSettings,
-                    modifier = Modifier.size(44.dp).clip(CircleShape).background(Color(0x16FFFFFF)).border(1.dp, DS.Line, CircleShape)
-                ) {
-                    Icon(Icons.Rounded.Settings, "Pengaturan", tint = DS.Text, modifier = Modifier.size(21.dp))
-                }
+                HeaderCircleButton(Icons.Rounded.Settings, "Pengaturan", onSettings)
             }
 
-            Spacer(Modifier.height(28.dp))
-            Text("${greeting.text}", color = DS.Muted, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Mau nonton apa hari ini?",
-                color = DS.White,
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Black,
-                lineHeight = 38.sp,
-                letterSpacing = (-0.8).sp
+            Spacer(Modifier.height(30.dp))
+            Text("Pilih mode", color = DS.White, fontSize = 34.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.8).sp)
+            Spacer(Modifier.height(6.dp))
+            Text("Langsung masuk ke koleksi yang kamu mau.", color = DS.Muted, fontSize = 13.sp, lineHeight = 19.sp)
+            Spacer(Modifier.height(22.dp))
+
+            CategoryWideCard(
+                category = HomeCategory.ShortDrama,
+                icon = Icons.Rounded.PlayArrow,
+                title = "Short Drama",
+                subtitle = "Episode pendek, enak buat nonton cepat.",
+                accent = DS.Green,
+                onClick = { onSelect(HomeCategory.ShortDrama) }
             )
+            Spacer(Modifier.height(12.dp))
+            CategoryWideCard(
+                category = HomeCategory.MovieDrama,
+                icon = Icons.Rounded.Movie,
+                title = HomeCategory.MovieDrama.title,
+                subtitle = HomeCategory.MovieDrama.subtitle,
+                accent = Color(0xFF60A5FA),
+                onClick = { onSelect(HomeCategory.MovieDrama) }
+            )
+            Spacer(Modifier.height(12.dp))
+            CategoryWideCard(
+                category = HomeCategory.MovieBox,
+                icon = Icons.Rounded.Tv,
+                title = HomeCategory.MovieBox.title,
+                subtitle = HomeCategory.MovieBox.subtitle,
+                accent = DS.Warm,
+                onClick = { onSelect(HomeCategory.MovieBox) }
+            )
+
+            Spacer(Modifier.height(20.dp))
+            Text("Segera hadir", color = DS.Muted, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
             Spacer(Modifier.height(10.dp))
-            Text(
-                "Pilih mode yang paling pas. Short drama buat jeda cepat, serial buat maraton, film buat santai agak lama.",
-                color = DS.Muted,
-                fontSize = 13.sp,
-                lineHeight = 19.sp
-            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CategorySmallCard(HomeCategory.Anime, Icons.Rounded.AutoAwesome, Modifier.weight(1f)) { onSelect(HomeCategory.Anime) }
+                CategorySmallCard(HomeCategory.Manga, Icons.Rounded.MenuBook, Modifier.weight(1f)) { onSelect(HomeCategory.Manga) }
+            }
 
             Spacer(Modifier.height(22.dp))
             Surface(
-                color = Color.Transparent,
-                shape = RoundedCornerShape(30.dp),
-                modifier = Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(Brush.linearGradient(listOf(Color(0xFF151D2E), Color(0xFF0C1220))))
-                    .border(1.dp, DS.Line, RoundedCornerShape(30.dp))
-            ) {
-                Column(Modifier.padding(18.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(DS.GreenGrad)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Rounded.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(25.dp))
-                        }
-                        Spacer(Modifier.width(13.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("Mulai dari kategori", color = DS.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                            Text("Tampilan dibuat lebih clean, fokus ke cover dan tombol nonton.", color = DS.Muted, fontSize = 12.sp, lineHeight = 17.sp)
-                        }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        CategoryInfoPill("10 sumber")
-                        CategoryInfoPill("Player native")
-                        CategoryInfoPill("Riwayat lokal")
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(18.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                CategoryMenuCard(
-                    HomeCategory.ShortDrama,
-                    Icons.Rounded.PlayArrow,
-                    tileColor = DS.Green,
-                    gradient = listOf(Color(0xFF2A111B), Color(0xFF111724)),
-                    modifier = Modifier.weight(1f)
-                ) { onSelect(HomeCategory.ShortDrama) }
-                CategoryMenuCard(
-                    HomeCategory.MovieDrama,
-                    Icons.Rounded.Movie,
-                    tileColor = Color(0xFF60A5FA),
-                    gradient = listOf(Color(0xFF12243D), Color(0xFF0C1422)),
-                    modifier = Modifier.weight(1f)
-                ) { onSelect(HomeCategory.MovieDrama) }
-            }
-            Spacer(Modifier.height(14.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                CategoryMenuCard(
-                    HomeCategory.MovieBox,
-                    Icons.Rounded.Tv,
-                    tileColor = DS.Warm,
-                    gradient = listOf(Color(0xFF2C2111), Color(0xFF111724)),
-                    modifier = Modifier.weight(1f)
-                ) { onSelect(HomeCategory.MovieBox) }
-                CategoryMenuCard(
-                    HomeCategory.Anime,
-                    Icons.Rounded.AutoAwesome,
-                    tileColor = Color(0xFFA78BFA),
-                    gradient = listOf(Color(0xFF24163A), Color(0xFF111724)),
-                    modifier = Modifier.weight(1f)
-                ) { onSelect(HomeCategory.Anime) }
-            }
-            Spacer(Modifier.height(14.dp))
-
-            WideMenuCard(
-                HomeCategory.Manga,
-                Icons.Rounded.MenuBook,
-                tileColor = Color(0xFF8B5CF6),
-                gradient = listOf(Color(0xFF181C2B), Color(0xFF101521))
-            ) { onSelect(HomeCategory.Manga) }
-
-            Spacer(Modifier.height(24.dp))
-            Surface(
                 color = DS.Bg2,
-                shape = RoundedCornerShape(22.dp),
-                modifier = Modifier.fillMaxWidth().border(1.dp, DS.Line, RoundedCornerShape(22.dp)).clickable {
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier.fillMaxWidth().border(1.dp, DS.Line, RoundedCornerShape(18.dp)).clickable {
                     Toast.makeText(ctx, "Link dukungan segera ditambahkan", Toast.LENGTH_SHORT).show()
                 }
             ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Rounded.FavoriteBorder, null, tint = DS.Warm, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Dukung pengembangan Dramaku", color = DS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.FavoriteBorder, null, tint = DS.Green, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text("Dukung pengembangan Dramaku", color = DS.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Icon(Icons.Rounded.ChevronRight, null, tint = DS.Hint, modifier = Modifier.size(18.dp))
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            Text("Dramaku Native • Kotlin + Compose", color = DS.Hint, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(28.dp))
         }
     }
@@ -795,55 +716,64 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
 
 @Composable
 private fun BrandLogoMini(modifier: Modifier = Modifier) {
-    Box(
-        modifier.clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(DS.GreenGrad)),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(Icons.Rounded.PlayArrow, "Dramaku", tint = Color.Black, modifier = Modifier.size(24.dp))
+    Box(modifier.clip(RoundedCornerShape(13.dp)).background(DS.Green), contentAlignment = Alignment.Center) {
+        Icon(Icons.Rounded.PlayArrow, "Dramaku", tint = Color.White, modifier = Modifier.size(23.dp))
     }
 }
 
 @Composable
-private fun CategoryInfoPill(text: String) {
-    Surface(color = Color(0x12FFFFFF), shape = RoundedCornerShape(50)) {
-        Text(text, color = DS.Text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp))
-    }
-}
-
-@Composable
-private fun CategoryMenuCard(
+private fun CategoryWideCard(
     category: HomeCategory,
     icon: ImageVector,
-    tileColor: Color,
-    gradient: List<Color>,
-    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String,
+    accent: Color,
     onClick: () -> Unit
 ) {
-    Column(
-        modifier
-            .height(190.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(gradient))
-            .border(1.dp, DS.Line, RoundedCornerShape(28.dp))
-            .clickable(onClick = onClick)
-            .padding(17.dp)
+    Surface(
+        color = DS.Bg2,
+        shape = RoundedCornerShape(22.dp),
+        modifier = Modifier.fillMaxWidth().border(1.dp, DS.Line, RoundedCornerShape(22.dp)).clickable(onClick = onClick)
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Box(
-                Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(tileColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, category.title, tint = if (tileColor == DS.Warm) Color.Black else Color.White, modifier = Modifier.size(24.dp))
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(accent.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                Icon(icon, title, tint = accent, modifier = Modifier.size(25.dp))
             }
-            Spacer(Modifier.weight(1f))
-            if (category.comingSoon) ComingSoonBadge() else Icon(Icons.Rounded.NorthEast, null, tint = DS.Hint, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(title, color = DS.White, fontSize = 18.sp, fontWeight = FontWeight.Black, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (category.comingSoon) {
+                        Spacer(Modifier.width(8.dp))
+                        ComingSoonBadge()
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(subtitle, color = DS.Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Icon(Icons.Rounded.ChevronRight, null, tint = DS.Hint, modifier = Modifier.size(20.dp))
         }
-        Spacer(Modifier.height(17.dp))
-        Text(category.title, color = DS.White, fontSize = 18.sp, fontWeight = FontWeight.Black, lineHeight = 22.sp)
-        Spacer(Modifier.height(8.dp))
-        Text(category.subtitle, color = DS.Muted, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.weight(1f))
-        Text(if (category.comingSoon) "Belum dibuka" else "Buka kategori", color = if (category.comingSoon) DS.Hint else DS.Text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun CategorySmallCard(category: HomeCategory, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        color = DS.Bg2,
+        shape = RoundedCornerShape(18.dp),
+        modifier = modifier.border(1.dp, DS.Line, RoundedCornerShape(18.dp)).clickable(onClick = onClick)
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, category.title, tint = DS.Muted, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.weight(1f))
+                ComingSoonBadge()
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(category.title, color = DS.White, fontSize = 15.sp, fontWeight = FontWeight.Black)
+            Spacer(Modifier.height(4.dp))
+            Text(category.subtitle, color = DS.Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -851,48 +781,11 @@ private fun CategoryMenuCard(
 private fun ComingSoonBadge() {
     Text(
         "Segera",
-        color = Color(0xFFD6BCFA),
+        color = DS.Hint,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0x16FFFFFF)).padding(horizontal = 10.dp, vertical = 5.dp)
+        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0x12FFFFFF)).padding(horizontal = 8.dp, vertical = 4.dp)
     )
-}
-
-@Composable
-private fun WideMenuCard(
-    category: HomeCategory,
-    icon: ImageVector,
-    tileColor: Color,
-    gradient: List<Color>,
-    onClick: () -> Unit
-) {
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(gradient))
-            .border(1.dp, DS.Line, RoundedCornerShape(28.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 19.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            Modifier.size(50.dp).clip(RoundedCornerShape(16.dp)).background(tileColor),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, category.title, tint = Color.White, modifier = Modifier.size(25.dp))
-        }
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(category.title, color = DS.White, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                Spacer(Modifier.width(8.dp))
-                if (category.comingSoon) ComingSoonBadge()
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(category.subtitle, color = DS.Muted, fontSize = 12.sp, lineHeight = 16.sp)
-        }
-        Icon(Icons.Rounded.ChevronRight, null, tint = DS.Hint, modifier = Modifier.size(22.dp))
-    }
 }
 
 @Composable
@@ -931,46 +824,37 @@ private fun HomeHeader(
 ) {
     val message = remoteConfig?.message?.takeIf { it.enabled }
     val selectedState = remoteConfig?.platform(platformId)
-    val title = category?.title ?: "Temukan"
     val online = selectedState?.enabled ?: true
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp)
-    ) {
+    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (category != null) {
-                HeaderCircleButton(Icons.Rounded.Apps, "Kategori", onExitCategory)
-            } else {
-                BrandLogoMini(Modifier.size(42.dp))
-            }
+            if (category != null) HeaderCircleButton(Icons.Rounded.Apps, "Kategori", onExitCategory) else BrandLogoMini(Modifier.size(40.dp))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("Dramaku", color = DS.Muted, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
-                Text(title, color = DS.White, fontSize = 30.sp, fontWeight = FontWeight.Black, lineHeight = 33.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Dramaku", color = DS.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.5).sp)
+                Text("${category?.title ?: "Beranda"} • ${platformLabel(platformId)}", color = DS.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            HeaderCircleButton(Icons.Rounded.Search, "Cari", onSearch)
+            Spacer(Modifier.width(8.dp))
             HeaderCircleButton(Icons.Rounded.Refresh, "Refresh", onRefresh)
         }
 
-        Spacer(Modifier.height(15.dp))
-        Surface(
-            color = DS.Bg2,
-            shape = RoundedCornerShape(22.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .border(1.dp, DS.Line, RoundedCornerShape(22.dp))
-                .clickable(onClick = onSearch)
-        ) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Search, null, tint = DS.Green, modifier = Modifier.size(23.dp))
-                Spacer(Modifier.width(11.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Cari judul drama", color = DS.White, fontSize = 14.sp, fontWeight = FontWeight.Black)
-                    Text("Sumber aktif: ${platformLabel(platformId)}", color = DS.Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(14.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(chips, key = { it.id }) { p ->
+                val sel = p.id == platformId
+                val st = remoteConfig?.platform(p.id)
+                val enabled = st?.enabled ?: true
+                Surface(
+                    color = if (sel) DS.White else DS.Bg2,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.border(1.dp, if (sel) Color.Transparent else DS.Line, RoundedCornerShape(50)).clickable(enabled = enabled) { onPlatform(p.id) }
+                ) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        PlatformLogo(p.id, Modifier.size(17.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text(p.label, color = if (sel) Color.Black else if (enabled) DS.Text else DS.Hint, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                    }
                 }
-                Box(Modifier.size(8.dp).clip(CircleShape).background(if (online) DS.Green else DS.Amber))
             }
         }
 
@@ -980,47 +864,21 @@ private fun HomeHeader(
             else -> ""
         }
         if (alertText.isNotBlank()) {
-            Spacer(Modifier.height(12.dp))
-            Surface(color = Color(0x12FFFFFF), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().border(1.dp, DS.Line, RoundedCornerShape(16.dp))) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Info, null, tint = DS.Green, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(alertText, color = DS.Text, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-            }
+            Spacer(Modifier.height(10.dp))
+            Text(alertText, color = DS.Muted, fontSize = 11.sp, lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
 
-        Spacer(Modifier.height(14.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Pilih sumber", color = DS.Text, fontSize = 13.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
-            Text("$historyCount riwayat", color = DS.Muted, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(Modifier.height(9.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(chips, key = { it.id }) { p ->
-                val sel = p.id == platformId
-                val st = remoteConfig?.platform(p.id)
-                val enabled = st?.enabled ?: true
-                Surface(
-                    color = if (sel) DS.Green else DS.Bg2,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .border(1.dp, if (sel) Color.Transparent else DS.Line, RoundedCornerShape(18.dp))
-                        .clickable(enabled = enabled) { onPlatform(p.id) }
-                ) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                        PlatformLogo(p.id, Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(p.label, color = if (sel) Color.Black else if (enabled) DS.White else DS.Hint, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1)
-                    }
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            HomeTinyAction("Acak", Icons.Rounded.Shuffle, Modifier.weight(1f), onRandom)
+            HomeTinyAction("Cuplikan", Icons.Rounded.PlayCircle, Modifier.weight(1f), onClips)
+            Surface(color = if (online) DS.GreenDim else Color(0x20F59E0B), shape = RoundedCornerShape(50)) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (online) DS.Green else DS.Amber))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (online) "Online" else "Gangguan", color = if (online) DS.Green else DS.Amber, fontSize = 11.sp, fontWeight = FontWeight.Black)
                 }
             }
-        }
-
-        Spacer(Modifier.height(14.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            CompactQuickAction("Acak", Icons.Rounded.Shuffle, Modifier.weight(1f), onRandom)
-            CompactQuickAction("Cuplikan", Icons.Rounded.PlayCircle, Modifier.weight(1f), onClips)
         }
     }
 }
@@ -1030,9 +888,9 @@ private fun HeaderCircleButton(icon: ImageVector, label: String, onClick: () -> 
     Box(
         Modifier
             .size(40.dp)
-            .clip(CircleShape)
-            .background(Color(0x12FFFFFF))
-            .border(1.dp, DS.Line, CircleShape)
+            .clip(RoundedCornerShape(14.dp))
+            .background(DS.Bg2)
+            .border(1.dp, DS.Line, RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -1052,24 +910,19 @@ private fun HeaderStatChip(text: String, color: Color) {
 }
 
 @Composable
-private fun CompactQuickAction(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
-    Surface(
-        color = DS.Bg2,
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier.height(52.dp).border(1.dp, DS.Line, RoundedCornerShape(20.dp)).clickable(onClick = onClick)
-    ) {
-        Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(34.dp).clip(RoundedCornerShape(13.dp)).background(Brush.linearGradient(DS.GreenGrad)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, null, tint = Color.Black, modifier = Modifier.size(18.dp))
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(label, color = DS.White, fontSize = 13.sp, fontWeight = FontWeight.Black, modifier = Modifier.weight(1f), maxLines = 1)
-            Icon(Icons.Rounded.ChevronRight, null, tint = DS.Hint, modifier = Modifier.size(18.dp))
+private fun HomeTinyAction(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
+    Surface(color = DS.Bg2, shape = RoundedCornerShape(50), modifier = modifier.border(1.dp, DS.Line, RoundedCornerShape(50)).clickable(onClick = onClick)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            Icon(icon, null, tint = DS.Green, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(7.dp))
+            Text(label, color = DS.Text, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 1)
         }
     }
+}
+
+@Composable
+private fun CompactQuickAction(label: String, icon: ImageVector, modifier: Modifier, onClick: () -> Unit) {
+    HomeTinyAction(label, icon, modifier, onClick)
 }
 
 @Composable
@@ -1156,15 +1009,14 @@ private fun Section(title: String, subtitle: String = "", content: @Composable (
     Column(Modifier.padding(top = 24.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.Bottom) {
             Column(Modifier.weight(1f)) {
-                Text(title, color = DS.White, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.4).sp)
+                Text(title, color = DS.White, fontSize = 20.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.3).sp)
                 if (subtitle.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(subtitle, color = DS.Muted, fontSize = 12.sp, lineHeight = 16.sp)
+                    Spacer(Modifier.height(3.dp))
+                    Text(subtitle, color = DS.Muted, fontSize = 11.sp, lineHeight = 15.sp)
                 }
             }
-            Box(Modifier.width(30.dp).height(4.dp).clip(RoundedCornerShape(50)).background(DS.Green))
         }
-        Spacer(Modifier.height(13.dp))
+        Spacer(Modifier.height(12.dp))
         content()
     }
 }
@@ -1194,53 +1046,47 @@ private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier, on
 
 @Composable
 private fun HeroCard(drama: Drama, onClick: (Drama) -> Unit) {
-    Surface(
-        color = Color.Transparent,
-        shape = RoundedCornerShape(30.dp),
-        modifier = Modifier
-            .padding(horizontal = 20.dp, vertical = 6.dp)
+    Box(
+        Modifier
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .height(238.dp)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(30.dp))
-            .background(Brush.linearGradient(listOf(Color(0xFF151D2E), Color(0xFF0B101C))))
-            .border(1.dp, DS.Line, RoundedCornerShape(30.dp))
+            .clip(RoundedCornerShape(22.dp))
+            .background(DS.Bg3)
             .clickable { onClick(drama) }
     ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(116.dp).height(168.dp)) {
-                PosterImage(drama.poster, drama.title, Modifier.fillMaxSize())
-                Box(Modifier.align(Alignment.BottomStart).padding(8.dp)) {
-                    PlatformLogo(drama.platform, Modifier.size(24.dp))
-                }
+        AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x22000000), Color.Transparent, Color(0xF2050506)), startY = 30f)))
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xBB050506), Color.Transparent))))
+        Row(Modifier.align(Alignment.TopStart).padding(14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(color = DS.White, shape = RoundedCornerShape(50)) {
+                Text("Pilihan", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
             }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(color = DS.Green, shape = RoundedCornerShape(50)) {
-                        Text("Spotlight", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
-                    }
-                    Surface(color = Color(0x12FFFFFF), shape = RoundedCornerShape(50)) {
-                        Text("${drama.episodes.coerceAtLeast(1)} Ep", color = DS.Text, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
-                    }
-                }
-                Spacer(Modifier.height(11.dp))
-                Text(drama.title, color = DS.White, fontSize = 21.sp, fontWeight = FontWeight.Black, lineHeight = 25.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(7.dp))
-                Text(
-                    drama.description.take(105).ifBlank { "Judul pilihan dari ${platformLabel(drama.platform)}." },
-                    color = DS.Muted,
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(12.dp))
-                Surface(color = DS.White, shape = RoundedCornerShape(16.dp)) {
-                    Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.PlayArrow, null, tint = Color.Black, modifier = Modifier.size(17.dp))
+            Surface(color = Color(0x66000000), shape = RoundedCornerShape(50)) {
+                Text(platformLabel(drama.platform), color = DS.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp))
+            }
+        }
+        Column(Modifier.align(Alignment.BottomStart).padding(18.dp)) {
+            Text(drama.title, color = DS.White, fontSize = 25.sp, fontWeight = FontWeight.Black, lineHeight = 29.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(7.dp))
+            Text(
+                drama.description.take(110).ifBlank { "Dari ${platformLabel(drama.platform)}" },
+                color = DS.Text,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(13.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = DS.Green, shape = RoundedCornerShape(50)) {
+                    Row(Modifier.padding(horizontal = 15.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.PlayArrow, null, tint = Color.White, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(5.dp))
-                        Text("Tonton", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                        Text("Tonton", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
                     }
                 }
+                Text("${drama.episodes.coerceAtLeast(1)} Episode", color = DS.Text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -1248,22 +1094,11 @@ private fun HeroCard(drama: Drama, onClick: (Drama) -> Unit) {
 
 @Composable
 private fun ContinueCard(h: HistoryItem, onClick: (HistoryItem) -> Unit) {
-    Column(
-        Modifier
-            .width(146.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(DS.Bg2)
-            .border(1.dp, DS.Line, RoundedCornerShape(22.dp))
-            .clickable { onClick(h) }
-            .padding(8.dp)
-    ) {
+    Column(Modifier.width(132.dp).clickable { onClick(h) }) {
         Box {
-            PosterImage(h.poster, h.title, Modifier.fillMaxWidth().height(200.dp))
-            Surface(color = Color(0xCC0B1020), shape = RoundedCornerShape(9.dp), modifier = Modifier.align(Alignment.TopStart).padding(8.dp)) {
-                Text("Ep ${h.episode}", color = DS.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-            }
-            Surface(color = DS.Green, shape = RoundedCornerShape(9.dp), modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                Text("${h.pct.coerceAtLeast(0)}%", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+            PosterImage(h.poster, h.title, Modifier.fillMaxWidth().height(188.dp))
+            Surface(color = Color(0xCC050506), shape = RoundedCornerShape(8.dp), modifier = Modifier.align(Alignment.TopStart).padding(7.dp)) {
+                Text("Ep ${h.episode}", color = DS.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
             }
             LinearProgressIndicator(
                 progress = (h.pct / 100f).coerceIn(0f, 1f),
@@ -1272,47 +1107,31 @@ private fun ContinueCard(h: HistoryItem, onClick: (HistoryItem) -> Unit) {
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp)
             )
         }
-        Spacer(Modifier.height(10.dp))
-        Text(h.title, color = DS.White, fontSize = 13.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(8.dp))
-        PlatformBadge(h.platform, compact = true)
-        Spacer(Modifier.height(4.dp))
-        Text(if (h.pct > 0) "Lanjut dari ${h.pct}%" else "Baru mulai", color = DS.Muted, fontSize = 11.sp)
+        Text(h.title, color = DS.White, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(3.dp))
+        Text(if (h.pct > 0) "${h.pct}% ditonton" else platformLabel(h.platform), color = DS.Muted, fontSize = 10.sp, maxLines = 1)
     }
 }
 
 @Composable
 private fun DramaCard(drama: Drama, onClick: (Drama) -> Unit, modifier: Modifier = Modifier.width(120.dp)) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(DS.Bg2)
-            .border(1.dp, DS.Line, RoundedCornerShape(22.dp))
-            .clickable { onClick(drama) }
-            .padding(8.dp)
-    ) {
+    Column(modifier.clickable { onClick(drama) }) {
         Box {
-            PosterImage(drama.poster, drama.title, Modifier.fillMaxWidth().aspectRatio(0.72f))
-            Box(Modifier.align(Alignment.TopStart).padding(8.dp)) {
-                PlatformBadge(drama.platform, compact = true)
+            PosterImage(drama.poster, drama.title, Modifier.fillMaxWidth().aspectRatio(0.70f))
+            Surface(color = Color(0xCC050506), shape = RoundedCornerShape(8.dp), modifier = Modifier.align(Alignment.BottomStart).padding(7.dp)) {
+                Text(platformLabel(drama.platform), color = DS.White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
             }
             if (drama.episodes > 0) {
-                Surface(color = DS.Green, shape = RoundedCornerShape(9.dp), modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                    Text("${drama.episodes} Ep", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
+                Surface(color = DS.Green, shape = RoundedCornerShape(8.dp), modifier = Modifier.align(Alignment.TopEnd).padding(7.dp)) {
+                    Text("${drama.episodes}", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
                 }
             }
         }
-        Spacer(Modifier.height(10.dp))
-        Text(drama.title.ifBlank { "Tanpa Judul" }, color = DS.White, fontSize = 13.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            drama.description.ifBlank { "Dari ${platformLabel(drama.platform)}" },
-            color = DS.Muted,
-            fontSize = 10.sp,
-            lineHeight = 14.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        Spacer(Modifier.height(8.dp))
+        Text(drama.title.ifBlank { "Tanpa Judul" }, color = DS.White, fontSize = 12.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(3.dp))
+        Text(drama.description.ifBlank { "Drama" }, color = DS.Muted, fontSize = 10.sp, lineHeight = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
