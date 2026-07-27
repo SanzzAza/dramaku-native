@@ -267,6 +267,7 @@ private fun App() {
     var tab by remember { mutableStateOf(Tab.Home) }
     var selPlatform by remember { mutableStateOf(store.platform()) }
     var refreshKey by remember { mutableIntStateOf(0) }
+    var homeScrollToTop by remember { mutableIntStateOf(0) }
     var homeState by remember { mutableStateOf<Load<HomeBundle>>(Load.Idle) }
     var homeLoadingMore by remember { mutableStateOf(false) }
     var homeAppendError by remember { mutableStateOf<String?>(null) }
@@ -378,13 +379,15 @@ private fun App() {
                 Scaffold(
                     containerColor = DS.Bg,
                     bottomBar = {
-                        BottomNavBar(tab) { tab = it }
+                        BottomNavBar(tab) { target ->
+                            if (target == Tab.Home && tab == Tab.Home) homeScrollToTop++ else tab = target
+                        }
                     }
                 ) { pad ->
                     Box(Modifier.padding(pad).fillMaxSize()) {
                         when (tab) {
                             Tab.Home -> HomeScreen(
-                                platformId = selPlatform, state = homeState,
+                                platformId = selPlatform, scrollToTopSignal = homeScrollToTop, state = homeState,
                                 category = activeCat, onExitCategory = { category = null },
                                 history = store.history(dataTick), remoteConfig = remoteConfig,
                                 remoteError = remoteError, loadingMore = homeLoadingMore,
@@ -507,7 +510,7 @@ private fun BottomNavBar(selected: Tab, onSelect: (Tab) -> Unit) {
 
 @Composable
 private fun HomeScreen(
-    platformId: String, state: Load<HomeBundle>, history: List<HistoryItem>,
+    platformId: String, scrollToTopSignal: Int, state: Load<HomeBundle>, history: List<HistoryItem>,
     remoteConfig: NativeRemoteConfig?, remoteError: String?,
     loadingMore: Boolean, loadMoreError: String?,
     onLoadMore: () -> Unit, onPlatform: (String) -> Unit, onRefresh: () -> Unit,
@@ -516,6 +519,9 @@ private fun HomeScreen(
     category: HomeCategory? = null, onExitCategory: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
+    LaunchedEffect(scrollToTopSignal) {
+        if (scrollToTopSignal > 0) listState.animateScrollToItem(0)
+    }
     var requestedPage by remember(platformId) { mutableIntStateOf(0) }
     val loadedPage = (state as? Load.Ok)?.data?.loadedPage ?: 0
     val chips = category?.let { cat -> Platforms.filter { cat.platforms.contains(it.id) } } ?: Platforms
