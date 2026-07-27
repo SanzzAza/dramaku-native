@@ -1492,7 +1492,7 @@ private fun LibraryScreen(store: LocalStore, dataTick: Int, onDrama: (Drama) -> 
             Spacer(Modifier.height(16.dp))
             Surface(color = DS.Bg2, shape = RoundedCornerShape(24.dp), modifier = Modifier.fillMaxWidth().border(1.dp, DS.Line, RoundedCornerShape(24.dp))) {
                 Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Chip("Riwayat", !showFav, Modifier.weight(1f)) { showFav = false }
+                    Chip("Lanjutkan", !showFav, Modifier.weight(1f)) { showFav = false }
                     Chip("Favorit", showFav, Modifier.weight(1f)) { showFav = true }
                 }
             }
@@ -1553,23 +1553,20 @@ private fun EmptyState(title: String, subtitle: String, icon: ImageVector) {
 
 @Composable
 private fun ListItem(title: String, subtitle: String, poster: String, onDelete: (() -> Unit)? = null, onClick: () -> Unit) {
-    Surface(
-        color = DS.Bg2,
-        shape = RoundedCornerShape(20.dp),
-        modifier = Modifier.fillMaxWidth().border(1.dp, DS.Line, RoundedCornerShape(20.dp)).clickable(onClick = onClick)
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            PosterImage(poster, title, Modifier.width(62.dp).height(88.dp))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, color = DS.White, fontSize = 14.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(4.dp))
-                Text(subtitle, color = DS.Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (onDelete != null) {
-                IconButton(onClick = onDelete, modifier = Modifier.size(38.dp).clip(CircleShape).background(Color(0x10FFFFFF))) {
-                    Icon(Icons.Rounded.DeleteOutline, "Hapus", tint = DS.Hint, modifier = Modifier.size(18.dp))
-                }
+        PosterImage(poster, title, Modifier.width(58.dp).height(80.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = DS.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(5.dp))
+            Text(subtitle, color = DS.Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (onDelete != null) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Rounded.MoreVert, "Pilihan", tint = DS.Hint, modifier = Modifier.size(20.dp))
             }
         }
     }
