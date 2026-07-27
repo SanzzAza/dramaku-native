@@ -1751,13 +1751,13 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
     Box(Modifier.fillMaxSize().background(DS.Bg)) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 28.dp)) {
             item {
-                Box(Modifier.fillMaxWidth().height(356.dp)) {
+                Box(Modifier.fillMaxWidth().height(420.dp)) {
                     AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     Box(
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(
-                                listOf(Color(0x26000000), Color.Transparent, Color(0xF0070A12)),
-                                startY = 20f
+                                listOf(Color(0x18000000), Color.Transparent, DS.Bg),
+                                startY = 0f
                             )
                         )
                     )
@@ -1780,7 +1780,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                             Text(platformLabel(drama.platform), color = DS.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                         }
                     }
-                    Column(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, end = 20.dp, bottom = 86.dp)) {
+                    Column(Modifier.align(Alignment.BottomStart).padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             DetailMetaPill("Pilihan", DS.Green, filled = true)
                             DetailMetaPill("${total.coerceAtLeast(1)} Episode", Color(0xFF7DD3FC))
@@ -1788,38 +1788,13 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                         }
                         Spacer(Modifier.height(12.dp))
                         Text(drama.title, color = DS.White, fontSize = 28.sp, fontWeight = FontWeight.Black, lineHeight = 32.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            drama.description.take(140).ifBlank { "Sinopsis belum tersedia, tapi judul ini sudah siap diputar dari ${platformLabel(drama.platform)}." },
-                            color = Color(0xFFD9E2EC),
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
                     }
                 }
 
-                Row(
-                    Modifier.padding(horizontal = 20.dp).offset(y = (-56).dp),
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    PosterImage(drama.poster, drama.title, Modifier.width(118.dp).height(170.dp))
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f).padding(bottom = 8.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            DetailMetaPill(platformLabel(drama.platform), Color(0xFFFDA4AF))
-                            DetailMetaPill(if (hist != null) "Lanjut" else "Mulai baru", if (hist != null) DS.Green else Color(0xFFA78BFA))
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Text("Ringkasan", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        Text("${total.coerceAtLeast(1)} episode • ${if (preferLandscape) "mode lebar" else "mode vertikal"}", color = DS.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, lineHeight = 18.sp)
-                    }
-                }
             }
 
             item {
-                Column(Modifier.padding(horizontal = 20.dp).offset(y = (-32).dp)) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
                     when (state) {
                         Load.Loading -> LinearProgressIndicator(color = DS.Green, trackColor = DS.Bg4, modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp))
                         is Load.Err -> Text((state as Load.Err).message, color = DS.Red, modifier = Modifier.padding(bottom = 14.dp))
@@ -1852,12 +1827,11 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                         }
                     }
 
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        DetailInfoCard("Platform", platformLabel(drama.platform), Icons.Rounded.Public, Modifier.weight(1f))
-                        DetailInfoCard("Episode", total.toString(), Icons.Rounded.GridView, Modifier.weight(1f))
-                        DetailInfoCard("Mode", if (preferLandscape) "Wide" else "Vertical", Icons.Rounded.AspectRatio, Modifier.weight(1f))
-                    }
+                    Spacer(Modifier.height(13.dp))
+                    Text(
+                        "${platformLabel(drama.platform)}  ·  $total episode${if (preferLandscape) "  ·  layar lebar" else ""}",
+                        color = DS.Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium
+                    )
 
                     if (hist != null) {
                         Spacer(Modifier.height(14.dp))
@@ -1898,19 +1872,13 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                         }
                     }
 
-                    Spacer(Modifier.height(18.dp))
-                    Surface(color = DS.Bg3, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(18.dp)) {
-                            Text("Sinopsis", color = DS.White, fontSize = 17.sp, fontWeight = FontWeight.Black)
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                drama.description.ifBlank { "Belum ada sinopsis untuk judul ini." },
-                                color = DS.Text,
-                                fontSize = 13.sp,
-                                lineHeight = 20.sp
-                            )
-                        }
-                    }
+                    Spacer(Modifier.height(26.dp))
+                    Text("Sinopsis", color = DS.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        drama.description.ifBlank { "Belum ada sinopsis untuk judul ini." },
+                        color = DS.Text, fontSize = 13.sp, lineHeight = 21.sp
+                    )
 
                     Spacer(Modifier.height(18.dp))
                     Surface(color = DS.Bg3, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
