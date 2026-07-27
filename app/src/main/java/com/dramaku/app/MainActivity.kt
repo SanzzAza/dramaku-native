@@ -236,7 +236,7 @@ private val Platforms = listOf(
     PlatformInfo("netshort", "NetShort", "https://new-api.sonzaix.workers.dev/netshort", "https://netshort.com/assets/logo/logo.png"),
     PlatformInfo("dramabox", "DramaBox", "https://new-api.sonzaix.workers.dev/dramabox", "https://www.google.com/s2/favicons?sz=256&domain=dramaboxapp.com"),
     PlatformInfo("goodshort", "GoodShort", "https://new-api.sonzaix.workers.dev/goodshort", "https://acfs3.goodshort.com/dist/src/assets/images/pc/common/1b3b5f4e-logo.png"),
-    PlatformInfo("moviebox", "MovieBox", "https://api.sonzaix.indevs.in/moviebox", "https://www.google.com/s2/favicons?sz=256&domain=moviebox.ng"),
+    PlatformInfo("moviebox", "MovieBox", "https://new-api.sonzaix.workers.dev/moviebox", "https://www.google.com/s2/favicons?sz=256&domain=moviebox.ng"),
     PlatformInfo("drakor", "Drakor", "https://new-api.sonzaix.workers.dev/drama", "https://www.google.com/s2/favicons?sz=256&domain=drakor.id")
 )
 
@@ -2659,12 +2659,6 @@ private class DramakuRepository {
                 StreamResult(url)
             }
             "moviebox" -> {
-                if (drama.subjectType != 2 || ep == 1) {
-                    runCatching { movieBoxPlayFallback(id, ds) }
-                        .getOrNull()
-                        ?.takeIf { it.url.isNotBlank() }
-                        ?.let { return it }
-                }
                 val resolutions = listOf(res, 720, 1080, 480, 360).distinct()
                 var sawExpiredLink = false
                 fun linkOf(o: JSONObject?): String {
@@ -2780,24 +2774,6 @@ private class DramakuRepository {
                 StreamResult(q?.stringAny("url").orEmpty())
             }
         }.also { if (it.url.isBlank()) error("Video belum tersedia") }
-    }
-
-    private suspend fun movieBoxPlayFallback(id: String, ds: Boolean): StreamResult {
-        val j = getJson("https://nyawit-moviebox.vercel.app/play?subjectId=${enc(id)}&lang=id")
-        val data = j.optJSONObject("data") ?: return StreamResult("")
-        val streams = data.optJSONArray("streams")?.objects().orEmpty()
-            .filter { cleanUrl(it.stringAny("url")).isNotBlank() }
-        if (streams.isEmpty()) return StreamResult("")
-        val preferred = if (ds) listOf("480", "360", "720") else listOf("720", "1080", "480", "360")
-        val h264 = streams.filter { it.stringAny("codec_name", "codecName", "codec").contains("h264", true) }
-        val pool = h264.ifEmpty { streams }
-        val picked = preferred.firstNotNullOfOrNull { want ->
-            pool.firstOrNull { it.stringAny("resolutions", "resolution", "quality").contains(want) }
-        } ?: pool.firstOrNull()
-        val captions = data.optJSONArray("captions")?.objects().orEmpty()
-        val sub = (captions.firstOrNull { it.stringAny("lan", "language").contains("id", true) || it.stringAny("lan_name", "lanName").contains("indones", true) }
-            ?: captions.firstOrNull())?.stringAny("url").orEmpty()
-        return StreamResult(cleanUrl(picked?.stringAny("url").orEmpty()), cleanUrl(sub))
     }
 
     private suspend fun getJson(url: String): JSONObject = withContext(Dispatchers.IO) {
