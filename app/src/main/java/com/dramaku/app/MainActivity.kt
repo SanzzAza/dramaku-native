@@ -2585,11 +2585,24 @@ private class DramakuRepository {
         val drama = d.drama; val p = drama.platform; val base = apiBase(p); val id = drama.id; val res = if (ds) 480 else 720
         return when (p) {
             "melolo" -> {
-                // streamv2 bisa meng-cache proxy URL ByteDance yang masa berlakunya singkat.
-                // Cache buster membuat Worker membangun ulang URL playable setiap kali Play/Retry.
-                val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep&_=${System.currentTimeMillis()}")
-                val url = extractStreamV2Url(v2)
-                if (url.isNotBlank()) StreamResult(url) else error("Stream Melolo tidak tersedia")
+                // streamv2 kadang menyimpan source ByteDance lama. Buat ulang URL proxy dari
+                // /stream yang fresh + kid, supaya proxy Melolo dapat mendekripsi stream terbaru.
+                val stamp = System.currentTimeMillis()
+                val raw = runCatching { getJson("$base/stream?id=${enc(id)}&ep=$ep&_=$stamp") }.getOrNull()
+                val qualities = raw?.optJSONArray("qualities")?.objects().orEmpty()
+                val selected = qualities.firstOrNull { it.stringAny("label").contains("720") }
+                    ?: qualities.firstOrNull { it.stringAny("label").contains("540") }
+                    ?: qualities.firstOrNull()
+                val source = selected?.stringAny("url", "backup_url").orEmpty()
+                val kid = selected?.stringAny("kid").orEmpty()
+                if (source.isNotBlank() && kid.isNotBlank()) {
+                    StreamResult("$base/melolo?url=${enc(source)}&kid=${enc(kid)}")
+                } else {
+                    // Tetap pertahankan resolver v2 bila format /stream berubah di provider.
+                    val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep&_=$stamp")
+                    val url = extractStreamV2Url(v2)
+                    if (url.isNotBlank()) StreamResult(url) else error("Stream Melolo tidak tersedia")
+                }
             }
             "freereels" -> {
                 val j = getJson("$base/stream?dramaId=${enc(id)}&episode=$ep&lang=id").optJSONObject("data") ?: error("Video belum tersedia")
