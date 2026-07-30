@@ -40,13 +40,34 @@ jobs:
             VERSION_CODE=1
           fi
 
-          # Tags like v4.3.0 or main branch push create a GitHub Release.
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]] || [ "${GITHUB_REF_NAME}" = "main" ]; then
+          # Tags like v4.3.0 or main branch push create a GitHub Release (stable).
+          # Branch fix/* juga bikin pre-release supaya APK bisa di-download publik tanpa login.
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             CREATE_RELEASE=true
+            PRERELEASE=false
+            TAG_NAME="${GITHUB_REF_NAME}"
+            REL_NAME="Dramaku v${VERSION_NAME}"
+          elif [ "${GITHUB_REF_NAME}" = "main" ]; then
+            CREATE_RELEASE=true
+            PRERELEASE=false
+            TAG_NAME="v${VERSION_NAME}-build${{ github.run_number }}"
+            REL_NAME="Dramaku v${VERSION_NAME} (build ${{ github.run_number }})"
+          elif [[ "${GITHUB_REF_NAME}" == fix/* ]]; then
+            CREATE_RELEASE=true
+            PRERELEASE=true
+            SAFE_BRANCH=$(echo "${GITHUB_REF_NAME}" | tr '/' '-' | tr '_' '-')
+            TAG_NAME="ci/${SAFE_BRANCH}-b${{ github.run_number }}"
+            REL_NAME="[TEST] Dramaku ${GITHUB_REF_NAME} #${{ github.run_number }}"
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.create_release }}" = "true" ]; then
             CREATE_RELEASE=true
+            PRERELEASE=false
+            TAG_NAME="v${VERSION_NAME}-build${{ github.run_number }}"
+            REL_NAME="Dramaku v${VERSION_NAME} (build ${{ github.run_number }})"
           else
             CREATE_RELEASE=false
+            PRERELEASE=false
+            TAG_NAME=""
+            REL_NAME=""
           fi
 
           # Keep versionCode monotonic and unique per CI run.
@@ -57,6 +78,9 @@ jobs:
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "CREATE_RELEASE=$CREATE_RELEASE" >> "$GITHUB_ENV"
+          echo "PRERELEASE=$PRERELEASE" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$TAG_NAME" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=$REL_NAME" >> "$GITHUB_ENV"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "Resolved versionName=$VERSION_NAME versionCode=$VERSION_CODE create_release=$CREATE_RELEASE"
@@ -142,24 +166,20 @@ jobs:
         if: env.CREATE_RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}-build{1}', env.VERSION_NAME, github.run_number) }}
-          name: Dramaku v${{ env.VERSION_NAME }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
           files: ${{ env.APK_PATH }}
-          generate_release_notes: true
+          prerelease: ${{ env.PRERELEASE == 'true' }}
+          generate_release_notes: false
           body: |
-            **Dramaku v${{ env.VERSION_NAME }}** (`versionCode` ${{ env.VERSION_CODE }})
+            **${{ env.RELEASE_NAME }}** (`versionCode` ${{ env.VERSION_CODE }})
             Build type: ${{ env.APK_KIND }}
+            Branch: `${{ github.ref_name }}`
+            Commit: ${{ github.sha }}
 
-            ### Highlights
-            - Kotlin + Jetpack Compose native MVP
-            - Native home/search/detail/library/settings
-            - Native ExoPlayer playback
-            - Release variant APK is always built; if signing secrets are missing it uses debug-key fallback
-            - Versioning terpusat (`version.properties`)
-            - Release GitHub hanya dari tag `v*` / manual dispatch
+            ### Cara install
+            1. Download file APK di bawah (**Assets**)
+            2. Install di hp (izinkan "Install from unknown source" kalau diminta)
+            3. Test dan kalau ada error screenshot ya 🙏
 
-            Untuk signed release APK, set GitHub Secrets:
-            - ANDROID_KEYSTORE_BASE64
-            - ANDROID_KEYSTORE_PASSWORD
-            - ANDROID_KEY_ALIAS
-            - ANDROID_KEY_PASSWORD
+            > ⚠️ Build ini dari branch test/pre-release. Belum tentu stabil.
