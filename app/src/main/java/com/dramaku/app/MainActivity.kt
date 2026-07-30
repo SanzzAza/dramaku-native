@@ -2458,87 +2458,6 @@ private fun Context.isNetworkAvailable(): Boolean {
 // REPOSITORY — same API logic, with streamv2 fix
 // ─────────────────────────────────────────────────────────────────
 
-private sealed class MBRes {
-    data class Ok(val url: String, val subtitle: String) : MBRes()
-    data class Err(val msg: String) : MBRes()
-}
-
-private suspend fun resolveMovieboxFrom(
-    streamBase: String, id: String, ep: Int, subjectType: Int, resolutions: List<Int>
-): MBRes {
-    var sawExpiredLink = false
-    fun linkOf(o: JSONObject?): String {
-        val u = cleanUrl(o?.stringAny("resourceLink").orEmpty())
-        if (u.isNotBlank() && isMovieboxExpired(u)) {
-            sawExpiredLink = true
-            return ""
-        }
-        return u
-    }
-    fun subOf(o: JSONObject?): String = cleanUrl(o?.optJSONObject("subtitle")?.stringAny("url").orEmpty())
-    fun codecOf(o: JSONObject?): String = o?.stringAny("codecName", "codec").orEmpty().lowercase()
-    suspend fun mbJson(url: String): JSONObject? {
-        var last: Throwable? = null
-        repeat(2) { i ->
-            if (i > 0) delay(500L)
-            try {
-                val j = getJson(url)
-                val code = j.optInt("code", 200)
-                val msg = j.stringAny("message", "error_msg", "error")
-                if (code != 0 && code != 200) {
-                    last = RuntimeException(msg.ifBlank { "HTTP $code" })
-                    return@repeat
-                }
-                return j
-            } catch (ce: CancellationException) { throw ce }
-            catch (t: Throwable) { last = t }
-        }
-        return null
-    }
-
-    return if (subjectType == 2) {
-        val episodeByKey = HashMap<Int, Triple<String, String, String>>()
-        var bestH264: Pair<String, String>? = null
-        for (r in resolutions) {
-            val stamp = System.currentTimeMillis()
-            val data = mbJson("$streamBase/download-series?subjectId=${enc(id)}&se=1&resolution=$r&_=$stamp")?.optJSONObject("data") ?: continue
-            val eps = data.optJSONArray("episodes")?.objects().orEmpty()
-            for (e in eps) {
-                val epNum = e.intAny("ep", 1)
-                if (epNum != ep) continue
-                val url = linkOf(e)
-                if (url.isBlank()) continue
-                val sub = subOf(e); val codec = codecOf(e)
-                if (codec.contains("h264") && bestH264 == null) bestH264 = url to sub
-                episodeByKey.putIfAbsent(epNum, Triple(url, sub, codec))
-            }
-            if (bestH264 != null) return MBRes.Ok(bestH264.first, bestH264.second)
-        }
-        val fallback = episodeByKey[ep]
-        if (fallback != null) return MBRes.Ok(fallback.first, fallback.second)
-        MBRes.Err(if (sawExpiredLink) "Link MovieBox expired. Tekan Coba Lagi." else "Episode $ep belum tersedia di MovieBox.")
-    } else {
-        var fallbackUrl = ""; var fallbackSub = ""
-        for (r in resolutions) {
-            val stamp = System.currentTimeMillis()
-            val data = mbJson("$streamBase/download-movie?subjectId=${enc(id)}&resolution=$r&_=$stamp")?.optJSONObject("data") ?: continue
-            val files = data.optJSONArray("files")?.objects().orEmpty().filter { linkOf(it).isNotBlank() }
-            val picked = files.firstOrNull { codecOf(it).contains("h264") }
-                ?: files.firstOrNull { !codecOf(it).contains("hevc") }
-                ?: files.firstOrNull()
-            if (picked != null) {
-                val pickedUrl = linkOf(picked)
-                val pickedSub = cleanUrl(data.optJSONObject("subtitle")?.stringAny("url").orEmpty())
-                val pickedCodec = codecOf(picked)
-                if (pickedCodec.contains("h264")) return MBRes.Ok(pickedUrl, pickedSub)
-                if (fallbackUrl.isBlank()) { fallbackUrl = pickedUrl; fallbackSub = pickedSub }
-            }
-        }
-        if (fallbackUrl.isNotBlank()) return MBRes.Ok(fallbackUrl, fallbackSub)
-        MBRes.Err(if (sawExpiredLink) "Link MovieBox expired. Tekan Coba Lagi." else "Video MovieBox belum tersedia.")
-    }
-}
-
 private fun extractStreamV2Url(json: JSONObject): String {
     val episodes = json.optJSONArray("episodes")?.objects().orEmpty()
     for (ep in episodes) {
@@ -2561,6 +2480,87 @@ private class DramakuRepository {
     private val client = OkHttpClient.Builder().dispatcher(dispatcher).connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
     private val detailCache = ConcurrentHashMap<String, Detail>()
     private val streamCache = ConcurrentHashMap<String, CachedStream>()
+
+    private sealed class MBRes {
+        data class Ok(val url: String, val subtitle: String) : MBRes()
+        data class Err(val msg: String) : MBRes()
+    }
+
+    private suspend fun resolveMovieboxFrom(
+        streamBase: String, id: String, ep: Int, subjectType: Int, resolutions: List<Int>
+    ): MBRes {
+        var sawExpiredLink = false
+        fun linkOf(o: JSONObject?): String {
+            val u = cleanUrl(o?.stringAny("resourceLink").orEmpty())
+            if (u.isNotBlank() && isMovieboxExpired(u)) {
+                sawExpiredLink = true
+                return ""
+            }
+            return u
+        }
+        fun subOf(o: JSONObject?): String = cleanUrl(o?.optJSONObject("subtitle")?.stringAny("url").orEmpty())
+        fun codecOf(o: JSONObject?): String = o?.stringAny("codecName", "codec").orEmpty().lowercase()
+        suspend fun mbJson(url: String): JSONObject? {
+            var last: Throwable? = null
+            repeat(2) { i ->
+                if (i > 0) delay(500L)
+                try {
+                    val j = getJson(url)
+                    val code = j.optInt("code", 200)
+                    val msg = j.stringAny("message", "error_msg", "error")
+                    if (code != 0 && code != 200) {
+                        last = RuntimeException(msg.ifBlank { "HTTP $code" })
+                        return@repeat
+                    }
+                    return j
+                } catch (ce: CancellationException) { throw ce }
+                catch (t: Throwable) { last = t }
+            }
+            return null
+        }
+
+        return if (subjectType == 2) {
+            val episodeByKey = HashMap<Int, Triple<String, String, String>>()
+            var bestH264: Pair<String, String>? = null
+            for (r in resolutions) {
+                val stamp = System.currentTimeMillis()
+                val data = mbJson("$streamBase/download-series?subjectId=${enc(id)}&se=1&resolution=$r&_=$stamp")?.optJSONObject("data") ?: continue
+                val eps = data.optJSONArray("episodes")?.objects().orEmpty()
+                for (e in eps) {
+                    val epNum = e.intAny("ep", 1)
+                    if (epNum != ep) continue
+                    val url = linkOf(e)
+                    if (url.isBlank()) continue
+                    val sub = subOf(e); val codec = codecOf(e)
+                    if (codec.contains("h264") && bestH264 == null) bestH264 = url to sub
+                    episodeByKey.putIfAbsent(epNum, Triple(url, sub, codec))
+                }
+                if (bestH264 != null) return MBRes.Ok(bestH264.first, bestH264.second)
+            }
+            val fallback = episodeByKey[ep]
+            if (fallback != null) return MBRes.Ok(fallback.first, fallback.second)
+            MBRes.Err(if (sawExpiredLink) "Link MovieBox expired. Tekan Coba Lagi." else "Episode $ep belum tersedia di MovieBox.")
+        } else {
+            var fallbackUrl = ""; var fallbackSub = ""
+            for (r in resolutions) {
+                val stamp = System.currentTimeMillis()
+                val data = mbJson("$streamBase/download-movie?subjectId=${enc(id)}&resolution=$r&_=$stamp")?.optJSONObject("data") ?: continue
+                val files = data.optJSONArray("files")?.objects().orEmpty().filter { linkOf(it).isNotBlank() }
+                val picked = files.firstOrNull { codecOf(it).contains("h264") }
+                    ?: files.firstOrNull { !codecOf(it).contains("hevc") }
+                    ?: files.firstOrNull()
+                if (picked != null) {
+                    val pickedUrl = linkOf(picked)
+                    val pickedSub = cleanUrl(data.optJSONObject("subtitle")?.stringAny("url").orEmpty())
+                    val pickedCodec = codecOf(picked)
+                    if (pickedCodec.contains("h264")) return MBRes.Ok(pickedUrl, pickedSub)
+                    if (fallbackUrl.isBlank()) { fallbackUrl = pickedUrl; fallbackSub = pickedSub }
+                }
+            }
+            if (fallbackUrl.isNotBlank()) return MBRes.Ok(fallbackUrl, fallbackSub)
+            MBRes.Err(if (sawExpiredLink) "Link MovieBox expired. Tekan Coba Lagi." else "Video MovieBox belum tersedia.")
+        }
+    }
 
     fun previewDetail(input: Drama): Detail {
         detailCache[detailKey(input)]?.let { return it }
