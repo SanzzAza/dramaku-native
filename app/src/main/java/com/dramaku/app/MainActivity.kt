@@ -832,9 +832,14 @@ private fun HomeHeader(
     Column(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 4.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(greeting, color = DS.Muted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(greeting, color = DS.Muted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Box(Modifier.clip(RoundedCornerShape(4.dp)).background(DS.Green.copy(alpha = 0.2f)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                        Text("PRO", color = DS.Green, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
                 Spacer(Modifier.height(2.dp))
-                Text("Dramaku", color = DS.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = (-0.8).sp)
+                Text("Dramaku Pro", color = DS.White, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.9).sp)
             }
             HeaderCircleButton(Icons.Rounded.Search, "Cari", onSearch)
             Spacer(Modifier.width(9.dp))
