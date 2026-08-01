@@ -17,12 +17,9 @@ enum class HomeCategory(
 ) {
     ShortDrama(
         id = "short_drama",
-        title = "Short Drama",
-        subtitle = "Episode pendek buat jeda cepat",
-        platforms = listOf(
-            "melolo", "freereels", "flickreels", "dramanova",
-            "reelshort", "netshort", "dramabox", "goodshort"
-        )
+        title = "Melolo Drama",
+        subtitle = "Koleksi drama pilihan eksklusif",
+        platforms = listOf("melolo")
     ),
     MovieDrama(
         id = "movie_drama",
