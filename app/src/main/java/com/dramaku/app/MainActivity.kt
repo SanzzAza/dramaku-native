@@ -2874,21 +2874,19 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
-    // Melolo stores actual dramas inside "books" arrays or objects containing book_id / bookName
     fun extractBooks(node: Any?) {
         when (node) {
             is JSONArray -> node.objects().forEach { extractBooks(it) }
             is JSONObject -> {
-                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId")
+                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id")
                 val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name")
                 val cover = node.stringAny("cover", "thumb_url", "image", "poster")
-                if (bookId.isNotBlank() && bookName.isNotBlank() && cover.isNotBlank()) {
+                if (bookId.isNotBlank() && bookName.isNotBlank()) {
                     val d = normalize(node, fp)
-                    if (d.id.isNotBlank() && d.title.isNotBlank()) {
+                    if (d.id.isNotBlank() && d.title.isNotBlank() && !d.title.equals("Populer", true) && !d.title.equals("Romansa", true) && !d.title.equals("Ceo", true)) {
                         out += d
                     }
                 }
-                // Recursively search children, avoiding category/tab definition objects if possible
                 val keys = node.keys()
                 while (keys.hasNext()) {
                     val k = keys.next()
