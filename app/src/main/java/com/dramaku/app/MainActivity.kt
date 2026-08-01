@@ -2566,7 +2566,7 @@ private class DramakuRepository {
         }
         if (p == "melolo") {
             val bookJson = json
-            val seriesJson = runCatching { getJson("$base/series?id=${enc(input.id)}&lang=id") }.getOrNull()
+            val seriesJson = runCatching { getJson("${apiBase(p)}/series?id=${enc(input.id)}&lang=id") }.getOrNull()
             val data = bookJson.optJSONObject("data") ?: bookJson
             val seriesData = seriesJson?.optJSONObject("data") ?: seriesJson ?: JSONObject()
 
