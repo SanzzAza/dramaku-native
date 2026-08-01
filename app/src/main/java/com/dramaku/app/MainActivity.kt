@@ -2898,10 +2898,21 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
     when (any) {
-        is JSONArray -> any.objects().forEach { o -> val b = o.optJSONArray("books"); if (b != null) out += flat(b, fp) else out += normalize(o, fp) }
+        is JSONArray -> any.objects().forEach { o ->
+            val b = o.optJSONArray("books") ?: o.optJSONArray("cell_data")
+            if (b != null) out += flat(b, fp)
+            else {
+                val subBooks = o.optJSONArray("books")
+                if (subBooks != null) out += flat(subBooks, fp)
+                else out += normalize(o, fp)
+            }
+        }
         is JSONObject -> when {
-            any.has("trending") || any.has("popular") || any.has("newest") -> listOf("trending", "popular", "newest").forEach { k -> out += flat(any.optJSONArray(k), "dramabox") }
-            any.optJSONObject("classifyBookList")?.optJSONArray("records") != null -> out += flat(any.optJSONObject("classifyBookList")?.optJSONArray("records"), "dramabox")
+            any.has("trending") || any.has("popular") || any.has("newest") -> listOf("trending", "popular", "newest").forEach { k -> out += flat(any.optJSONArray(k), fp) }
+            any.optJSONObject("cell")?.optJSONArray("cell_data") != null -> out += flat(any.optJSONObject("cell")?.optJSONArray("cell_data"), fp)
+            any.optJSONArray("cell_data") != null -> out += flat(any.optJSONArray("cell_data"), fp)
+            any.optJSONArray("books") != null -> out += flat(any.optJSONArray("books"), fp)
+            any.optJSONObject("classifyBookList")?.optJSONArray("records") != null -> out += flat(any.optJSONObject("classifyBookList")?.optJSONArray("records"), fp)
             any.optJSONArray("items") != null -> out += flat(any.optJSONArray("items"), fp)
             any.optJSONArray("subjects") != null -> out += flat(any.optJSONArray("subjects"), "moviebox")
             any.optJSONArray("results") != null -> any.optJSONArray("results")!!.objects().forEach { r -> out += flat(r.optJSONArray("subjects"), "moviebox") }
@@ -2914,7 +2925,17 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 private fun normalize(o: JSONObject, fp: String): Drama {
     val isDrakor = o.has("meta_episode") || (o.has("id") && o.has("title") && o.has("image"))
     val p = when { fp == "dramabox" || o.has("bookId") -> "dramabox"; fp == "moviebox" || o.has("subjectId") -> "moviebox"; fp == "drakor" || isDrakor -> "drakor"; o.optBoolean("free", false) -> "freereels"; else -> fp }
-    return Drama(o.stringAny("drama_id", "bookId", "id", "subjectId"), o.stringAny("drama_name", "bookName", "title", "bookTitle"), cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis")), fixImg(o.stringAny("thumb_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg").ifBlank { o.coverUrl() }), o.intAny("chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", 0), o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers").ifBlank { o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty() }, tagsOf(o), p, o.intAny("subjectType", 1))
+    return Drama(
+        o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId"),
+        o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name"),
+        cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract")),
+        fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg").ifBlank { o.coverUrl() }),
+        o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", 0),
+        o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers").ifBlank { o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty() },
+        tagsOf(o),
+        p,
+        o.intAny("subjectType", 1)
+    )
 }
 
 private fun tagsOf(o: JSONObject): List<String> {
