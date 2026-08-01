@@ -2897,47 +2897,33 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
-    when (any) {
-        is JSONArray -> any.objects().forEach { o ->
-            val books = o.optJSONArray("books")
-            val cellData = o.optJSONArray("cell_data")
-            val cell = o.optJSONObject("cell")
-            val cellBooks = cell?.optJSONArray("books")
-            val cellCellData = cell?.optJSONArray("cell_data")
-
-            if (books != null) out += flat(books, fp)
-            if (cellData != null) out += flat(cellData, fp)
-            if (cellBooks != null) out += flat(cellBooks, fp)
-            if (cellCellData != null) out += flat(cellCellData, fp)
-            if (books == null && cellData == null && cell == null) {
-                out += normalize(o, fp)
+    fun traverse(node: Any?) {
+        when (node) {
+            is JSONArray -> {
+                node.objects().forEach { traverse(it) }
             }
-        }
-        is JSONObject -> {
-            val cell = any.optJSONObject("cell")
-            val cellData = any.optJSONArray("cell_data") ?: cell?.optJSONArray("cell_data")
-            val books = any.optJSONArray("books") ?: cell?.optJSONArray("books")
-
-            if (cellData != null) out += flat(cellData, fp)
-            if (books != null) out += flat(books, fp)
-            if (any.has("trending") || any.has("popular") || any.has("newest")) {
-                listOf("trending", "popular", "newest").forEach { k -> out += flat(any.optJSONArray(k), fp) }
-            }
-            val classify = any.optJSONObject("classifyBookList")?.optJSONArray("records")
-            if (classify != null) out += flat(classify, fp)
-            val items = any.optJSONArray("items")
-            if (items != null) out += flat(items, fp)
-            val subjects = any.optJSONArray("subjects")
-            if (subjects != null) out += flat(subjects, "moviebox")
-            val results = any.optJSONArray("results")
-            if (results != null) results.objects().forEach { r -> out += flat(r.optJSONArray("subjects"), "moviebox") }
-
-            if (cellData == null && books == null && !any.has("trending") && !any.has("popular") && !any.has("newest") && classify == null && items == null && subjects == null && results == null) {
-                out += normalize(any, fp)
+            is JSONObject -> {
+                // If it has book_id or id and book_name or title, it is a drama item!
+                if ((node.has("book_id") || node.has("bookId") || node.has("id")) && (node.has("book_name") || node.has("bookName") || node.has("title") || node.has("name"))) {
+                    val d = normalize(node, fp)
+                    if (d.id.isNotBlank() && d.title.isNotBlank()) {
+                        out += d
+                    }
+                }
+                // Also traverse all keys/values inside JSONObject
+                val keys = node.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val v = node.opt(k)
+                    if (v is JSONObject || v is JSONArray) {
+                        traverse(v)
+                    }
+                }
             }
         }
     }
-    return out.filter { it.id.isNotBlank() && it.title.isNotBlank() }.distinctBy { it.platform + "|" + it.id }
+    traverse(any)
+    return out.distinctBy { it.platform + "|" + it.id }
 }
 
 private fun normalize(o: JSONObject, fp: String): Drama {
