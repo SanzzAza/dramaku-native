@@ -2829,7 +2829,9 @@ private fun homePageRequest(p: String, page: Int): HomePageRequest {
     return HomePageRequest(section, url, vp, vp < total)
 }
 
-private fun pagesFor(p: String): IntRange = when (p) { "flickreels", "netshort" -> 1..1; "drakor" -> 1..5; else -> 1..5 }
+// Proxy Melolo mengabaikan offset/page/session: tiap halaman mengembalikan
+// feed 18 judul yang sama, jadi jangan fetch ulang (hemat kuota + waktu).
+private fun pagesFor(p: String): IntRange = when (p) { "flickreels", "netshort", "melolo" -> 1..1; "drakor" -> 1..5; else -> 1..5 }
 
 private fun homeUrls(p: String, page: Int = 1): List<String> {
     val base = apiBase(p); val sp = page.coerceAtLeast(1)
@@ -2868,6 +2870,16 @@ private fun detailUrl(d: Drama): String = when (d.platform) {
 private fun dedupe(items: List<Drama>) = items.filter { it.id.isNotBlank() && it.title.isNotBlank() }.distinctBy { it.platform + "|" + it.id }.distinctBy { it.platform + "|" + normalizeKey(it.title) }
 private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c.recommended + n.recommended), dedupe(c.popular + n.popular), dedupe(c.newest + n.newest), max(c.loadedPage, n.loadedPage), n.hasMore)
 
+// Feed Melolo memuat rak ("Trending"), tab genre ("Peringkat", "Time Travel"),
+// dan section layer yang sama-sama punya pasangan id+name. Mereka bukan drama.
+// Syaratnya pakai sinyal konten nyata: cover, sinopsis, atau jumlah episode.
+private fun JSONObject.hasDramaSignal(): Boolean =
+    stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url").isNotBlank() ||
+        optJSONObject("cover") != null ||
+        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description").isNotBlank() ||
+        intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes") > 0 ||
+        has("subjectId")
+
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
     fun extractBooks(node: Any?) {
@@ -2877,7 +2889,7 @@ private fun flat(any: Any?, fp: String): List<Drama> {
                 val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id")
                 val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name")
                 val cover = node.stringAny("cover", "thumb_url", "image", "poster")
-                if (bookId.isNotBlank() && bookName.isNotBlank()) {
+                if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
                     val d = normalize(node, fp)
                     if (d.id.isNotBlank() && d.title.isNotBlank() && !d.title.equals("Populer", true) && !d.title.equals("Romansa", true) && !d.title.equals("Ceo", true)) {
                         out += d
