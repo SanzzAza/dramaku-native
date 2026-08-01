@@ -38,8 +38,8 @@ jobs:
             VERSION_CODE=1
           fi
 
-          # Tags like v4.3.0 or main branch push create a GitHub Release.
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]] || [ "${GITHUB_REF_NAME}" = "main" ]; then
+          # Hanya tag v* atau manual workflow_dispatch yang membuat GitHub Release (mencegah release menumpuk saat push ke main).
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             CREATE_RELEASE=true
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.create_release }}" = "true" ]; then
             CREATE_RELEASE=true

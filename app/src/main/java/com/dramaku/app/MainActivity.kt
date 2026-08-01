@@ -228,7 +228,7 @@ private sealed class Load<out T> {
 // ─────────────────────────────────────────────────────────────────
 
 private val Platforms = listOf(
-    PlatformInfo("melolo", "Melolo", "https://new-api.sonzaix.workers.dev/melolo", logoRes = R.drawable.logo_melolo),
+    PlatformInfo("melolo", "Melolo", "https://captain.sapimu.au/melolo/api/v1", logoRes = R.drawable.logo_melolo),
     PlatformInfo("freereels", "FreeReels", "https://new-api.sonzaix.workers.dev/freereels", logoRes = R.drawable.logo_freereels),
     PlatformInfo("flickreels", "FlickReels", "https://new-api.sonzaix.workers.dev/flickreels", logoRes = R.drawable.logo_flickreels),
     PlatformInfo("dramanova", "DramaNova", "https://new-api.sonzaix.workers.dev/dramanova", logoRes = R.drawable.logo_dramanova),
@@ -2530,7 +2530,7 @@ private class DramakuRepository {
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
         val enc = enc(q); val pl = Platforms.firstOrNull { it.id == p } ?: Platforms.first()
         val url = when (pl.id) {
-            "melolo" -> "${pl.base}/search?q=$enc&page=1&lang=id"
+            "melolo" -> "${pl.base}/search?q=$enc&lang=id&limit=50&offset=0"
             "freereels" -> "${pl.base}/search?q=$enc&page=1&lang=id"
             "flickreels" -> "${pl.base}/search?q=$enc"
             "dramanova" -> "${pl.base}/search?q=$enc&page=1&size=10"
@@ -2564,6 +2564,28 @@ private class DramakuRepository {
             val d = normalize(info, p).copy(id = info.stringAny("id").ifBlank { input.id }, title = info.stringAny("title").ifBlank { input.title }, poster = fixImg(info.stringAny("image").ifBlank { input.poster }), description = cleanText(info.stringAny("meta_sinopsis", "shoot", "content", "meta_description")).ifBlank { input.description }, episodes = eps.size.takeIf { it > 0 } ?: info.intAny("meta_episode", input.episodes), platform = p, subjectType = 2)
             return Detail(d, eps)
         }
+        if (p == "melolo") {
+            val bookJson = json
+            val seriesJson = runCatching { getJson("$base/series?id=${enc(input.id)}&lang=id") }.getOrNull()
+            val data = bookJson.optJSONObject("data") ?: bookJson
+            val seriesData = seriesJson?.optJSONObject("data") ?: seriesJson ?: JSONObject()
+
+            val title = data.stringAny("title", "bookName", "name").ifBlank { input.title }
+            val desc = data.stringAny("introduction", "description", "synopsis").ifBlank { input.description }
+            val poster = fixImg(data.stringAny("cover", "thumb_url", "image", "poster").ifBlank { input.poster })
+
+            val epsArr = seriesData.optJSONArray("video_list") ?: seriesData.optJSONArray("episode_list") ?: seriesData.optJSONArray("episodes") ?: seriesData.optJSONArray("list") ?: seriesJson?.optJSONArray("data") ?: bookJson.optJSONArray("video_list") ?: bookJson.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    o.intAny("episode", "episode_no", "episode_number", "chapterIndex", i + 1),
+                    o.stringAny("streaming", "url", "play_url", "video_url"),
+                    o.stringAny("episode_label", "title", "label")
+                )
+            }
+            val total = max(data.intAny("chapterCount", "episode_count", "total_episodes", input.episodes), eps.size)
+            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data), p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+        }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         if (p == "goodshort" && data.has("book")) {
             val book = data.optJSONObject("book") ?: data; val list = data.optJSONArray("list") ?: JSONArray()
@@ -2587,23 +2609,27 @@ private class DramakuRepository {
         val drama = d.drama; val p = drama.platform; val base = apiBase(p); val id = drama.id; val res = if (ds) 480 else 720
         return when (p) {
             "melolo" -> {
-                // streamv2 kadang menyimpan source ByteDance lama. Buat ulang URL proxy dari
-                // /stream yang fresh + kid, supaya proxy Melolo dapat mendekripsi stream terbaru.
+                val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
+                val dataObj = multiVideoJson?.optJSONObject("data") ?: multiVideoJson
+                val list = dataObj?.optJSONArray("video_list") ?: dataObj?.optJSONArray("episodes") ?: dataObj?.optJSONArray("list") ?: multiVideoJson?.optJSONArray("data") ?: JSONArray()
+                val epObj = list.objects().firstOrNull { it.intAny("episode", "episode_no", "episode_number", 0) == ep } ?: list.optJSONObject(ep - 1)
+                
+                val source = epObj?.stringAny("streaming", "url", "play_url", "video_url").orEmpty()
+                if (source.isNotBlank()) {
+                    return StreamResult(source)
+                }
+
                 val stamp = System.currentTimeMillis()
-                val raw = runCatching { getJson("$base/stream?id=${enc(id)}&ep=$ep&_=$stamp") }.getOrNull()
+                val raw = runCatching { getJson("$base/stream?id=${enc(id)}&ep=$ep&lang=id&_=$stamp") }.getOrNull()
                 val qualities = raw?.optJSONArray("qualities")?.objects().orEmpty()
                 val selected = qualities.firstOrNull { it.stringAny("label").contains("720") }
                     ?: qualities.firstOrNull { it.stringAny("label").contains("540") }
                     ?: qualities.firstOrNull()
-                val source = selected?.stringAny("url", "backup_url").orEmpty()
-                val kid = selected?.stringAny("kid").orEmpty()
-                if (source.isNotBlank() && kid.isNotBlank()) {
-                    StreamResult("$base/melolo?url=${enc(source)}&kid=${enc(kid)}")
+                val src = selected?.stringAny("url", "backup_url").orEmpty()
+                if (src.isNotBlank()) {
+                    StreamResult(src)
                 } else {
-                    // Tetap pertahankan resolver v2 bila format /stream berubah di provider.
-                    val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep&_=$stamp")
-                    val url = extractStreamV2Url(v2)
-                    if (url.isNotBlank()) StreamResult(url) else error("Stream Melolo tidak tersedia")
+                    error("Stream Melolo tidak tersedia")
                 }
             }
             "freereels" -> {
@@ -2787,12 +2813,13 @@ private class DramakuRepository {
         repeat(3) { attempt ->
             if (attempt > 0) delay(450L * attempt)
             try {
-                return@withContext client.newCall(
-                    Request.Builder().url(url)
-                        .header("User-Agent", "DramakuNative/5.0 Android")
-                        .header("Accept", "application/json, text/plain, */*")
-                        .build()
-                ).execute().use { r ->
+                val reqBuilder = Request.Builder().url(url)
+                    .header("User-Agent", "DramakuNative/5.0 Android")
+                    .header("Accept", "application/json, text/plain, */*")
+                if (url.contains("captain.sapimu.au/melolo") || url.contains("/melolo/")) {
+                    reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
+                }
+                return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
                     val body = r.body?.string().orEmpty()
                     val json = runCatching { JSONObject(body) }.getOrNull()
                     if (!r.isSuccessful) {
@@ -2849,12 +2876,14 @@ private fun homeUrls(p: String, page: Int = 1): List<String> {
             pop = "$base/indonesia?page=$sp&perPage=20"
             nw = "$base/horror?page=$sp&perPage=20"
         }
+        "melolo" -> { h = "$base/bookmall?lang=id"; pop = "$base/bookmall/tabs?gender=0&lang=id"; nw = "$base/bookmall?lang=id" }
         "drakor" -> { h = "$base/home/korea?page=$sp&limit=30&sort=LATEST"; pop = "$base/trending?page=$sp&limit=30&days=30"; nw = "$base/terbaru?page=$sp&limit=30" }
     }
     return listOf(h, pop, nw)
 }
 
 private fun detailUrl(d: Drama): String = when (d.platform) {
+    "melolo" -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
     "dramabox" -> "${apiBase(d.platform)}/detail?bookId=${enc(d.id)}&lang=in"
     "goodshort" -> "${apiBase(d.platform)}/detail?bookId=${enc(d.id)}"
     "moviebox" -> "${apiBase(d.platform)}/detail?subjectId=${enc(d.id)}"
