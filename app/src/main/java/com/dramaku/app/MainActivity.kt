@@ -2899,24 +2899,42 @@ private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
     when (any) {
         is JSONArray -> any.objects().forEach { o ->
-            val b = o.optJSONArray("books") ?: o.optJSONArray("cell_data")
-            if (b != null) out += flat(b, fp)
-            else {
-                val subBooks = o.optJSONArray("books")
-                if (subBooks != null) out += flat(subBooks, fp)
-                else out += normalize(o, fp)
+            val books = o.optJSONArray("books")
+            val cellData = o.optJSONArray("cell_data")
+            val cell = o.optJSONObject("cell")
+            val cellBooks = cell?.optJSONArray("books")
+            val cellCellData = cell?.optJSONArray("cell_data")
+
+            if (books != null) out += flat(books, fp)
+            if (cellData != null) out += flat(cellData, fp)
+            if (cellBooks != null) out += flat(cellBooks, fp)
+            if (cellCellData != null) out += flat(cellCellData, fp)
+            if (books == null && cellData == null && cell == null) {
+                out += normalize(o, fp)
             }
         }
-        is JSONObject -> when {
-            any.has("trending") || any.has("popular") || any.has("newest") -> listOf("trending", "popular", "newest").forEach { k -> out += flat(any.optJSONArray(k), fp) }
-            any.optJSONObject("cell")?.optJSONArray("cell_data") != null -> out += flat(any.optJSONObject("cell")?.optJSONArray("cell_data"), fp)
-            any.optJSONArray("cell_data") != null -> out += flat(any.optJSONArray("cell_data"), fp)
-            any.optJSONArray("books") != null -> out += flat(any.optJSONArray("books"), fp)
-            any.optJSONObject("classifyBookList")?.optJSONArray("records") != null -> out += flat(any.optJSONObject("classifyBookList")?.optJSONArray("records"), fp)
-            any.optJSONArray("items") != null -> out += flat(any.optJSONArray("items"), fp)
-            any.optJSONArray("subjects") != null -> out += flat(any.optJSONArray("subjects"), "moviebox")
-            any.optJSONArray("results") != null -> any.optJSONArray("results")!!.objects().forEach { r -> out += flat(r.optJSONArray("subjects"), "moviebox") }
-            else -> out += normalize(any, fp)
+        is JSONObject -> {
+            val cell = any.optJSONObject("cell")
+            val cellData = any.optJSONArray("cell_data") ?: cell?.optJSONArray("cell_data")
+            val books = any.optJSONArray("books") ?: cell?.optJSONArray("books")
+
+            if (cellData != null) out += flat(cellData, fp)
+            if (books != null) out += flat(books, fp)
+            if (any.has("trending") || any.has("popular") || any.has("newest")) {
+                listOf("trending", "popular", "newest").forEach { k -> out += flat(any.optJSONArray(k), fp) }
+            }
+            val classify = any.optJSONObject("classifyBookList")?.optJSONArray("records")
+            if (classify != null) out += flat(classify, fp)
+            val items = any.optJSONArray("items")
+            if (items != null) out += flat(items, fp)
+            val subjects = any.optJSONArray("subjects")
+            if (subjects != null) out += flat(subjects, "moviebox")
+            val results = any.optJSONArray("results")
+            if (results != null) results.objects().forEach { r -> out += flat(r.optJSONArray("subjects"), "moviebox") }
+
+            if (cellData == null && books == null && !any.has("trending") && !any.has("popular") && !any.has("newest") && classify == null && items == null && subjects == null && results == null) {
+                out += normalize(any, fp)
+            }
         }
     }
     return out.filter { it.id.isNotBlank() && it.title.isNotBlank() }.distinctBy { it.platform + "|" + it.id }
