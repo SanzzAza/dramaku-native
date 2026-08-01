@@ -4,7 +4,7 @@ Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
 Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 
-**Versi saat ini: 4.8.1**
+**Versi saat ini: 4.9.0**
 
 ## Platform
 
@@ -18,6 +18,10 @@ Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
 - GoodShort
 - MovieBox
 - Drakor
+
+## Tampilan 4.9
+
+Antarmuka ditata ulang dengan arah "warm cinema": gelap hangat, aksen hijau mint, tombol utama krem, tipografi **Fraunces** untuk judul dan **Plus Jakarta Sans** untuk antarmuka. Font tertanam di `app/src/main/res/font/`, jadi tidak bergantung ke font sistem.
 
 ## Fitur Native MVP
 
