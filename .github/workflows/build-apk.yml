@@ -38,8 +38,8 @@ jobs:
             VERSION_CODE=1
           fi
 
-          # Hanya tag v* atau manual workflow_dispatch yang membuat GitHub Release (mencegah release menumpuk saat push ke main).
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          # Otomatis buat GitHub Release pada setiap push ke main atau tag v*.
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]] || [ "${GITHUB_REF_NAME}" = "main" ]; then
             CREATE_RELEASE=true
           elif [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.create_release }}" = "true" ]; then
             CREATE_RELEASE=true
