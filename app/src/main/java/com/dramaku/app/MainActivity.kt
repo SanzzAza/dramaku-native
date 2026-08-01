@@ -2874,32 +2874,35 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
-    fun traverse(node: Any?) {
+    // Melolo stores actual dramas inside "books" arrays or objects containing book_id / bookName
+    fun extractBooks(node: Any?) {
         when (node) {
-            is JSONArray -> {
-                node.objects().forEach { traverse(it) }
-            }
+            is JSONArray -> node.objects().forEach { extractBooks(it) }
             is JSONObject -> {
-                // If it has book_id or id and book_name or title, it is a drama item!
-                if ((node.has("book_id") || node.has("bookId") || node.has("id")) && (node.has("book_name") || node.has("bookName") || node.has("title") || node.has("name"))) {
+                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId")
+                val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name")
+                val cover = node.stringAny("cover", "thumb_url", "image", "poster")
+                if (bookId.isNotBlank() && bookName.isNotBlank() && cover.isNotBlank()) {
                     val d = normalize(node, fp)
                     if (d.id.isNotBlank() && d.title.isNotBlank()) {
                         out += d
                     }
                 }
-                // Also traverse all keys/values inside JSONObject
+                // Recursively search children, avoiding category/tab definition objects if possible
                 val keys = node.keys()
                 while (keys.hasNext()) {
                     val k = keys.next()
-                    val v = node.opt(k)
-                    if (v is JSONObject || v is JSONArray) {
-                        traverse(v)
+                    if (k != "categories" && k != "category_info") {
+                        val v = node.opt(k)
+                        if (v is JSONObject || v is JSONArray) {
+                            extractBooks(v)
+                        }
                     }
                 }
             }
         }
     }
-    traverse(any)
+    extractBooks(any)
     return out.distinctBy { it.platform + "|" + it.id }
 }
 
