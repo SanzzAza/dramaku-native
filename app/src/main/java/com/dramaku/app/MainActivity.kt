@@ -2469,7 +2469,9 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     val b = MediaItem.Builder().setUri(Uri.parse(url))
     val lower = url.lowercase()
     when {
-        lower.contains("m3u8") || lower.contains("/stream?") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
+        // Hanya playlist DramaBox yang butuh hint HLS (URL-nya tanpa .m3u8).
+        // Stream Melolo juga mengandung "/stream?" tapi itu MP4 — jangan disamaratakan.
+        lower.contains("m3u8") || lower.contains("dramaboxbaru/api/stream") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
         lower.contains(".mp4") -> b.setMimeType(MimeTypes.APPLICATION_MP4)
     }
     val subtitle = cleanUrl(s.subtitle)

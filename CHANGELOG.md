@@ -2,6 +2,12 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.7 (2026-08-02)
+
+- Fix stream Melolo tidak bisa diputar: hint HLS untuk URL "/stream?" ikut
+  kena ke MP4 Melolo (tobrutmelolo/inicdn), padahal itu video progresif —
+  ExoPlayer gagal baca. Hint sekarang spesifik ke dramaboxbaru/api/stream
+
 ## 4.9.6 (2026-08-02)
 
 - Fix search MovieBox: perPage=24 dibalas upstream dengan data kosong —

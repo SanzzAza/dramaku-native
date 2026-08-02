@@ -147,7 +147,9 @@ public class PlayerActivity extends AppCompatActivity {
     private MediaItem buildMediaItem(String url, String subtitle) {
         MediaItem.Builder builder = new MediaItem.Builder().setUri(Uri.parse(url));
         String lowerUrl = url == null ? "" : url.toLowerCase();
-        if (lowerUrl.contains(".m3u8") || lowerUrl.contains("m3u8") || lowerUrl.contains("/stream?")) {
+        // Hanya playlist DramaBox yang butuh hint HLS (URL-nya tanpa .m3u8).
+        // Stream Melolo juga mengandung "/stream?" tapi itu MP4 — jangan disamaratakan.
+        if (lowerUrl.contains(".m3u8") || lowerUrl.contains("m3u8") || lowerUrl.contains("dramaboxbaru/api/stream")) {
             builder.setMimeType(MimeTypes.APPLICATION_M3U8);
         }
         if (subtitle != null && !subtitle.trim().isEmpty()) {
