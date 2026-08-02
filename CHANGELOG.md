@@ -2,6 +2,16 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.2 (2026-08-02)
+
+- Beranda Melolo tidak lagi terasa kosong: feed home tetap 18 judul (batas upstream),
+  tapi di bawahnya sekarang ada rak genre — Romansa, CEO & harta, Balas dendam,
+  Lintas waktu, Wanita kuat — diambil dari katalog search yang jauh lebih dalam
+  (~380 judul terverifikasi hidup). Judul di feed 18 tidak diulang di rak.
+- Pesan error untuk sumber yang mati diganti yang lebih manusiawi
+  ("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
+- Test HomeCategoryTest dibetulkan sesuai desain melolo-only saat ini
+
 ## 4.9.1 (2026-08-02)
 
 - Fix: rak/genre Melolo ("Trending", "Peringkat", "Time Travel", dll) tidak lagi ikut keparse sebagai drama — filter home sekarang mewajibkan sinyal konten nyata (cover/sinopsis/jumlah episode)

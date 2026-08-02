@@ -299,6 +299,7 @@ private fun App() {
     var pendingResume by remember { mutableStateOf<HistoryItem?>(null) }
     var category by remember { mutableStateOf<HomeCategory?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var genreRows by remember { mutableStateOf<List<Pair<String, List<Drama>>>>(emptyList()) }
 
     val playerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
@@ -345,6 +346,32 @@ private fun App() {
             playerSession = PlayerSession(det, p.episode.coerceAtLeast(1))
             selectedDrama = null; pendingResume = null
         }
+    }
+
+    // Rak genre dari search — feed home Melolo mentok di 18 judul,
+    // katalognya justru jauh lebih dalam lewat pencarian.
+    LaunchedEffect(homeState) {
+        val ok = (homeState as? Load.Ok)?.data
+        if (ok == null || selPlatform != "melolo") { genreRows = emptyList(); return@LaunchedEffect }
+        val known = (ok.popular + ok.newest + ok.recommended).map { it.platform + "|" + it.id }.toSet()
+        val wanted = listOf(
+            "Romansa" to "cinta",
+            "CEO & harta" to "ceo",
+            "Balas dendam" to "balas dendam",
+            "Lintas waktu" to "time travel",
+            "Wanita kuat" to "wanita kuat"
+        )
+        genreRows = coroutineScope {
+            wanted.map { (label, q) ->
+                async {
+                    label to runCatching { repo.searchPlatform(q, selPlatform) }
+                        .getOrDefault(emptyList())
+                        .distinctBy { it.platform + "|" + it.id }
+                        .filter { (it.platform + "|" + it.id) !in known }
+                        .take(16)
+                }
+            }.awaitAll()
+        }.filter { it.second.size >= 4 }
     }
 
     fun loadMore() {
@@ -428,7 +455,8 @@ private fun App() {
                                     if (pool.isNotEmpty()) clipFeedItems = pool.shuffled().take(80)
                                     else Toast.makeText(ctx, "Cuplikan belum tersedia", Toast.LENGTH_SHORT).show()
                                 },
-                                onResume = { h -> pendingResume = h; selectedDrama = Drama(h.id, h.title, poster = h.poster, platform = h.platform) }
+                                onResume = { h -> pendingResume = h; selectedDrama = Drama(h.id, h.title, poster = h.poster, platform = h.platform) },
+                                genreRows = genreRows
                             )
                             Tab.Search -> SearchScreen(repo, store, selPlatform, onDrama = { selectedDrama = it }, onBack = { tab = Tab.Home }, dataTick = dataTick, bump = { dataTick++ })
                             Tab.Clips -> ClipsScreen(homeState, repo, store, onBack = { tab = Tab.Home }, onWatchFull = { playerSession = PlayerSession(it, 1) }, onOpenDetail = { selectedDrama = it })
@@ -532,7 +560,8 @@ private fun HomeScreen(
     onLoadMore: () -> Unit, onPlatform: (String) -> Unit, onRefresh: () -> Unit,
     onDrama: (Drama) -> Unit, onSearch: () -> Unit, onRandom: () -> Unit,
     onClips: () -> Unit, onResume: (HistoryItem) -> Unit,
-    category: HomeCategory? = null, onExitCategory: () -> Unit = {}
+    category: HomeCategory? = null, onExitCategory: () -> Unit = {},
+    genreRows: List<Pair<String, List<Drama>>> = emptyList()
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(scrollToTopSignal) {
@@ -595,6 +624,18 @@ private fun HomeScreen(
                         Section("Lanjutkan menonton", "Persis di tempat kamu berhenti.") {
                             LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 items(history.take(8), key = { it.platform + it.id }) { watched -> ContinueCard(watched, onResume) }
+                            }
+                        }
+                    }
+
+                    genreRows.forEach { (label, shelfItems) ->
+                        item(key = "shelf_$label") {
+                            Section(label) {
+                                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    items(shelfItems, key = { it.platform + it.id }) { d ->
+                                        DiscoverDramaCard(drama = d, isNew = false, onClick = onDrama, modifier = Modifier.width(124.dp))
+                                    }
+                                }
                             }
                         }
                     }
@@ -2504,7 +2545,7 @@ private class DramakuRepository {
         if (p == "dramanova" && req.virtualPage == 1 && rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) {
             val fb = loadFallback("dramanova"); rec = fb.recommended; pop = fb.popular; nw = fb.newest; more = false
         }
-        if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty() && req.virtualPage == 1) error("Data kosong")
+        if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty() && req.virtualPage == 1) error("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
         HomeBundle(rec, pop, nw, req.virtualPage, more)
     }
 
