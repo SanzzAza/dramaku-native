@@ -2,6 +2,20 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.3 (2026-08-02)
+
+- Rak genre ngikutin tab asli aplikasi resmi: Populer, Romansa, Sistem, Harem,
+  CEO & harta, Balas dendam, Lintas waktu, Kekuatan super, Wanita kuat,
+  Kelahiran kembali — semuanya terverifikasi hidup (50–63 judul per genre)
+- Bersih-bersih besar: kode 9 platform yang upstream-nya sudah mati
+  (FreeReels, FlickReels, DramaNova, ReelShort, NetShort, DramaBox, GoodShort,
+  MovieBox, Drakor) dihapus dari repository — cabang resolveStream, homeUrls,
+  detailUrl, loadDetail, header CDN khusus, helper link kedaluwarsa, dan
+  fallback dramanova ikut pergi
+- Melolo jadi satu-satunya jalur data: bookmall/book/tabs untuk listing,
+  multi-video untuk detail & stream, search untuk pencarian dan rak genre
+- Pagination disederhanakan: upstream mengabaikan offset/page/session
+
 ## 4.9.2 (2026-08-02)
 
 - Beranda Melolo tidak lagi terasa kosong: feed home tetap 18 judul (batas upstream),

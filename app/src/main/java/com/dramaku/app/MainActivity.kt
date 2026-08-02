@@ -355,11 +355,16 @@ private fun App() {
         if (ok == null || selPlatform != "melolo") { genreRows = emptyList(); return@LaunchedEffect }
         val known = (ok.popular + ok.newest + ok.recommended).map { it.platform + "|" + it.id }.toSet()
         val wanted = listOf(
+            "Populer" to "populer",
             "Romansa" to "cinta",
+            "Sistem" to "sistem",
+            "Harem" to "harem",
             "CEO & harta" to "ceo",
             "Balas dendam" to "balas dendam",
             "Lintas waktu" to "time travel",
-            "Wanita kuat" to "wanita kuat"
+            "Kekuatan super" to "kekuatan super",
+            "Wanita kuat" to "wanita kuat",
+            "Kelahiran kembali" to "kelahiran kembali"
         )
         genreRows = coroutineScope {
             wanted.map { (label, q) ->
@@ -2017,21 +2022,6 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
         .setMediaSourceFactory(DefaultMediaSourceFactory(cache)).build()
 }
 
-private fun streamHeaders(platformId: String): Map<String, String> = when (platformId) {
-    "drakor" -> mapOf(
-        "Accept" to "*/*",
-        "Referer" to "https://drakor.id/",
-        "Origin" to "https://drakor.id",
-        "Cookie" to "DRIVE_STREAM=drakor.id"
-    )
-    "moviebox" -> mapOf(
-        "Accept" to "video/mp4,video/*;q=0.9,*/*;q=0.8",
-        "Referer" to "https://www.moviebox.com/",
-        "Origin" to "https://www.moviebox.com"
-    )
-    else -> emptyMap()
-}
-
 private fun playerError(e: PlaybackException): String {
     val r = e.message.orEmpty()
     return when {
@@ -2057,14 +2047,7 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
     val act = ctx as? Activity
     val compAct = ctx as? ComponentActivity
     val pager = rememberPagerState(pageCount = { items.size })
-    val clipHeaders = remember(items) {
-        when {
-            items.any { it.platform == "drakor" } -> streamHeaders("drakor")
-            items.any { it.platform == "moviebox" } -> streamHeaders("moviebox")
-            else -> emptyMap()
-        }
-    }
-    val player = remember(clipHeaders) { buildPlayer(ctx, clipHeaders) }
+    val player = remember { buildPlayer(ctx) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var curDetail by remember { mutableStateOf<Detail?>(null) }
@@ -2188,7 +2171,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     val scope = rememberCoroutineScope()
     val total = episodeCount(detail).coerceAtLeast(1)
     val pager = rememberPagerState(initialPage = (startEp - 1).coerceIn(0, total - 1), pageCount = { total })
-    val player = remember(detail.drama.platform) { buildPlayer(ctx, streamHeaders(detail.drama.platform)) }
+    val player = remember { buildPlayer(ctx) }
     val preferLandscape = remember(detail.drama.platform, detail.drama.subjectType) { prefersLandscapePlayback(detail.drama) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -2449,7 +2432,8 @@ private fun PlayerErrorCard(message: String, modifier: Modifier = Modifier, onRe
 // HELPERS
 // ─────────────────────────────────────────────────────────────────
 
-private fun prefersLandscapePlayback(drama: Drama): Boolean = drama.platform == "moviebox" || drama.platform == "drakor"
+// Sumber layar lebar (MovieBox/Drakor) sudah mati — semua memutar portrait.
+private fun prefersLandscapePlayback(drama: Drama): Boolean = false
 
 private fun buildMediaItem(s: StreamResult): MediaItem {
     val url = cleanUrl(s.url)
@@ -2486,23 +2470,6 @@ private fun Context.isNetworkAvailable(): Boolean {
 // REPOSITORY — same API logic, with streamv2 fix
 // ─────────────────────────────────────────────────────────────────
 
-private fun extractStreamV2Url(json: JSONObject): String {
-    val episodes = json.optJSONArray("episodes")?.objects().orEmpty()
-    for (ep in episodes) {
-        val cdnList = ep.optJSONArray("cdnList")?.objects().orEmpty()
-        for (cdn in cdnList) {
-            val paths = cdn.optJSONArray("videoPathList")?.objects().orEmpty()
-            val hd = paths.firstOrNull { it.stringAny("sharpnessName").contains("HD", true) }
-            val picked = hd ?: paths.firstOrNull()
-            val vp = picked?.stringAny("videoPath").orEmpty()
-            if (vp.isNotBlank()) return vp
-        }
-        val direct = ep.stringAny("playUrl", "url", "videoPath")
-        if (direct.isNotBlank()) return direct
-    }
-    return json.stringAny("url")
-}
-
 private class DramakuRepository {
     private val dispatcher = Dispatcher().apply { maxRequests = 32; maxRequestsPerHost = 16 }
     private val client = OkHttpClient.Builder().dispatcher(dispatcher).connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
@@ -2522,7 +2489,7 @@ private class DramakuRepository {
 
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
         // Signed URL dari provider cepat expired. Jangan cache supaya Retry selalu ambil link/token baru.
-        if (d.drama.platform in setOf("melolo", "moviebox", "drakor", "dramanova", "goodshort")) {
+        if (d.drama.platform in setOf("melolo")) {
             return resolveStream(d, ep, ds)
         }
         val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
@@ -2541,57 +2508,19 @@ private class DramakuRepository {
         val items = dedupe(json?.let { flat(it.dataOrSelf(), p) }.orEmpty())
         var rec = emptyList<Drama>(); var pop = emptyList<Drama>(); var nw = emptyList<Drama>()
         when (req.section) { HomeSection.Popular -> pop = items; HomeSection.Newest -> nw = items; HomeSection.Recommended -> rec = items }
-        var more = req.hasMore
-        if (p == "dramanova" && req.virtualPage == 1 && rec.isEmpty() && pop.isEmpty() && nw.isEmpty()) {
-            val fb = loadFallback("dramanova"); rec = fb.recommended; pop = fb.popular; nw = fb.newest; more = false
-        }
+        val more = req.hasMore
         if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty() && req.virtualPage == 1) error("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
         HomeBundle(rec, pop, nw, req.virtualPage, more)
     }
 
-    private suspend fun loadFallback(broken: String): HomeBundle = coroutineScope {
-        val jobs = listOf("melolo", "freereels", "goodshort", "dramabox", "drakor").map { p -> async { runCatching { loadHome(p) }.getOrNull() } }
-        val b = jobs.awaitAll().filterNotNull()
-        HomeBundle(dedupe(b.flatMap { it.recommended }).take(80), dedupe(b.flatMap { it.popular }).take(60), dedupe(b.flatMap { it.newest }).take(60), 1, false)
-    }
-
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
-        val enc = enc(q); val pl = Platforms.firstOrNull { it.id == p } ?: Platforms.first()
-        val url = when (pl.id) {
-            "melolo" -> "${pl.base}/search?q=$enc&lang=id&limit=50&offset=0"
-            "freereels" -> "${pl.base}/search?q=$enc&page=1&lang=id"
-            "flickreels" -> "${pl.base}/search?q=$enc"
-            "dramanova" -> "${pl.base}/search?q=$enc&page=1&size=10"
-            "reelshort" -> "${pl.base}/search?q=$enc&page=1&limit=10"
-            "netshort" -> "${pl.base}/search?query=$enc&page=1"
-            "dramabox" -> "${pl.base}/search?q=$enc&page=1&lang=in"
-            "goodshort" -> "${pl.base}/search?q=$enc&page=1"
-            "moviebox" -> "${pl.base}/search?q=$enc&page=1&perPage=10"
-            "drakor" -> "${pl.base}/search?q=$enc&page=1&limit=30&type=1&order=1"
-            else -> "${pl.base}/search?q=$enc"
-        }
-        dedupeAndRank(runCatching { flat(getJson(url).dataOrSelf(), pl.id) }.getOrDefault(emptyList()), q).take(80)
+        val url = "${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0"
+        dedupeAndRank(runCatching { flat(getJson(url).dataOrSelf(), p) }.getOrDefault(emptyList()), q).take(80)
     }
 
     suspend fun loadDetail(input: Drama): Detail {
         val p = input.platform
-        if (p == "moviebox" && input.subjectType != 2 && input.title.isNotBlank()) {
-            val d = input.copy(episodes = 1, subjectType = 1, platform = p)
-            return Detail(d, listOf(EpisodeInfo(1)))
-        }
         val url = detailUrl(input); val json = getJson(url)
-        if (p == "drakor") {
-            val info = json.optJSONObject("info") ?: error("Detail tidak ditemukan")
-            val epsArr = json.optJSONObject("episodes")?.optJSONArray("data") ?: JSONArray()
-            val eps = epsArr.objects().mapIndexed { i, o ->
-                val label = o.stringAny("episode_label", "title", "label")
-                val streamId = o.stringAny("streaming")
-                val locked = label.contains("premium", true) || streamId.isBlank() || !o.optBoolean("cdn_ready", true)
-                EpisodeInfo(o.intAny("episode_number", i + 1), streamId, label, locked)
-            }
-            val d = normalize(info, p).copy(id = info.stringAny("id").ifBlank { input.id }, title = info.stringAny("title").ifBlank { input.title }, poster = fixImg(info.stringAny("image").ifBlank { input.poster }), description = cleanText(info.stringAny("meta_sinopsis", "shoot", "content", "meta_description")).ifBlank { input.description }, episodes = eps.size.takeIf { it > 0 } ?: info.intAny("meta_episode", input.episodes), platform = p, subjectType = 2)
-            return Detail(d, eps)
-        }
         if (p == "melolo") {
             val bookJson = json
             val multiJson = runCatching { getJson("${apiBase(p)}/multi-video?id=${enc(input.id)}&lang=id") }.getOrNull()
@@ -2615,17 +2544,6 @@ private class DramakuRepository {
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
-        if (p == "goodshort" && data.has("book")) {
-            val book = data.optJSONObject("book") ?: data; val list = data.optJSONArray("list") ?: JSONArray()
-            val intro = book.stringAny("introduction").takeUnless { it == "1" || it.equals("success", true) }.orEmpty()
-            val d = normalize(book, p).copy(id = book.stringAny("bookId").ifBlank { input.id }, title = book.stringAny("bookName").ifBlank { input.title }, description = intro.ifBlank { input.description }, episodes = book.intAny("chapterCount", list.length()), poster = fixImg(book.stringAny("cover").ifBlank { input.poster }), platform = p)
-            return Detail(d, (0 until list.length()).map { EpisodeInfo(it + 1) })
-        }
-        if (p == "moviebox") {
-            val total = data.optJSONArray("resourceDetectors")?.optJSONObject(0)?.intAny("totalEpisode", 0) ?: data.optJSONObject("resourceDetectors")?.intAny("totalEpisode", 0) ?: input.episodes
-            val d = normalize(data, p).copy(id = data.stringAny("subjectId").ifBlank { input.id }, title = data.stringAny("title").ifBlank { input.title }, description = data.stringAny("description").ifBlank { input.description }, episodes = if (data.intAny("subjectType", 1) == 2) max(total, 1) else 1, poster = fixImg(data.coverUrl().ifBlank { input.poster }), tags = data.stringAny("genre").split(",").map { it.trim() }.filter { it.isNotBlank() }, subjectType = data.intAny("subjectType", input.subjectType), platform = p)
-            return Detail(d, (1..d.episodes.coerceAtLeast(1)).map { EpisodeInfo(it) })
-        }
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
         val eps = epsArr?.objects()?.mapIndexed { i, o -> EpisodeInfo(o.intAny("episode", "episode_no", "chapterIndex", i + 1), o.stringAny("streaming"), o.stringAny("episode_label", "title", "label")) }.orEmpty()
@@ -2634,195 +2552,21 @@ private class DramakuRepository {
     }
 
     suspend fun resolveStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
-        val drama = d.drama; val p = drama.platform; val base = apiBase(p); val id = drama.id; val res = if (ds) 480 else 720
-        return when (p) {
-            "melolo" -> {
-                val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
-                val list = multiVideoJson?.optJSONArray("episodes") ?: multiVideoJson?.optJSONArray("video_list") ?: multiVideoJson?.optJSONObject("data")?.optJSONArray("episodes") ?: JSONArray()
-                val epObj = list.objects().firstOrNull { it.intAny("index", "episode", "episode_no", 0) == ep } ?: list.optJSONObject(ep - 1)
-                val source = epObj?.stringAny("stream_url", "streaming", "url", "play_url", "video_url").orEmpty()
-                if (source.isNotBlank()) {
-                    return StreamResult(source)
-                }
-                error("Stream Melolo tidak tersedia")
-            }
-            "freereels" -> {
-                val j = getJson("$base/stream?dramaId=${enc(id)}&episode=$ep&lang=id").optJSONObject("data") ?: error("Video belum tersedia")
-                StreamResult(j.stringAny("h264_m3u8", "m3u8_url", "video_url"), subtitleFrom(j.optJSONArray("subtitles")))
-            }
-            "flickreels" -> {
-                val url = runCatching { getJson("$base/stream?id=${enc(id)}&ep=$ep").optJSONObject("data")?.stringAny("hls_url").orEmpty() }.getOrDefault("")
-                if (url.isNotBlank()) return StreamResult(url)
-                val dj = getJson("$base/detail?id=${enc(id)}")
-                val eps = dj.optJSONObject("data")?.optJSONArray("episodes") ?: dj.optJSONObject("data")?.optJSONArray("episode_list") ?: JSONArray()
-                val e = eps.objects().firstOrNull { it.intAny("episode", "episode_no", 0) == ep } ?: eps.optJSONObject(ep - 1)
-                StreamResult(e?.stringAny("hls_url", "url", "video_url").orEmpty())
-            }
-            "reelshort" -> {
-                val data = getJson("$base/stream?id=${enc(id)}&episode_no=$ep").optJSONObject("data") ?: error("Video belum tersedia")
-                val vl = data.optJSONArray("videoList")?.objects().orEmpty()
-                val pick = vl.firstOrNull { it.stringAny("encode") == "H264" && it.intAny("dpi", 0) == res } ?: vl.firstOrNull { it.stringAny("encode") == "H264" } ?: vl.firstOrNull()
-                StreamResult(pick?.stringAny("playUrl").orEmpty().ifBlank { data.stringAny("play_url") })
-            }
-            "drakor" -> {
-                val info = d.episodes.firstOrNull { it.number == ep } ?: d.episodes.getOrNull(ep - 1)
-                if (info?.locked == true) {
-                    error("Episode Drakor ini masih premium / belum dibuka gratis. Coba episode lain atau tunggu jadwal gratisnya.")
-                }
-                val streaming = info?.streaming.orEmpty()
-                if (streaming.isBlank()) error("Episode Drakor belum punya link stream")
-                val j = getJson("$base/stream?streaming=${enc(streaming)}")
-                val url = if (ds) {
-                    j.stringAny("480p", "360p", "720p", "1080p", "url")
-                } else {
-                    j.stringAny("720p", "1080p", "480p", "360p", "url")
-                }
-                StreamResult(url)
-            }
-            "moviebox" -> {
-                // Worker baru (new-api.sonzaix.workers.dev) sekarang sudah mengembalikan
-                // link CDN bcdn.hakunaymatata.com dengan format markdown + t= issued-at.
-                // Kita pakai worker yang sama dengan listing/detail supaya signed link fresh.
-                val streamBase = base // "https://new-api.sonzaix.workers.dev/moviebox"
-                // Movie: endpoint hanya balas 360/480 HEVC + 1080 H264. Series: 720 bisa HEVC/H264 campur.
-                // Prioritas: H264 sesuai preferensi dulu, kalau tidak ada fallback apapun yang valid.
-                val resolutions = if (drama.subjectType == 2) {
-                    // Series: coba resolusi target dulu, kemudian sisanya.
-                    listOf(res, 1080, 720, 480, 360).distinct()
-                } else {
-                    // Movie: 720 tidak tersedia, langsung coba 1080 (H264) lalu 480/360.
-                    listOf(1080, res, 480, 360).distinct()
-                }
-                var sawExpiredLink = false
-                fun linkOf(o: JSONObject?): String {
-                    val u = cleanUrl(o?.stringAny("resourceLink").orEmpty())
-                    if (u.isNotBlank() && isMovieboxExpired(u)) {
-                        sawExpiredLink = true
-                        return ""
-                    }
-                    return u
-                }
-                fun subOf(o: JSONObject?): String = cleanUrl(o?.optJSONObject("subtitle")?.stringAny("url").orEmpty())
-                fun codecOf(o: JSONObject?): String = o?.stringAny("codecName", "codec").orEmpty().lowercase()
-
-                if (drama.subjectType == 2) {
-                    // Kumpulkan semua kandidat episode dari SEMUA resolusi (karena 720 saja sering tidak lengkap).
-                    // Response worker tidak menjamin episode berurutan atau lengkap per resolusi.
-                    val episodeByKey = HashMap<Int, Triple<String, String, String>>() // ep -> (url, sub, codec)
-                    var bestH264: Pair<String, String>? = null
-                    for (r in resolutions) {
-                        val stamp = System.currentTimeMillis()
-                        val data = runCatching {
-                            getJson("$streamBase/download-series?subjectId=${enc(id)}&se=1&resolution=$r&_=$stamp").optJSONObject("data")
-                        }.getOrNull() ?: continue
-                        val eps = data.optJSONArray("episodes")?.objects().orEmpty()
-                        for (e in eps) {
-                            val epNum = e.intAny("ep", 1)
-                            if (epNum != ep) continue
-                            val url = linkOf(e)
-                            if (url.isBlank()) continue
-                            val sub = subOf(e)
-                            val codec = codecOf(e)
-                            if (codec.contains("h264") && bestH264 == null) {
-                                bestH264 = url to sub
-                            }
-                            // Simpan fallback pertama yang ketemu (prioritas resolusi lebih tinggi)
-                            episodeByKey.putIfAbsent(epNum, Triple(url, sub, codec))
-                        }
-                        if (bestH264 != null) return StreamResult(bestH264.first, bestH264.second)
-                    }
-                    // Kalau tidak dapat H264 sama sekali, pakai apapun yang ada.
-                    val fallback = episodeByKey[ep]
-                    if (fallback != null) {
-                        return StreamResult(fallback.first, fallback.second)
-                    }
-                    if (sawExpiredLink) error("Link MovieBox sedang expired. Tekan Coba Lagi untuk dapat link baru.")
-                    error("Episode $ep belum tersedia di MovieBox. Coba episode lain.")
-                } else {
-                    // Movie: satu kali panggil per resolusi, cari file yang cocok.
-                    var fallbackUrl = ""
-                    var fallbackSub = ""
-                    var fallbackCodec = ""
-                    for (r in resolutions) {
-                        val stamp = System.currentTimeMillis()
-                        val data = runCatching {
-                            getJson("$streamBase/download-movie?subjectId=${enc(id)}&resolution=$r&_=$stamp").optJSONObject("data")
-                        }.getOrNull() ?: continue
-                        val files = data.optJSONArray("files")?.objects().orEmpty().filter { linkOf(it).isNotBlank() }
-                        val picked = files.firstOrNull { codecOf(it).contains("h264") }
-                            ?: files.firstOrNull { !codecOf(it).contains("hevc") }
-                            ?: files.firstOrNull()
-                        if (picked != null) {
-                            val pickedUrl = linkOf(picked)
-                            val pickedSub = cleanUrl(data.optJSONObject("subtitle")?.stringAny("url").orEmpty())
-                            val pickedCodec = codecOf(picked)
-                            if (pickedCodec.contains("h264")) return StreamResult(pickedUrl, pickedSub)
-                            if (fallbackUrl.isBlank()) {
-                                fallbackUrl = pickedUrl
-                                fallbackSub = pickedSub
-                                fallbackCodec = pickedCodec
-                            }
-                        }
-                    }
-                    if (fallbackUrl.isNotBlank()) {
-                        // Kalau fallback HEVC, kembalikan saja; player akan tampilkan pesan decoder kalau tidak support.
-                        return StreamResult(fallbackUrl, fallbackSub)
-                    }
-                    if (sawExpiredLink) error("Link MovieBox sedang expired. Tekan Coba Lagi untuk dapat link baru.")
-                    error("Video MovieBox belum tersedia.")
-                }
-            }
-            "goodshort" -> {
-                val dj = runCatching { getJson("$base/detail?bookId=${enc(id)}") }.getOrNull()
-                val ld = dj?.optJSONObject("data")?.optJSONArray("list")
-                val epData = ld?.optJSONObject(ep - 1)
-                val videos = epData?.optJSONArray("multiVideos")?.objects().orEmpty()
-                val pick = videos.firstOrNull { it.stringAny("type") == "${res}p" } ?: videos.firstOrNull { it.stringAny("type") == "720p" } ?: videos.firstOrNull()
-                val from = pick?.stringAny("filePath").orEmpty()
-                if (from.isNotBlank()) return StreamResult(from)
-                val cdn = epData?.optJSONArray("cdnList")?.objects().orEmpty().firstOrNull { it.stringAny("videoPath").isNotBlank() }?.stringAny("videoPath").orEmpty()
-                if (cdn.isNotBlank()) return StreamResult(cdn)
-                val sd = getJson("$base/stream?bookId=${enc(id)}").optJSONObject("data")
-                val dl = sd?.optJSONArray("downloadList") ?: error("Video belum tersedia")
-                val le = dl.optJSONObject(ep - 1) ?: error("Episode belum tersedia")
-                val lv = le.optJSONArray("multiVideos")?.objects().orEmpty()
-                val lp = lv.firstOrNull { it.stringAny("type") == "${res}p" } ?: lv.firstOrNull { it.stringAny("type") == "720p" } ?: lv.firstOrNull()
-                StreamResult(lp?.stringAny("filePath").orEmpty())
-            }
-            "dramabox" -> {
-                val data = getJson("$base/stream?bookId=${enc(id)}&chapterIndex=${ep - 1}&lang=in").optJSONObject("data") ?: error("Video belum tersedia")
-                val q = data.optJSONArray("qualities")?.objects()?.firstOrNull { it.intAny("quality", 0) == res } ?: data.optJSONArray("qualities")?.optJSONObject(0)
-                StreamResult(data.stringAny("videoUrl").ifBlank { q?.stringAny("videoPath").orEmpty() })
-            }
-            "netshort" -> {
-                val v2 = getJson("$base/streamv2?id=${enc(id)}&ep=$ep")
-                val nested = extractStreamV2Url(v2)
-                if (nested.isNotBlank()) return StreamResult(nested)
-                val data = v2.optJSONObject("data") ?: error("Video belum tersedia")
-                val s = data.optJSONArray("streams")?.objects()?.firstOrNull { it.stringAny("encode") == "H264" } ?: data.optJSONArray("streams")?.optJSONObject(0)
-                StreamResult(data.stringAny("play_url").ifBlank { s?.stringAny("url").orEmpty() })
-            }
-            "dramanova" -> {
-                val data = getJson("$base/stream?id=${enc(id)}&ep=$ep").optJSONObject("data") ?: error("Video belum tersedia")
-                val play = data.optJSONObject("play") ?: data
-                val q = play.optJSONArray("qualities")?.objects()?.firstOrNull { it.stringAny("codec") == "h264" } ?: play.optJSONArray("qualities")?.optJSONObject(0)
-                val url = play.stringAny("videoUrl", "video_url", "main_url", "backup_url")
-                    .ifBlank { q?.stringAny("main_url", "backup_url").orEmpty() }
-                StreamResult(cleanUrl(url), subtitleFrom(data.optJSONObject("info")?.optJSONArray("subtitle_tracks")))
-            }
-            else -> {
-                val v2 = runCatching { getJson("$base/streamv2?id=${enc(id)}&ep=$ep") }.getOrNull()
-                if (v2 != null) { val n = extractStreamV2Url(v2); if (n.isNotBlank()) return StreamResult(n); val l = v2.stringAny("url"); if (l.isNotBlank() && v2.optBoolean("playable", true)) return StreamResult(l) }
-                val j = getJson("$base/stream?id=${enc(id)}&ep=$ep")
-                val q = j.optJSONArray("qualities")?.objects()?.firstOrNull { it.stringAny("codec") == "h264" } ?: j.optJSONArray("qualities")?.optJSONObject(0)
-                StreamResult(q?.stringAny("url").orEmpty())
-            }
-        }.also { if (it.url.isBlank()) error("Video belum tersedia") }
+        val base = apiBase(d.drama.platform); val id = d.drama.id
+        val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
+        val list = multiVideoJson?.optJSONArray("episodes")
+            ?: multiVideoJson?.optJSONArray("video_list")
+            ?: multiVideoJson?.optJSONObject("data")?.optJSONArray("episodes")
+            ?: JSONArray()
+        val epObj = list.objects().firstOrNull { it.intAny("index", "episode", "episode_no", 0) == ep } ?: list.optJSONObject(ep - 1)
+        val source = epObj?.stringAny("stream_url", "streaming", "url", "play_url", "video_url").orEmpty()
+        if (source.isBlank()) error("Video belum tersedia")
+        return StreamResult(source)
     }
 
     private suspend fun getJson(url: String): JSONObject = withContext(Dispatchers.IO) {
-        // Endpoint MovieBox/Drakor kadang balas 5xx sementara (Cloudflare origin).
-        // Retry singkat supaya kategori Movie Drama & Movie Box tidak langsung error.
+        // Origin di balik proxy kadang balas 5xx sementara.
+        // Retry singkat supaya home tidak langsung error.
         var last: Throwable? = null
         repeat(3) { attempt ->
             if (attempt > 0) delay(450L * attempt)
@@ -2872,41 +2616,14 @@ private fun homePageRequest(p: String, page: Int): HomePageRequest {
 
 // Proxy Melolo mengabaikan offset/page/session: tiap halaman mengembalikan
 // feed 18 judul yang sama, jadi jangan fetch ulang (hemat kuota + waktu).
-private fun pagesFor(p: String): IntRange = when (p) { "flickreels", "netshort", "melolo" -> 1..1; "drakor" -> 1..5; else -> 1..5 }
+private fun pagesFor(p: String): IntRange = 1..1
 
-private fun homeUrls(p: String, page: Int = 1): List<String> {
-    val base = apiBase(p); val sp = page.coerceAtLeast(1)
-    val nl = p in setOf("flickreels", "dramanova", "reelshort", "netshort")
-    val lang = if (p == "dramabox") "&lang=in" else if (!nl) "&lang=id" else ""
-    var h = "$base/home?page=$sp$lang"; var pop = "$base/populer?page=$sp$lang"; var nw = "$base/new?page=$sp$lang"
-    when (p) {
-        "dramanova" -> { h = "$base/recommend?page=$sp&size=20"; pop = "$base/discovery?size=20&page=$sp"; nw = "$base/recommend?page=$sp&size=20" }
-        "flickreels" -> { pop = "$base/populer"; nw = "$base/new?page=$sp" }
-        "reelshort" -> { h = "$base/home?tab_id=0&sub_tab_id=0&page=$sp&limit=20"; pop = "$base/populer?page=$sp&limit=20&period=0&rule=0"; nw = "$base/new?page=$sp&limit=20" }
-        "netshort" -> { h = "$base/home?page=1"; pop = "$base/populer"; nw = "$base/new" }
-        "dramabox" -> { h = "$base/home?page=$sp&lang=in"; pop = "$base/populer?page=$sp&lang=in"; nw = "$base/new?page=$sp&lang=in" }
-        "goodshort" -> { h = "$base/home?page=$sp"; pop = "$base/populer?page=$sp"; nw = "$base/new?page=$sp&channelId=563" }
-        "moviebox" -> {
-            // /global sering timeout/stale di API MovieBox. Pakai endpoint yang stabil supaya home tidak nyangkut shimmer.
-            h = "$base/homepage?tabId=0"
-            pop = "$base/indonesia?page=$sp&perPage=20"
-            nw = "$base/horror?page=$sp&perPage=20"
-        }
-        "melolo" -> { h = "$base/bookmall?lang=id"; pop = "$base/bookmall/tabs?gender=0&lang=id"; nw = "$base/bookmall?lang=id" }
-        "drakor" -> { h = "$base/home/korea?page=$sp&limit=30&sort=LATEST"; pop = "$base/trending?page=$sp&limit=30&days=30"; nw = "$base/terbaru?page=$sp&limit=30" }
-    }
-    return listOf(h, pop, nw)
+private fun homeUrls(p: String, page: Int): List<String> {
+    val base = apiBase(p)
+    return listOf("$base/bookmall?lang=id", "$base/bookmall/tabs?gender=0&lang=id", "$base/bookmall?lang=id")
 }
 
-private fun detailUrl(d: Drama): String = when (d.platform) {
-    "melolo" -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
-    "dramabox" -> "${apiBase(d.platform)}/detail?bookId=${enc(d.id)}&lang=in"
-    "goodshort" -> "${apiBase(d.platform)}/detail?bookId=${enc(d.id)}"
-    "moviebox" -> "${apiBase(d.platform)}/detail?subjectId=${enc(d.id)}"
-    "drakor" -> "${apiBase(d.platform)}/detail?id=${enc(d.id)}"
-    "flickreels", "dramanova", "reelshort", "netshort" -> "${apiBase(d.platform)}/detail?id=${enc(d.id)}"
-    else -> "${apiBase(d.platform)}/detail?id=${enc(d.id)}&lang=id"
-}
+private fun detailUrl(d: Drama): String = "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
 
 private fun dedupe(items: List<Drama>) = items.filter { it.id.isNotBlank() && it.title.isNotBlank() }.distinctBy { it.platform + "|" + it.id }.distinctBy { it.platform + "|" + normalizeKey(it.title) }
 private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c.recommended + n.recommended), dedupe(c.popular + n.popular), dedupe(c.newest + n.newest), max(c.loadedPage, n.loadedPage), n.hasMore)
@@ -2954,8 +2671,8 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 }
 
 private fun normalize(o: JSONObject, fp: String): Drama {
-    val isDrakor = o.has("meta_episode") || (o.has("id") && o.has("title") && o.has("image"))
-    val p = when { fp == "dramabox" || o.has("bookId") -> "dramabox"; fp == "moviebox" || o.has("subjectId") -> "moviebox"; fp == "drakor" || isDrakor -> "drakor"; o.optBoolean("free", false) -> "freereels"; else -> fp }
+    // Semua sumber non-Melolo sudah dimatikan; platform selalu dari pemanggil.
+    val p = fp
     return Drama(
         o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId"),
         o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name"),
@@ -3084,7 +2801,6 @@ private fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNul
 private fun JSONObject.stringAny(vararg keys: String): String { keys.forEach { k -> val v = opt(k); if (v != null && v != JSONObject.NULL) { if (v is String && v.isNotBlank()) return v.trim(); if (v !is JSONObject && v !is JSONArray && v.toString().isNotBlank()) return v.toString().trim() } }; return "" }
 private fun JSONObject.intAny(vararg keys: Any): Int { var fb = 0; keys.forEach { k -> if (k is Int) fb = k; else if (k is String && has(k)) { val v = opt(k); val n = when (v) { is Number -> v.toInt(); is String -> v.filter { it.isDigit() }.toIntOrNull() ?: 0; else -> 0 }; if (n != 0) return n } }; return fb }
 private fun JSONObject.coverUrl(): String { val c = opt("cover"); return if (c is JSONObject) c.stringAny("url") else "" }
-private fun subtitleFrom(arr: JSONArray?): String { val list = arr?.objects().orEmpty(); return (list.firstOrNull { it.stringAny("language", "lang").startsWith("id", true) } ?: list.firstOrNull())?.stringAny("url", "label").orEmpty() }
 private fun fixImg(u: String): String { if (u.contains("fizzopic.org") && u.contains(".heic")) { val m = Regex("novel-images-apsoutheast/([a-f0-9]+)~").find(u); if (m != null) return "https://p19-novel-sg.ibyteimg.com/img/novel-images-sg/${m.groupValues[1]}~tplv-resize:570:810.jpg" }; return u }
 private fun cleanText(s: String) = s.replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ").trim()
 private fun cleanUrl(u: String): String {
@@ -3097,34 +2813,6 @@ private fun cleanUrl(u: String): String {
         .replace("\\u0026", "&")
         .replace("http://sulao.montagehub.xyz", "https://sulao.montagehub.xyz")
         .replace(" ", "%20")
-}
-private fun isExpiredSignedUrl(url: String, bufferSeconds: Long = 45L): Boolean {
-    val now = System.currentTimeMillis() / 1000L
-    val match = Regex("[?&](?:expires|expiredTime)=([0-9]{10,13})").find(url) ?: return false
-    val raw = match.groupValues[1].toLongOrNull() ?: return false
-    val expiresAt = if (raw > 9_999_999_999L) raw / 1000L else raw
-    return expiresAt <= now + bufferSeconds
-}
-/**
- * CDN MovieBox (bcdn.hakunaymatata.com) menandatangani link dengan `sign=...&t=<issued-at-epoch>`.
- * Parameter `t` adalah waktu penandatanganan, BUKAN waktu kedaluwarsa. TTL sesungguhnya
- * ditentukan di sisi Policy/Signature (tidak terekspos di parameter). Jangan salahkan
- * `t=` sebagai expired; cuma deteksi jika Policy-nya sudah lewat via Policy blob.
- */
-private fun isMovieboxExpired(url: String): Boolean {
-    if (url.contains("hakunaymatata.com")) {
-        // Coba tebak expiry dari Policy (base64 JSON). Kalau tidak bisa parse, anggap valid
-        // dan biarkan player/CDN yang memutuskan (403/429 akan ketangkap sebagai error player
-        // dan user bisa Retry).
-        val policyMatch = Regex("[?&]Policy=([^&]+)").find(url) ?: return false
-        return runCatching {
-            val decoded = android.util.Base64.decode(policyMatch.groupValues[1].replace('-', '+').replace('_', '/'), android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
-            val pol = String(decoded)
-            val exp = Regex("\"AWS:EpochTime\":\\s*(\\d+)").find(pol)?.groupValues?.get(1)?.toLongOrNull()
-            exp != null && exp <= System.currentTimeMillis() / 1000L + 30L
-        }.getOrDefault(false)
-    }
-    return isExpiredSignedUrl(url)
 }
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 private fun normalizeKey(s: String) = s.lowercase().replace(Regex("[^a-z0-9\\p{L}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
