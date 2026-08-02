@@ -109,6 +109,11 @@ public class PlayerActivity extends AppCompatActivity {
                 .setAllowCrossProtocolRedirects(true)
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(30_000);
+        // Playlist DramaBox lewat proxy (captain.sapimu.au) wajib Bearer; segmen .ts
+        // di CDN bebas token, jadi aman kalau header ikut terkirim ke sana juga.
+        java.util.HashMap<String, String> headers = new java.util.HashMap<>();
+        headers.put("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e");
+        httpFactory.setDefaultRequestProperties(headers);
 
         player = new ExoPlayer.Builder(this)
                 .setRenderersFactory(new DefaultRenderersFactory(this).setEnableDecoderFallback(true))
@@ -142,7 +147,7 @@ public class PlayerActivity extends AppCompatActivity {
     private MediaItem buildMediaItem(String url, String subtitle) {
         MediaItem.Builder builder = new MediaItem.Builder().setUri(Uri.parse(url));
         String lowerUrl = url == null ? "" : url.toLowerCase();
-        if (lowerUrl.contains(".m3u8") || lowerUrl.contains("m3u8")) {
+        if (lowerUrl.contains(".m3u8") || lowerUrl.contains("m3u8") || lowerUrl.contains("/stream?")) {
             builder.setMimeType(MimeTypes.APPLICATION_M3U8);
         }
         if (subtitle != null && !subtitle.trim().isEmpty()) {

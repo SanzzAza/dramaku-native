@@ -28,9 +28,9 @@ class HomeCategoryTest {
 
     @Test
     fun shortDramaExcludesMovieEndpoints() {
+        // Sumber short drama aktif: Melolo & DramaBox; moviebox/drakor tetap mati.
         assertTrue(HomeCategory.ShortDrama.containsPlatform("melolo"))
-        // Melolo sekarang satu-satunya sumber aktif; proxy platform lain sudah mati.
-        assertFalse(HomeCategory.ShortDrama.containsPlatform("dramabox"))
+        assertTrue(HomeCategory.ShortDrama.containsPlatform("dramabox"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("moviebox"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("drakor"))
     }

@@ -3,7 +3,7 @@ package com.dramaku.app.home
 /**
  * Kategori pintu masuk di layar awal (desain ala SonzaixBox, brand Dramaku).
  *
- * Short Drama → 8 platform short drama vertikal.
+ * Short Drama → platform short drama vertikal (Melolo & DramaBox).
  * Movie Drama → endpoint Drakor (Serial Korea & China).
  * Movie Box   → endpoint MovieBox (film layar lebar).
  * Anime/Manga → disiapkan, belum terintegrasi ("segera hadir").
@@ -17,9 +17,9 @@ enum class HomeCategory(
 ) {
     ShortDrama(
         id = "short_drama",
-        title = "Melolo Drama",
-        subtitle = "Koleksi drama pilihan eksklusif",
-        platforms = listOf("melolo")
+        title = "Short Drama",
+        subtitle = "Drama pendek dari Melolo & DramaBox",
+        platforms = listOf("melolo", "dramabox")
     ),
     MovieDrama(
         id = "movie_drama",

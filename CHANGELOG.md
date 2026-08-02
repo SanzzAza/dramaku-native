@@ -2,6 +2,22 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.4 (2026-08-02)
+
+- DramaBox resmi jadi platform kedua di kategori Short Drama, lewat endpoint
+  baru `captain.sapimu.au/dramaboxbaru/api` — home (banner + 3 section),
+  rank (18), recommend (18), hidden-gems (14), kategori asli (37 genre),
+  browse berhalaman, search berhalaman, detail + daftar chapter, dan stream
+  m3u8 langsung dari endpoint
+- Bahasa Indonesia pakai kode `lang=in` (`lang=id` 500 di upstream-nya)
+- Rak genre beranda sekarang beda per platform: DramaBox punya Permata
+  tersembunyi, Kekuatan super, Kawin kontrak, Melawan balik, Kelahiran
+  kembali, Balas dendam, Cinta pahit, Perjalanan waktu — diambil dari
+  kategori asli endpoint, bukan tebakan search
+- Player (Compose & PlayerActivity) selalu pasang Bearer proxy supaya
+  playlist stream DramaBox bisa kebaca; hint mime HLS untuk URL tanpa .m3u8
+- Auth token proxy kini berlaku untuk semua host captain.sapimu.au
+
 ## 4.9.3 (2026-08-02)
 
 - Rak genre ngikutin tab asli aplikasi resmi: Populer, Romansa, Sistem, Harem,

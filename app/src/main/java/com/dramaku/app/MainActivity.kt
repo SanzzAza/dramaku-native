@@ -254,7 +254,8 @@ private sealed class Load<out T> {
 // ─────────────────────────────────────────────────────────────────
 
 private val Platforms = listOf(
-    PlatformInfo("melolo", "Melolo", "https://captain.sapimu.au/melolo/api/v1", logoRes = R.drawable.logo_melolo)
+    PlatformInfo("melolo", "Melolo", "https://captain.sapimu.au/melolo/api/v1", logoRes = R.drawable.logo_melolo),
+    PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api")
 )
 
 private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
@@ -348,28 +349,37 @@ private fun App() {
         }
     }
 
-    // Rak genre dari search — feed home Melolo mentok di 18 judul,
-    // katalognya justru jauh lebih dalam lewat pencarian.
+    // Rak genre: Melolo lewat katalog search (feed mentok 18 judul, katalognya
+    // jauh lebih dalam), DramaBox lewat kategori asli endpoint-nya (browse + gems).
     LaunchedEffect(homeState) {
         val ok = (homeState as? Load.Ok)?.data
-        if (ok == null || selPlatform != "melolo") { genreRows = emptyList(); return@LaunchedEffect }
+        if (ok == null) { genreRows = emptyList(); return@LaunchedEffect }
         val known = (ok.popular + ok.newest + ok.recommended).map { it.platform + "|" + it.id }.toSet()
-        val wanted = listOf(
-            "Populer" to "populer",
-            "Romansa" to "cinta",
-            "Sistem" to "sistem",
-            "Harem" to "harem",
-            "CEO & harta" to "ceo",
-            "Balas dendam" to "balas dendam",
-            "Lintas waktu" to "time travel",
-            "Kekuatan super" to "kekuatan super",
-            "Wanita kuat" to "wanita kuat",
-            "Kelahiran kembali" to "kelahiran kembali"
+        val wanted: List<Pair<String, suspend () -> List<Drama>>> = if (selPlatform == "dramabox") listOf(
+            "Permata tersembunyi" to { repo.browsePath(selPlatform, "hidden-gems?lang=in") },
+            "Kekuatan super" to { repo.browsePath(selPlatform, "browse?type=433&page=1&lang=in") },
+            "Kawin kontrak" to { repo.browsePath(selPlatform, "browse?type=454&page=1&lang=in") },
+            "Melawan balik" to { repo.browsePath(selPlatform, "browse?type=462&page=1&lang=in") },
+            "Kelahiran kembali" to { repo.browsePath(selPlatform, "browse?type=450&page=1&lang=in") },
+            "Balas dendam" to { repo.browsePath(selPlatform, "browse?type=458&page=1&lang=in") },
+            "Cinta pahit" to { repo.browsePath(selPlatform, "browse?type=449&page=1&lang=in") },
+            "Perjalanan waktu" to { repo.browsePath(selPlatform, "browse?type=451&page=1&lang=in") }
+        ) else listOf(
+            "Populer" to { repo.searchPlatform("populer", selPlatform) },
+            "Romansa" to { repo.searchPlatform("cinta", selPlatform) },
+            "Sistem" to { repo.searchPlatform("sistem", selPlatform) },
+            "Harem" to { repo.searchPlatform("harem", selPlatform) },
+            "CEO & harta" to { repo.searchPlatform("ceo", selPlatform) },
+            "Balas dendam" to { repo.searchPlatform("balas dendam", selPlatform) },
+            "Lintas waktu" to { repo.searchPlatform("time travel", selPlatform) },
+            "Kekuatan super" to { repo.searchPlatform("kekuatan super", selPlatform) },
+            "Wanita kuat" to { repo.searchPlatform("wanita kuat", selPlatform) },
+            "Kelahiran kembali" to { repo.searchPlatform("kelahiran kembali", selPlatform) }
         )
         genreRows = coroutineScope {
-            wanted.map { (label, q) ->
+            wanted.map { (label, fetch) ->
                 async {
-                    label to runCatching { repo.searchPlatform(q, selPlatform) }
+                    label to runCatching { fetch() }
                         .getOrDefault(emptyList())
                         .distinctBy { it.platform + "|" + it.id }
                         .filter { (it.platform + "|" + it.id) !in known }
@@ -2014,7 +2024,11 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15_000).setReadTimeoutMs(30_000)
-    if (requestHeaders.isNotEmpty()) http.setDefaultRequestProperties(requestHeaders)
+    // Playlist DramaBox di-proxy (captain.sapimu.au) dan wajib Bearer; segmen .ts
+    // di CDN bebas token, jadi aman kalau header ikut terkirim ke sana juga.
+    val headers = requestHeaders.toMutableMap()
+    if (!headers.containsKey("Authorization")) headers["Authorization"] = "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"
+    http.setDefaultRequestProperties(headers)
     val cache = CacheDataSource.Factory().setCache(VideoCache.get(ctx)).setUpstreamDataSourceFactory(http).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     return ExoPlayer.Builder(ctx)
         .setRenderersFactory(DefaultRenderersFactory(ctx).setEnableDecoderFallback(true))
@@ -2440,7 +2454,7 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     val b = MediaItem.Builder().setUri(Uri.parse(url))
     val lower = url.lowercase()
     when {
-        lower.contains("m3u8") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
+        lower.contains("m3u8") || lower.contains("/stream?") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
         lower.contains(".mp4") -> b.setMimeType(MimeTypes.APPLICATION_MP4)
     }
     val subtitle = cleanUrl(s.subtitle)
@@ -2489,7 +2503,7 @@ private class DramakuRepository {
 
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
         // Signed URL dari provider cepat expired. Jangan cache supaya Retry selalu ambil link/token baru.
-        if (d.drama.platform in setOf("melolo")) {
+        if (d.drama.platform in setOf("melolo", "dramabox")) {
             return resolveStream(d, ep, ds)
         }
         val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
@@ -2514,9 +2528,15 @@ private class DramakuRepository {
     }
 
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
-        val url = "${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0"
+        val url = if (p == "dramabox") "${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in"
+        else "${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0"
         dedupeAndRank(runCatching { flat(getJson(url).dataOrSelf(), p) }.getOrDefault(emptyList()), q).take(80)
     }
+
+    // Ambil satu rak konten dari path bebas (mis. "hidden-gems?lang=in" atau
+    // "browse?type=433&page=1&lang=in") — dipakai rak genre di beranda.
+    suspend fun browsePath(p: String, path: String): List<Drama> =
+        runCatching { flat(getJson("${apiBase(p)}/$path").dataOrSelf(), p) }.getOrDefault(emptyList())
 
     suspend fun loadDetail(input: Drama): Detail {
         val p = input.platform
@@ -2543,6 +2563,26 @@ private class DramakuRepository {
             val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data), p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
+        if (p == "dramabox") {
+            // Struktur DramaBox: data.bookInfo { bookName, cover, introduction, chapterCount }
+            // + data.chapterList [{ id, indexStr, utime, duration }].
+            val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
+            val info = data.optJSONObject("bookInfo") ?: data
+            val epsArr = data.optJSONArray("chapterList") ?: JSONArray()
+            val title = info.stringAny("bookName", "name", "title").ifBlank { input.title }
+            val desc = cleanText(info.stringAny("introduction", "description", "synopsis")).ifBlank { input.description }
+            val poster = fixImg(info.stringAny("cover", "coverWap", "image", "poster").ifBlank { input.poster })
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    o.intAny("indexStr", "index", "episode", i + 1),
+                    o.stringAny("stream_url", "streaming", "url"),
+                    o.stringAny("episode_label", "title", "label")
+                )
+            }
+            val total = max(info.intAny("chapterCount", "chapter_count", input.episodes), eps.size)
+            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(info), p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+        }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
@@ -2553,6 +2593,11 @@ private class DramakuRepository {
 
     suspend fun resolveStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
         val base = apiBase(d.drama.platform); val id = d.drama.id
+        if (d.drama.platform == "dramabox") {
+            // Endpoint ini langsung membalas playlist m3u8 — URL-nya sendiri yang diputar.
+            // Header Bearer dipasang di data source player (buildPlayer / PlayerActivity).
+            return StreamResult("$base/stream?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in")
+        }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
             ?: multiVideoJson?.optJSONArray("video_list")
@@ -2574,7 +2619,7 @@ private class DramakuRepository {
                 val reqBuilder = Request.Builder().url(url)
                     .header("User-Agent", "DramakuNative/5.0 Android")
                     .header("Accept", "application/json, text/plain, */*")
-                if (url.contains("captain.sapimu.au/melolo") || url.contains("/melolo/")) {
+                if (url.contains("captain.sapimu.au")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
                 }
                 return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
@@ -2620,10 +2665,16 @@ private fun pagesFor(p: String): IntRange = 1..1
 
 private fun homeUrls(p: String, page: Int): List<String> {
     val base = apiBase(p)
+    // Kode Bahasa Indonesia di proxy DramaBox adalah "in"; "lang=id" malah 500 di upstream-nya.
+    if (p == "dramabox") {
+        return listOf("$base/recommend/book?lang=in", "$base/rank?lang=in", "$base/home?lang=in")
+    }
     return listOf("$base/bookmall?lang=id", "$base/bookmall/tabs?gender=0&lang=id", "$base/bookmall?lang=id")
 }
 
-private fun detailUrl(d: Drama): String = "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
+private fun detailUrl(d: Drama): String =
+    if (d.platform == "dramabox") "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
+    else "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
 
 private fun dedupe(items: List<Drama>) = items.filter { it.id.isNotBlank() && it.title.isNotBlank() }.distinctBy { it.platform + "|" + it.id }.distinctBy { it.platform + "|" + normalizeKey(it.title) }
 private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c.recommended + n.recommended), dedupe(c.popular + n.popular), dedupe(c.newest + n.newest), max(c.loadedPage, n.loadedPage), n.hasMore)
