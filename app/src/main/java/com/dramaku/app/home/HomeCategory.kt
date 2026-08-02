@@ -5,7 +5,7 @@ package com.dramaku.app.home
  *
  * Short Drama → platform short drama vertikal (Melolo & DramaBox).
  * Movie Drama → endpoint Drakor (Serial Korea & China).
- * Movie Box   → endpoint MovieBox (film layar lebar).
+ * Movie Box   → endpoint MovieBox (film/serial global + Shorts vertikal).
  * Anime/Manga → disiapkan, belum terintegrasi ("segera hadir").
  */
 enum class HomeCategory(
@@ -30,8 +30,8 @@ enum class HomeCategory(
     MovieBox(
         id = "movie_box",
         title = "Movie Box",
-        subtitle = "Film layar lebar buat santai",
-        platforms = listOf("moviebox")
+        subtitle = "Film layar lebar & shorts buat santai",
+        platforms = listOf("moviebox", "mbshorts")
     ),
     Anime(
         id = "anime",

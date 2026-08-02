@@ -229,7 +229,7 @@ private data class Drama(
     val episodes: Int = 0, val views: String = "", val tags: List<String> = emptyList(),
     val platform: String = "melolo", val subjectType: Int = 1
 )
-private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false)
+private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false, val se: Int = 1)
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
 private data class StreamResult(val url: String, val subtitle: String = "")
@@ -255,7 +255,9 @@ private sealed class Load<out T> {
 
 private val Platforms = listOf(
     PlatformInfo("melolo", "Melolo", "https://captain.sapimu.au/melolo/api/v1", logoRes = R.drawable.logo_melolo),
-    PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api")
+    PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api"),
+    PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
+    PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api")
 )
 
 private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
@@ -355,16 +357,28 @@ private fun App() {
         val ok = (homeState as? Load.Ok)?.data
         if (ok == null) { genreRows = emptyList(); return@LaunchedEffect }
         val known = (ok.popular + ok.newest + ok.recommended).map { it.platform + "|" + it.id }.toSet()
-        val wanted: List<Pair<String, suspend () -> List<Drama>>> = if (selPlatform == "dramabox") listOf(
-            "Permata tersembunyi" to { repo.browsePath(selPlatform, "hidden-gems?lang=in") },
-            "Kekuatan super" to { repo.browsePath(selPlatform, "browse?type=433&page=1&lang=in") },
-            "Kawin kontrak" to { repo.browsePath(selPlatform, "browse?type=454&page=1&lang=in") },
-            "Melawan balik" to { repo.browsePath(selPlatform, "browse?type=462&page=1&lang=in") },
-            "Kelahiran kembali" to { repo.browsePath(selPlatform, "browse?type=450&page=1&lang=in") },
-            "Balas dendam" to { repo.browsePath(selPlatform, "browse?type=458&page=1&lang=in") },
-            "Cinta pahit" to { repo.browsePath(selPlatform, "browse?type=449&page=1&lang=in") },
-            "Perjalanan waktu" to { repo.browsePath(selPlatform, "browse?type=451&page=1&lang=in") }
-        ) else listOf(
+        val wanted: List<Pair<String, suspend () -> List<Drama>>> = when {
+            selPlatform == "dramabox" -> listOf(
+                "Permata tersembunyi" to { repo.browsePath(selPlatform, "hidden-gems?lang=in") },
+                "Kekuatan super" to { repo.browsePath(selPlatform, "browse?type=433&page=1&lang=in") },
+                "Kawin kontrak" to { repo.browsePath(selPlatform, "browse?type=454&page=1&lang=in") },
+                "Melawan balik" to { repo.browsePath(selPlatform, "browse?type=462&page=1&lang=in") },
+                "Kelahiran kembali" to { repo.browsePath(selPlatform, "browse?type=450&page=1&lang=in") },
+                "Balas dendam" to { repo.browsePath(selPlatform, "browse?type=458&page=1&lang=in") },
+                "Cinta pahit" to { repo.browsePath(selPlatform, "browse?type=449&page=1&lang=in") },
+                "Perjalanan waktu" to { repo.browsePath(selPlatform, "browse?type=451&page=1&lang=in") }
+            )
+            selPlatform == "moviebox" -> listOf(
+                "K-Drama" to { repo.browsePath(selPlatform, "tabs/category-content?type=4380734070238626200&lang=id") },
+                "C-Drama" to { repo.browsePath(selPlatform, "tabs/category-content?type=173752404280836544&lang=id") },
+                "Anime" to { repo.browsePath(selPlatform, "tabs/category-content?type=62133389738001440&lang=id") },
+                "Action" to { repo.browsePath(selPlatform, "tabs/category-content?type=6978603205429526968&lang=id") },
+                "Romance" to { repo.browsePath(selPlatform, "tabs/category-content?type=2389813900859556536&lang=id") },
+                "Comedy" to { repo.browsePath(selPlatform, "tabs/category-content?type=8785384881686725944&lang=id") }
+            )
+            // Shorts: feed sudah dua rak dari reel/trending, tanpa kategori tambahan.
+            selPlatform == "mbshorts" -> emptyList()
+            else -> listOf(
             "Populer" to { repo.searchPlatform("populer", selPlatform) },
             "Romansa" to { repo.searchPlatform("cinta", selPlatform) },
             "Sistem" to { repo.searchPlatform("sistem", selPlatform) },
@@ -376,6 +390,7 @@ private fun App() {
             "Wanita kuat" to { repo.searchPlatform("wanita kuat", selPlatform) },
             "Kelahiran kembali" to { repo.searchPlatform("kelahiran kembali", selPlatform) }
         )
+        }
         genreRows = coroutineScope {
             wanted.map { (label, fetch) ->
                 async {
@@ -2503,7 +2518,7 @@ private class DramakuRepository {
 
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
         // Signed URL dari provider cepat expired. Jangan cache supaya Retry selalu ambil link/token baru.
-        if (d.drama.platform in setOf("melolo", "dramabox")) {
+        if (d.drama.platform in setOf("melolo", "dramabox", "moviebox", "mbshorts")) {
             return resolveStream(d, ep, ds)
         }
         val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
@@ -2516,9 +2531,13 @@ private class DramakuRepository {
 
     suspend fun loadHome(p: String) = loadHomePage(p, 1)
 
+    // URL berawalan "POST " di-fetch pakai POST (endpoint shorts menolak GET).
+    private suspend fun fetchHome(url: String): JSONObject =
+        if (url.startsWith("POST ")) getJson(url.removePrefix("POST ").trim(), post = true) else getJson(url)
+
     suspend fun loadHomePage(p: String, page: Int): HomeBundle = coroutineScope {
         val req = homePageRequest(p, page)
-        val json = try { getJson(req.url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
+        val json = try { fetchHome(req.url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
         val items = dedupe(json?.let { flat(it.dataOrSelf(), p) }.orEmpty())
         var rec = emptyList<Drama>(); var pop = emptyList<Drama>(); var nw = emptyList<Drama>()
         when (req.section) { HomeSection.Popular -> pop = items; HomeSection.Newest -> nw = items; HomeSection.Recommended -> rec = items }
@@ -2528,9 +2547,16 @@ private class DramakuRepository {
     }
 
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
-        val url = if (p == "dramabox") "${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in"
-        else "${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0"
-        dedupeAndRank(runCatching { flat(getJson(url).dataOrSelf(), p) }.getOrDefault(emptyList()), q).take(80)
+        // Shorts belum punya endpoint pencarian — balikin kosong saja.
+        if (p == "mbshorts") return@coroutineScope emptyList()
+        val items = runCatching {
+            when (p) {
+                "dramabox" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in").dataOrSelf(), p)
+                "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=24", post = true).dataOrSelf(), p)
+                else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
+            }
+        }.getOrDefault(emptyList())
+        dedupeAndRank(items, q).take(80)
     }
 
     // Ambil satu rak konten dari path bebas (mis. "hidden-gems?lang=in" atau
@@ -2583,6 +2609,26 @@ private class DramakuRepository {
             val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(info), p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
+        if (p == "moviebox" || p == "mbshorts") {
+            // subject/get: { ..., description, cover:{url}, genre, episodes:[{episode,se,title,duration}] }
+            // shorts/info: { ..., totalEpisode, episodes:[...] } — cover juga objek {url}.
+            val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
+            val title = data.stringAny("title", "bookName", "name").ifBlank { input.title }
+            val desc = cleanText(data.stringAny("description", "introduction", "synopsis")).ifBlank { input.description }
+            val poster = fixImg(data.coverUrl().ifBlank { data.stringAny("cover_url", "image", "poster") }.ifBlank { input.poster })
+            val epsArr = data.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    o.intAny("episode", "index", i + 1),
+                    o.stringAny("stream_url", "streaming", "url"),
+                    o.stringAny("episode_label", "label").ifBlank { o.stringAny("title") },
+                    se = o.intAny("se", "season", 1)
+                )
+            }
+            val total = max(data.intAny("totalEpisode", "chapterCount", "episode_count", input.episodes), eps.size)
+            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data), p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+        }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
@@ -2598,6 +2644,20 @@ private class DramakuRepository {
             // Header Bearer dipasang di data source player (buildPlayer / PlayerActivity).
             return StreamResult("$base/stream?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in")
         }
+        if (d.drama.platform == "moviebox") {
+            // Series MovieBox punya nomor season (se); episode paramnya per-season.
+            val se = d.episodes.firstOrNull { it.number == ep }?.se ?: 1
+            val json = getJson("$base/stream/${enc(id)}?ep=${ep.coerceAtLeast(1)}&se=$se&subjectId=${enc(id)}&lang=id")
+            val link = json.optJSONObject("data")?.stringAny("resourceLink", "url", "link").orEmpty()
+            if (link.isBlank()) error("Video belum tersedia")
+            return StreamResult(link)
+        }
+        if (d.drama.platform == "mbshorts") {
+            val json = getJson("$base/shorts/mini-list?subjectId=${enc(id)}&ep=${ep.coerceAtLeast(1)}&lang=id")
+            val link = json.optJSONObject("data")?.stringAny("url", "resourceLink").orEmpty()
+            if (link.isBlank()) error("Video belum tersedia")
+            return StreamResult(link)
+        }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
             ?: multiVideoJson?.optJSONArray("video_list")
@@ -2609,7 +2669,7 @@ private class DramakuRepository {
         return StreamResult(source)
     }
 
-    private suspend fun getJson(url: String): JSONObject = withContext(Dispatchers.IO) {
+    private suspend fun getJson(url: String, post: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
         // Origin di balik proxy kadang balas 5xx sementara.
         // Retry singkat supaya home tidak langsung error.
         var last: Throwable? = null
@@ -2619,6 +2679,7 @@ private class DramakuRepository {
                 val reqBuilder = Request.Builder().url(url)
                     .header("User-Agent", "DramakuNative/5.0 Android")
                     .header("Accept", "application/json, text/plain, */*")
+                if (post) reqBuilder.post(okhttp3.FormBody.Builder().build())
                 if (url.contains("captain.sapimu.au")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
                 }
@@ -2669,12 +2730,33 @@ private fun homeUrls(p: String, page: Int): List<String> {
     if (p == "dramabox") {
         return listOf("$base/recommend/book?lang=in", "$base/rank?lang=in", "$base/home?lang=in")
     }
+    // MovieBox: list-nya kaya (home-content 237 judul), taruh di slot Popular
+    // supaya catatan pertama layar langsung penuh. Sisanya rak kategori asli.
+    if (p == "moviebox") {
+        return listOf(
+            "$base/tabs/category-content?type=6159907949583500480&lang=id",
+            "$base/tabs/home-content?lang=id",
+            "$base/tabs/category-content?type=2529702013798074864&lang=id"
+        )
+    }
+    if (p == "mbshorts") {
+        // Endpoint shorts cuma terima POST (GET dibalas 500 "cf eror") —
+        // penanda "POST " diproses saat fetch.
+        return listOf(
+            "POST $base/shorts/reel?page=1&perPage=24",
+            "POST $base/shorts/most-trending?page=1&perPage=24",
+            "POST $base/shorts/reel?page=2&perPage=24"
+        )
+    }
     return listOf("$base/bookmall?lang=id", "$base/bookmall/tabs?gender=0&lang=id", "$base/bookmall?lang=id")
 }
 
-private fun detailUrl(d: Drama): String =
-    if (d.platform == "dramabox") "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
-    else "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
+private fun detailUrl(d: Drama): String = when (d.platform) {
+    "dramabox" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
+    "moviebox" -> "${apiBase(d.platform)}/subject/get?subjectId=${enc(d.id)}&lang=id"
+    "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
+    else -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
+}
 
 private fun dedupe(items: List<Drama>) = items.filter { it.id.isNotBlank() && it.title.isNotBlank() }.distinctBy { it.platform + "|" + it.id }.distinctBy { it.platform + "|" + normalizeKey(it.title) }
 private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c.recommended + n.recommended), dedupe(c.popular + n.popular), dedupe(c.newest + n.newest), max(c.loadedPage, n.loadedPage), n.hasMore)
@@ -2729,7 +2811,7 @@ private fun normalize(o: JSONObject, fp: String): Drama {
         o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name"),
         cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract")),
         fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg").ifBlank { o.coverUrl() }),
-        o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", 0),
+        o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", 0),
         o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers").ifBlank { o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty() },
         tagsOf(o),
         p,

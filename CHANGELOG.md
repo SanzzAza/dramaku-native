@@ -2,6 +2,21 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.5 (2026-08-02)
+
+- MovieBox hidup lagi lewat endpoint baru `captain.sapimu.au/moviebox/api`:
+  home-content 237 judul sekali tarik, kategori asli (K-Drama, C-Drama,
+  Anime, Action, Romance, Comedy, TOP100, New), search, subject/get dengan
+  daftar episode per-season, dan stream mp4 resolusi penuh
+- Platform "Shorts" baru di dalam kategori Movie Box — drama vertikal dari
+  shorts/reel + shorts/most-trending, detail shorts/info, episode diputar
+  lewat shorts/mini-list
+- Dukungan request POST di repository (endpoint shorts & search menolak
+  GET dengan 500); URL feed boleh ditandai "POST "
+- Repository bisa resolve stream MovieBox (stream/{id}?ep&se) dan Shorts
+  (mini-list?ep) — dua-duanya mp4 langsung dari CDN
+- Rak genre Movie Box: K-Drama, C-Drama, Anime, Action, Romance, Comedy
+
 ## 4.9.4 (2026-08-02)
 
 - DramaBox resmi jadi platform kedua di kategori Short Drama, lewat endpoint
