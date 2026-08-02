@@ -2552,7 +2552,8 @@ private class DramakuRepository {
         val items = runCatching {
             when (p) {
                 "dramabox" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in").dataOrSelf(), p)
-                "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=24", post = true).dataOrSelf(), p)
+                // perPage di-radius upstream: 10–20 aman, 24 ke atas dibalas data kosong.
+                "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
             }
         }.getOrDefault(emptyList())

@@ -2,6 +2,11 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.6 (2026-08-02)
+
+- Fix search MovieBox: perPage=24 dibalas upstream dengan data kosong —
+  radius yang aman memang cuma 10–20, jadi dipaksa perPage=20
+
 ## 4.9.5 (2026-08-02)
 
 - MovieBox hidup lagi lewat endpoint baru `captain.sapimu.au/moviebox/api`:
