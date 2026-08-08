@@ -256,6 +256,7 @@ private val Platforms = listOf(
     PlatformInfo("dramanova", "Dramanova", "https://captain.sapimu.au/dramanova/api/v1"),
     PlatformInfo("freereels", "FreeReels", "https://captain.sapimu.au/freereels/api/v1"),
     PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api"),
+    PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api"),
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api")
 )
@@ -393,6 +394,12 @@ private fun App() {
                 "Anime" to { repo.browseFreereels("anime") },
                 "Dubbing" to { repo.browseFreereels("dubbing") },
                 "Segera Tayang" to { repo.browseFreereels("coming-soon") }
+            )
+            selPlatform == "bstation" -> listOf(
+                "OGV Populer" to { repo.browseBstation() },
+                "Anime" to { repo.searchPlatform("anime", selPlatform) },
+                "Drama" to { repo.searchPlatform("drama", selPlatform) },
+                "Action" to { repo.searchPlatform("action", selPlatform) }
             )
             else -> listOf(
             "Populer" to { repo.searchPlatform("populer", selPlatform) },
@@ -3508,6 +3515,8 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     val b = MediaItem.Builder().setUri(Uri.parse(url))
     val lower = url.lowercase()
     when {
+        // DASH MPD dari Bstation
+        lower.contains("mpd") || lower.contains("dash") -> b.setMimeType(MimeTypes.APPLICATION_MPD)
         // Hanya playlist DramaBox yang butuh hint HLS (URL-nya tanpa .m3u8).
         // Stream Melolo juga mengandung "/stream?" tapi itu MP4 — jangan disamaratakan.
         lower.contains("m3u8") || lower.contains("dramaboxbaru/api/stream") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
@@ -3515,7 +3524,11 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     }
     val subtitle = cleanUrl(s.subtitle)
     if (subtitle.isNotBlank()) {
-        val mime = if (subtitle.lowercase().endsWith(".vtt")) MimeTypes.TEXT_VTT else MimeTypes.APPLICATION_SUBRIP
+        val mime = when {
+            subtitle.lowercase().endsWith(".vtt") -> MimeTypes.TEXT_VTT
+            subtitle.lowercase().endsWith(".ass") -> MimeTypes.TEXT_SSA  // ASS/SSA
+            else -> MimeTypes.APPLICATION_SUBRIP
+        }
         b.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle)).setMimeType(mime).setLanguage("id").setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
     }
     return b.build()
@@ -3559,7 +3572,7 @@ private class DramakuRepository {
 
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
         // Signed URL dari provider cepat expired. Jangan cache supaya Retry selalu ambil link/token baru.
-        if (d.drama.platform in setOf("melolo", "dramanova", "freereels", "dramabox", "moviebox", "mbshorts")) {
+        if (d.drama.platform in setOf("melolo", "dramanova", "freereels", "bstation", "dramabox", "moviebox", "mbshorts")) {
             return resolveStream(d, ep, ds)
         }
         val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
@@ -3597,6 +3610,7 @@ private class DramakuRepository {
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 "dramanova" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=in").dataOrSelf(), p)
                 "freereels" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id-ID&limit=50").dataOrSelf(), p)
+                "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=en_US").dataOrSelf(), p)
                 else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
             }
         }.getOrDefault(emptyList())
@@ -3615,6 +3629,10 @@ private class DramakuRepository {
     // Freereels: ambil by category path (female, male, anime, dubbing, coming-soon)
     suspend fun browseFreereels(categoryPath: String): List<Drama> =
         runCatching { flat(getJson("${apiBase("freereels")}/$categoryPath?page=0&lang=id-ID").dataOrSelf(), "freereels") }.getOrDefault(emptyList())
+
+    // Bstation: ambil from ogv home
+    suspend fun browseBstation(): List<Drama> =
+        runCatching { flat(getJson("${apiBase("bstation")}/ogv/home?lang=id_ID").dataOrSelf(), "bstation") }.getOrDefault(emptyList())
 
     suspend fun loadDetail(input: Drama): Detail {
         val p = input.platform
@@ -3725,6 +3743,25 @@ private class DramakuRepository {
             val drama = Drama(input.id, title, desc, poster, total, viewCount, tagsOf(json), p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
+        if (p == "bstation") {
+            // Bstation OGV: { season_id, title, cover, evaluate, episodes: [{ id, title, long_title }] }
+            val title = json.stringAny("title").ifBlank { input.title }
+            val desc = cleanText(json.stringAny("evaluate", "description")).ifBlank { input.description }
+            val poster = fixImg(json.stringAny("cover").ifBlank { input.poster })
+            val epsArr = json.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().map { o ->
+                EpisodeInfo(
+                    number = o.intAny("title", "index", 0).toIntOrNull() ?: o.intAny("number", 0),
+                    streaming = o.stringAny("id"), // ep_id untuk resolve stream
+                    label = o.stringAny("long_title", "title")
+                )
+            }
+            val total = max(eps.size, input.episodes)
+            val typeName = json.stringAny("type_name")
+            val tags = if (typeName.isNotBlank()) listOf(typeName) else emptyList()
+            val drama = Drama(input.id, title, desc, poster, total, "", tags, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+        }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
@@ -3790,6 +3827,15 @@ private class DramakuRepository {
             }.firstOrNull().orEmpty()
             return StreamResult(link, subtitle)
         }
+        if (d.drama.platform == "bstation") {
+            // Bstation: /stream/mpd?id={ep_id}&qn=64 → DASH MPD XML
+            val epId = d.episodes.firstOrNull { it.number == ep }?.streaming ?: error("Episode ID tidak ditemukan")
+            val mpdXml = getString("$base/stream/mpd?id=${enc(epId)}&qn=64&lang=en_US")
+            // Parse BaseURL dari MPD XML (ambil video stream pertama)
+            val videoUrl = Regex("<BaseURL>(.*?)</BaseURL>").find(mpdXml)?.groupValues?.getOrNull(1) ?: ""
+            if (videoUrl.isBlank()) error("Video belum tersedia")
+            return StreamResult(videoUrl, "")
+        }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
             ?: multiVideoJson?.optJSONArray("video_list")
@@ -3829,6 +3875,30 @@ private class DramakuRepository {
                     val explicitSuccess = parsed.optBoolean("success", false) || parsed.stringAny("message").equals("success", true)
                     if (statusZero && !explicitSuccess) error(parsed.stringAny("error_msg", "error", "message").ifBlank { "Gagal memuat data" })
                     parsed
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                last = t
+            }
+        }
+        throw (last ?: IllegalStateException("Gagal memuat data"))
+    }
+
+    private suspend fun getString(url: String): String = withContext(Dispatchers.IO) {
+        var last: Throwable? = null
+        repeat(3) { attempt ->
+            if (attempt > 0) delay(450L * attempt)
+            try {
+                val reqBuilder = Request.Builder().url(url)
+                    .header("User-Agent", "DramakuNative/5.0 Android")
+                    .header("Accept", "*/*")
+                if (url.contains("captain.sapimu.au")) {
+                    reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
+                }
+                return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
+                    if (!r.isSuccessful) error("HTTP ${r.code}")
+                    r.body?.string().orEmpty()
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -3897,6 +3967,14 @@ private fun homeUrls(p: String, page: Int): List<String> {
             "$base/new?page=0&lang=id-ID"
         )
     }
+    if (p == "bstation") {
+        // Bstation: ogv/home untuk official content (anime/drama)
+        return listOf(
+            "$base/ogv/home?lang=id_ID",
+            "$base/feed/home?idx=0&lang=id_ID",
+            "$base/ogv/home?lang=id_ID"
+        )
+    }
     return listOf("$base/bookmall?lang=id", "$base/bookmall/tabs?gender=0&lang=id", "$base/bookmall?lang=id")
 }
 
@@ -3906,6 +3984,7 @@ private fun detailUrl(d: Drama): String = when (d.platform) {
     "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
     "dramanova" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
     "freereels" -> "${apiBase(d.platform)}/dramas/${enc(d.id)}?lang=id-ID"
+    "bstation" -> "${apiBase(d.platform)}/view/info?id=${enc(d.id)}&lang=en_US"
     else -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
 }
 
@@ -3918,9 +3997,9 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 private fun JSONObject.hasDramaSignal(): Boolean =
     stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url").isNotBlank() ||
         optJSONObject("cover") != null ||
-        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc").isNotBlank() ||
+        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate").isNotBlank() ||
         intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes") > 0 ||
-        has("subjectId") || has("key")
+        has("subjectId") || has("key") || has("season_id") || has("ep_id")
 
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
@@ -3958,12 +4037,12 @@ private fun normalize(o: JSONObject, fp: String): Drama {
     // Semua sumber non-Melolo sudah dimatikan; platform selalu dari pemanggil.
     val p = fp
     return Drama(
-        o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key"),
+        o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id"),
         o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name"),
-        cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc")),
+        cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc", "evaluate")),
         fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg").ifBlank { o.coverUrl() }),
         o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", 0),
-        o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers").ifBlank {
+        o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers", "views").ifBlank {
             val fc = o.optLong("follow_count", 0)
             if (fc > 0) "${fc/1000}K" else o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty()
         },

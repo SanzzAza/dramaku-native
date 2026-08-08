@@ -40,12 +40,11 @@ enum class HomeCategory(
         platforms = emptyList(),
         comingSoon = true
     ),
-    Manga(
-        id = "manga",
-        title = "Manga",
-        subtitle = "Baca manga, manhwa & manhua",
-        platforms = emptyList(),
-        comingSoon = true
+    Bstation(
+        id = "bstation",
+        title = "Bstation",
+        subtitle = "Anime & drama dari Bilibili",
+        platforms = listOf("bstation")
     );
 
     fun defaultPlatform(): String = platforms.firstOrNull() ?: "melolo"
