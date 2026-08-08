@@ -227,7 +227,7 @@ private data class Drama(
     val episodes: Int = 0, val views: String = "", val tags: List<String> = emptyList(),
     val platform: String = "melolo", val subjectType: Int = 1
 )
-private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false, val se: Int = 1)
+private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false, val se: Int = 1, val subtitle: String = "")
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
 private data class StreamResult(val url: String, val subtitle: String = "")
@@ -253,6 +253,7 @@ private sealed class Load<out T> {
 
 private val Platforms = listOf(
     PlatformInfo("melolo", "Melolo", "https://captain.sapimu.au/melolo/api/v1", logoRes = R.drawable.logo_melolo),
+    PlatformInfo("dramanova", "Dramanova", "https://captain.sapimu.au/dramanova/api/v1"),
     PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api"),
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api")
@@ -376,6 +377,14 @@ private fun App() {
             )
             // Shorts: feed sudah dua rak dari reel/trending, tanpa kategori tambahan.
             selPlatform == "mbshorts" -> emptyList()
+            selPlatform == "dramanova" -> listOf(
+                "Terpopuler" to { repo.browseDramanova("dramanova_hot") },
+                "Terbaru" to { repo.browseDramanova("dramanova_new") },
+                "Lainnya" to { repo.browseDramanova("dramanova_more") },
+                "Preview" to { repo.browseDramanova("dramanova_previews") },
+                "Gratis" to { repo.browseDramanova("dramanova_free") },
+                "Animasi" to { repo.browseDramanova("Dramanova_Animation") }
+            )
             else -> listOf(
             "Populer" to { repo.searchPlatform("populer", selPlatform) },
             "Romansa" to { repo.searchPlatform("cinta", selPlatform) },
@@ -3314,7 +3323,7 @@ private class DramakuRepository {
 
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
         // Signed URL dari provider cepat expired. Jangan cache supaya Retry selalu ambil link/token baru.
-        if (d.drama.platform in setOf("melolo", "dramabox", "moviebox", "mbshorts")) {
+        if (d.drama.platform in setOf("melolo", "dramanova", "dramabox", "moviebox", "mbshorts")) {
             return resolveStream(d, ep, ds)
         }
         val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
@@ -3350,6 +3359,7 @@ private class DramakuRepository {
                 "dramabox" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in").dataOrSelf(), p)
                 // perPage di-radius upstream: 10–20 aman, 24 ke atas dibalas data kosong.
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
+                "dramanova" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=in").dataOrSelf(), p)
                 else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
             }
         }.getOrDefault(emptyList())
@@ -3360,6 +3370,10 @@ private class DramakuRepository {
     // "browse?type=433&page=1&lang=in") — dipakai rak genre di beranda.
     suspend fun browsePath(p: String, path: String): List<Drama> =
         runCatching { flat(getJson("${apiBase(p)}/$path").dataOrSelf(), p) }.getOrDefault(emptyList())
+
+    // Dramanova: ambil recommend by categoryKey
+    suspend fun browseDramanova(categoryKey: String): List<Drama> =
+        runCatching { flat(getJson("${apiBase("dramanova")}/recommend?lang=in&categoryKey=${enc(categoryKey)}&page=1&limit=20").dataOrSelf(), "dramanova") }.getOrDefault(emptyList())
 
     suspend fun loadDetail(input: Drama): Detail {
         val p = input.platform
@@ -3426,6 +3440,31 @@ private class DramakuRepository {
             val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data), p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
+        if (p == "dramanova") {
+            // Dramanova: { id, title, cover, description, totalEpisodes, episodes: [{ id, number, title, fileId, free, subtitles: [{ lang, url }] }] }
+            val title = json.stringAny("title").ifBlank { input.title }
+            val desc = cleanText(json.stringAny("description")).ifBlank { input.description }
+            val poster = fixImg(json.stringAny("cover").ifBlank { input.poster })
+            val epsArr = json.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().map { o ->
+                // Ambil subtitle Indonesia jika ada
+                val subsArr = o.optJSONArray("subtitles") ?: JSONArray()
+                val subtitleUrl = (0 until subsArr.length()).mapNotNull { i ->
+                    val s = subsArr.optJSONObject(i)
+                    if (s?.stringAny("lang") == "in") s.stringAny("url") else null
+                }.firstOrNull().orEmpty()
+                EpisodeInfo(
+                    number = o.intAny("number", "episode", 0),
+                    streaming = o.stringAny("fileId", "id"), // fileId dipakai untuk resolve stream
+                    label = o.stringAny("title", "label"),
+                    locked = !o.optBoolean("free", true),
+                    subtitle = subtitleUrl
+                )
+            }
+            val total = max(json.intAny("totalEpisodes", "episodes", input.episodes), eps.size)
+            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(json), p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+        }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
@@ -3454,6 +3493,24 @@ private class DramakuRepository {
             val link = json.optJSONObject("data")?.stringAny("url", "resourceLink").orEmpty()
             if (link.isBlank()) error("Video belum tersedia")
             return StreamResult(link)
+        }
+        if (d.drama.platform == "dramanova") {
+            // Dramanova: pakai fileId dari episode untuk hit endpoint video
+            val epInfo = d.episodes.firstOrNull { it.number == ep }
+            val fileId = epInfo?.streaming?.takeIf { it.isNotBlank() } ?: error("FileId episode tidak ditemukan")
+            val json = getJson("$base/video?id=${enc(fileId)}")
+            val videosArr = json.optJSONArray("videos") ?: JSONArray()
+            // Pilih kualitas tertinggi (1080p > 720p > lainnya)
+            val bestVideo = videosArr.objects().maxByOrNull { o ->
+                when (o.stringAny("definition").lowercase()) {
+                    "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0
+                }
+            }
+            val link = bestVideo?.stringAny("main_url", "backup_url").orEmpty()
+            if (link.isBlank()) error("Video belum tersedia")
+            // Pakai subtitle dari episode info (sudah disimpan saat loadDetail)
+            val subtitle = epInfo?.subtitle?.takeIf { it.isNotBlank() }.orEmpty()
+            return StreamResult(link, subtitle)
         }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
@@ -3519,7 +3576,8 @@ private fun homePageRequest(p: String, page: Int): HomePageRequest {
 
 // Proxy Melolo mengabaikan offset/page/session: tiap halaman mengembalikan
 // feed 18 judul yang sama, jadi jangan fetch ulang (hemat kuota + waktu).
-private fun pagesFor(p: String): IntRange = 1..1
+// Dramanova juga dibatasi 1 halaman karena endpoint recommend sudah penuh.
+private fun pagesFor(p: String): IntRange = if (p == "dramanova") 1..1 else 1..1
 
 private fun homeUrls(p: String, page: Int): List<String> {
     val base = apiBase(p)
@@ -3545,6 +3603,14 @@ private fun homeUrls(p: String, page: Int): List<String> {
             "POST $base/shorts/reel?page=2&perPage=24"
         )
     }
+    if (p == "dramanova") {
+        // Dramanova: pakai recommend endpoint untuk hot/new/more.
+        return listOf(
+            "$base/recommend?lang=in&categoryKey=dramanova_hot&page=1&limit=6",
+            "$base/recommend?lang=in&categoryKey=dramanova_new&page=1&limit=12",
+            "$base/recommend?lang=in&categoryKey=dramanova_more&page=1&limit=20"
+        )
+    }
     return listOf("$base/bookmall?lang=id", "$base/bookmall/tabs?gender=0&lang=id", "$base/bookmall?lang=id")
 }
 
@@ -3552,6 +3618,7 @@ private fun detailUrl(d: Drama): String = when (d.platform) {
     "dramabox" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
     "moviebox" -> "${apiBase(d.platform)}/subject/get?subjectId=${enc(d.id)}&lang=id"
     "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
+    "dramanova" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
     else -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
 }
 
