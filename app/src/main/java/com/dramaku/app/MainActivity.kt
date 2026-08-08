@@ -99,6 +99,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
@@ -3554,7 +3555,7 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
 }
 
 // Bstation: MPD punya video + audio terpisah. Extract dan merge via MergingMediaSource.
-private fun buildBstationMediaSources(stream: StreamResult): androidx.media3.common.MediaSource {
+private fun buildBstationMediaSources(stream: StreamResult): MediaSource {
     val parts = stream.url.split("|||")
     val videoUrl = cleanUrl(parts[0])
     val audioUrl = if (parts.size > 1) cleanUrl(parts[1]) else null
