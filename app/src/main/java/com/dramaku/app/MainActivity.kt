@@ -795,7 +795,8 @@ private fun PlatformPickerModal(
                                 selected = selected,
                                 enabled = enabled,
                                 accentColor = platformColors[platform.id] ?: DS.Green,
-                                onClick = { if (enabled) onSelect(platform.id) }
+                                onClick = { if (enabled) onSelect(platform.id) },
+                                modifier = Modifier.weight(1f)
                             )
                         }
                         // Pad for last row
@@ -818,11 +819,11 @@ private fun PlatformCard(
     selected: Boolean,
     enabled: Boolean,
     accentColor: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Column(
-        Modifier
-            .weight(1f)
+        modifier
             .clip(RoundedCornerShape(16.dp))
             .background(
                 if (selected) accentColor.copy(alpha = 0.12f) else DS.Card
