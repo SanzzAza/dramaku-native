@@ -3753,11 +3753,12 @@ private class DramakuRepository {
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
         if (p == "bstation") {
-            // Bstation OGV: { season_id, title, cover, evaluate, episodes: [{ id, title, long_title }] }
-            val title = json.stringAny("title").ifBlank { input.title }
-            val desc = cleanText(json.stringAny("evaluate", "description")).ifBlank { input.description }
-            val poster = fixImg(json.stringAny("cover").ifBlank { input.poster })
-            val epsArr = json.optJSONArray("episodes") ?: JSONArray()
+            // Bstation: { code, message, data: { season_id, title, cover, evaluate, episodes: [{ id, title, long_title }] } }
+            val data = json.optJSONObject("data") ?: json
+            val title = data.stringAny("title").ifBlank { input.title }
+            val desc = cleanText(data.stringAny("evaluate", "description")).ifBlank { input.description }
+            val poster = fixImg(data.stringAny("cover").ifBlank { input.poster })
+            val epsArr = data.optJSONArray("episodes") ?: JSONArray()
             val eps = epsArr.objects().map { o ->
                 val epNum = o.stringAny("title").toIntOrNull() ?: o.intAny("index", "number", 0)
                 EpisodeInfo(
@@ -3767,7 +3768,7 @@ private class DramakuRepository {
                 )
             }
             val total = max(eps.size, input.episodes)
-            val typeName = json.stringAny("type_name")
+            val typeName = data.stringAny("type_name")
             val tags = if (typeName.isNotBlank()) listOf(typeName) else emptyList()
             val drama = Drama(input.id, title, desc, poster, total, "", tags, p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
