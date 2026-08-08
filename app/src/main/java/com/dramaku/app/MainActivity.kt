@@ -3753,8 +3753,9 @@ private class DramakuRepository {
             val poster = fixImg(json.stringAny("cover").ifBlank { input.poster })
             val epsArr = json.optJSONArray("episodes") ?: JSONArray()
             val eps = epsArr.objects().map { o ->
+                val epNum = o.stringAny("title").toIntOrNull() ?: o.intAny("index", "number", 0)
                 EpisodeInfo(
-                    number = o.intAny("title", "index", 0).toIntOrNull() ?: o.intAny("number", 0),
+                    number = epNum,
                     streaming = o.stringAny("id"), // ep_id untuk resolve stream
                     label = o.stringAny("long_title", "title")
                 )
