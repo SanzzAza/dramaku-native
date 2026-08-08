@@ -99,6 +99,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -107,6 +108,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.URLEncoder
 import java.util.Calendar
 import java.util.concurrent.ConcurrentHashMap
@@ -3134,7 +3136,13 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
         }
         if (stream.url.isBlank()) { loading = false; error = "Cuplikan belum tersedia"; player.stop(); return@LaunchedEffect }
         runCatching { player.stop(); player.clearMediaItems() }
-        player.setMediaItem(buildMediaItem(stream)); player.prepare(); player.seekTo(0); player.playWhenReady = true; loading = false
+        // Bstation: gunakan MergingMediaSource untuk gabung video+audio
+        if (curDetail?.drama?.platform == "bstation" && stream.url.contains("|||")) {
+            val mediaSource = buildBstationMediaSources(stream)
+            player.setMediaSource(mediaSource); player.prepare(); player.seekTo(0); player.playWhenReady = true; loading = false
+        } else {
+            player.setMediaItem(buildMediaItem(stream)); player.prepare(); player.seekTo(0); player.playWhenReady = true; loading = false
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(player, pager.currentPage) {
@@ -3293,7 +3301,13 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         catch (t: Throwable) { loading = false; error = t.message ?: "Video belum tersedia"; player.stop(); return@LaunchedEffect }
         if (stream.url.isBlank()) { loading = false; error = "Video belum tersedia"; player.stop(); return@LaunchedEffect }
         runCatching { player.stop(); player.clearMediaItems() }
-        player.setMediaItem(buildMediaItem(stream)); player.prepare()
+        // Bstation: gunakan MergingMediaSource untuk gabung video+audio
+        if (detail.drama.platform == "bstation" && stream.url.contains("|||")) {
+            val mediaSource = buildBstationMediaSources(stream)
+            player.setMediaSource(mediaSource); player.prepare()
+        } else {
+            player.setMediaItem(buildMediaItem(stream)); player.prepare()
+        }
         if (start > 0) player.seekTo(start); player.playWhenReady = true; loading = false
         if (ep < total) launch { try { repo.resolveStreamCached(detail, ep + 1, store.dataSaver()) } catch (_: Throwable) {} }
     }
@@ -3537,6 +3551,31 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
         b.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle)).setMimeType(mime).setLanguage("id").setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
     }
     return b.build()
+}
+
+// Bstation: MPD punya video + audio terpisah. Extract dan merge via MergingMediaSource.
+private fun buildBstationMediaSources(stream: StreamResult): androidx.media3.common.MediaSource {
+    val parts = stream.url.split("|||")
+    val videoUrl = cleanUrl(parts[0])
+    val audioUrl = if (parts.size > 1) cleanUrl(parts[1]) else null
+    
+    val http = DefaultHttpDataSource.Factory()
+        .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
+        .setAllowCrossProtocolRedirects(true)
+        .setConnectTimeoutMs(15_000)
+        .setReadTimeoutMs(30_000)
+        .setDefaultRequestProperties(mapOf("Authorization" to "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"))
+    
+    val videoSource = DefaultMediaSourceFactory(http)
+        .createMediaSource(MediaItem.fromUri(Uri.parse(videoUrl)).buildUpon().setMimeType(MimeTypes.VIDEO_MP4).build())
+    
+    return if (audioUrl != null) {
+        val audioSource = DefaultMediaSourceFactory(http)
+            .createMediaSource(MediaItem.fromUri(Uri.parse(audioUrl)).buildUpon().setMimeType(MimeTypes.AUDIO_MP4).build())
+        MergingMediaSource(videoSource, audioSource)
+    } else {
+        videoSource
+    }
 }
 
 private fun formatMs(ms: Long): String {
@@ -3839,13 +3878,18 @@ private class DramakuRepository {
             return StreamResult(link, subtitle)
         }
         if (d.drama.platform == "bstation") {
-            // Bstation: /stream/mpd?id={ep_id}&qn=64 → DASH MPD XML
+            // Bstation: /stream/mpd?id={ep_id}&qn=64 → DASH MPD XML (video+audio terpisah)
             val epId = d.episodes.firstOrNull { it.number == ep }?.streaming ?: error("Episode ID tidak ditemukan")
             val mpdXml = getString("$base/stream/mpd?id=${enc(epId)}&qn=64&lang=id_ID")
-            // Parse BaseURL dari MPD XML (ambil video stream pertama)
-            val videoUrl = Regex("<BaseURL>(.*?)</BaseURL>").find(mpdXml)?.groupValues?.getOrNull(1) ?: ""
+            // Parse MPD: extract video + audio BaseURL, merge di player
+            val videoUrl = Regex("<AdaptationSet[^>]*contentType=\"video\"[^>]*>.*?<BaseURL>(.*?)</BaseURL>", RegexOption.DOT_MATCHES_ALL)
+                .find(mpdXml)?.groupValues?.getOrNull(1)?.trim() ?: ""
+            val audioUrl = Regex("<AdaptationSet[^>]*contentType=\"audio\"[^>]*>.*?<BaseURL>(.*?)</BaseURL>", RegexOption.DOT_MATCHES_ALL)
+                .find(mpdXml)?.groupValues?.getOrNull(1)?.trim() ?: ""
             if (videoUrl.isBlank()) error("Video belum tersedia")
-            return StreamResult(videoUrl, "")
+            // Format: videoURL|||audioURL (dipisah special delimiter, di-parse di buildMediaItem)
+            val streamUrl = if (audioUrl.isNotBlank()) "$videoUrl|||$audioUrl" else videoUrl
+            return StreamResult(streamUrl, "")
         }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
