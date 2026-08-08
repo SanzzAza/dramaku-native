@@ -3998,12 +3998,12 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 // Feed Melolo memuat rak ("Trending"), tab genre ("Peringkat", "Time Travel"),
 // dan section layer yang sama-sama punya pasangan id+name. Mereka bukan drama.
 // Syaratnya pakai sinyal konten nyata: cover, sinopsis, atau jumlah episode.
-private fun JSONObject.hasDramaSignal(): Boolean =
-    stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url").isNotBlank() ||
-        optJSONObject("cover") != null ||
-        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate").isNotBlank() ||
-        intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes") > 0 ||
-        has("subjectId") || has("key") || has("season_id") || has("ep_id")
+    private fun JSONObject.hasDramaSignal(): Boolean =
+        stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url").isNotBlank() ||
+            optJSONObject("cover") != null ||
+            stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate").isNotBlank() ||
+            intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes") > 0 ||
+            has("subjectId") || has("key") || has("season_id") || has("ep_id") || (has("season_id") && stringAny("title").isNotBlank())
 
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
@@ -4012,6 +4012,11 @@ private fun flat(any: Any?, fp: String): List<Drama> {
             is JSONArray -> node.objects().forEach { extractBooks(it) }
             is JSONObject -> {
                 val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key")
+                    .ifBlank {
+                        if (fp == "bstation" && node.has("season_id")) {
+                            node.opt("season_id")?.toString()?.takeIf { it != "null" && it.isNotBlank() } ?: ""
+                        } else ""
+                    }
                 val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name")
                 val cover = node.stringAny("cover", "thumb_url", "image", "poster")
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
@@ -4040,8 +4045,14 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 private fun normalize(o: JSONObject, fp: String): Drama {
     // Semua sumber non-Melolo sudah dimatikan; platform selalu dari pemanggil.
     val p = fp
+    // Bstation special handling: season_id sebagai ID, title sebagai title
+    val id = if (p == "bstation" && o.has("season_id")) {
+        o.opt("season_id")?.toString()?.takeIf { it != "null" && it.isNotBlank() } ?: o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key")
+    } else {
+        o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id")
+    }
     return Drama(
-        o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id"),
+        id,
         o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name"),
         cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc", "evaluate")),
         fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg").ifBlank { o.coverUrl() }),
