@@ -4011,12 +4011,7 @@ private fun flat(any: Any?, fp: String): List<Drama> {
         when (node) {
             is JSONArray -> node.objects().forEach { extractBooks(it) }
             is JSONObject -> {
-                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key")
-                    .ifBlank {
-                        if (fp == "bstation" && node.has("season_id")) {
-                            node.opt("season_id")?.toString()?.takeIf { it != "null" && it.isNotBlank() } ?: ""
-                        } else ""
-                    }
+                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id")
                 val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name")
                 val cover = node.stringAny("cover", "thumb_url", "image", "poster")
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
