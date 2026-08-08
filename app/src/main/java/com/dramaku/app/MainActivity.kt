@@ -254,6 +254,7 @@ private sealed class Load<out T> {
 private val Platforms = listOf(
     PlatformInfo("melolo", "Melolo", "https://captain.sapimu.au/melolo/api/v1", logoRes = R.drawable.logo_melolo),
     PlatformInfo("dramanova", "Dramanova", "https://captain.sapimu.au/dramanova/api/v1"),
+    PlatformInfo("freereels", "FreeReels", "https://captain.sapimu.au/freereels/api/v1"),
     PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api"),
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api")
@@ -384,6 +385,13 @@ private fun App() {
                 "Preview" to { repo.browseDramanova("dramanova_previews") },
                 "Gratis" to { repo.browseDramanova("dramanova_free") },
                 "Animasi" to { repo.browseDramanova("Dramanova_Animation") }
+            )
+            selPlatform == "freereels" -> listOf(
+                "Untuk Wanita" to { repo.browseFreereels("female") },
+                "Untuk Pria" to { repo.browseFreereels("male") },
+                "Anime" to { repo.browseFreereels("anime") },
+                "Dubbing" to { repo.browseFreereels("dubbing") },
+                "Segera Tayang" to { repo.browseFreereels("coming-soon") }
             )
             else -> listOf(
             "Populer" to { repo.searchPlatform("populer", selPlatform) },
@@ -1145,39 +1153,50 @@ private fun HomeHeader(
             }
         }
 
-        // Platform chips
+        // Platform chips — grid 2 kolom, semua platform terlihat tanpa scroll
         Spacer(Modifier.height(14.dp))
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            Modifier.padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(chips, key = { it.id }) { source ->
-                val selected = source.id == platformId
-                val enabled = remoteConfig?.platform(source.id)?.enabled ?: true
-                val shape = RoundedCornerShape(50)
-                Box(
-                    Modifier
-                        .clip(shape)
-                        .background(if (selected) DS.Green else DS.Card)
-                        .border(
-                            if (selected) 0.dp else 1.dp,
-                            if (selected) Color.Transparent else DS.Line,
-                            shape
-                        )
-                        .clickable(enabled = enabled) { onPlatform(source.id) }
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
+            chips.chunked(2).forEach { row ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        PlatformLogo(source.id, Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            source.label,
-                            color = if (selected) DS.Ink else if (enabled) DS.Body else DS.Faint,
-                            fontSize = 12.sp,
-                            fontFamily = Type.Sans,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                        )
+                    row.forEach { source ->
+                        val selected = source.id == platformId
+                        val enabled = remoteConfig?.platform(source.id)?.enabled ?: true
+                        val shape = RoundedCornerShape(12.dp)
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .clip(shape)
+                                .background(if (selected) DS.Green else DS.Card)
+                                .border(
+                                    if (selected) 0.dp else 1.dp,
+                                    if (selected) Color.Transparent else DS.Line,
+                                    shape
+                                )
+                                .clickable(enabled = enabled) { onPlatform(source.id) }
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                PlatformLogo(source.id, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    source.label,
+                                    color = if (selected) DS.Ink else if (enabled) DS.Body else DS.Faint,
+                                    fontSize = 12.sp,
+                                    fontFamily = Type.Sans,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+                    // Pad jika jumlah platform ganjil
+                    if (row.size == 1) {
+                        Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -3323,7 +3342,7 @@ private class DramakuRepository {
 
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
         // Signed URL dari provider cepat expired. Jangan cache supaya Retry selalu ambil link/token baru.
-        if (d.drama.platform in setOf("melolo", "dramanova", "dramabox", "moviebox", "mbshorts")) {
+        if (d.drama.platform in setOf("melolo", "dramanova", "freereels", "dramabox", "moviebox", "mbshorts")) {
             return resolveStream(d, ep, ds)
         }
         val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
@@ -3360,6 +3379,7 @@ private class DramakuRepository {
                 // perPage di-radius upstream: 10–20 aman, 24 ke atas dibalas data kosong.
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 "dramanova" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=in").dataOrSelf(), p)
+                "freereels" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id-ID&limit=50").dataOrSelf(), p)
                 else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
             }
         }.getOrDefault(emptyList())
@@ -3374,6 +3394,10 @@ private class DramakuRepository {
     // Dramanova: ambil recommend by categoryKey
     suspend fun browseDramanova(categoryKey: String): List<Drama> =
         runCatching { flat(getJson("${apiBase("dramanova")}/recommend?lang=in&categoryKey=${enc(categoryKey)}&page=1&limit=20").dataOrSelf(), "dramanova") }.getOrDefault(emptyList())
+
+    // Freereels: ambil by category path (female, male, anime, dubbing, coming-soon)
+    suspend fun browseFreereels(categoryPath: String): List<Drama> =
+        runCatching { flat(getJson("${apiBase("freereels")}/$categoryPath?page=0&lang=id-ID").dataOrSelf(), "freereels") }.getOrDefault(emptyList())
 
     suspend fun loadDetail(input: Drama): Detail {
         val p = input.platform
@@ -3447,7 +3471,6 @@ private class DramakuRepository {
             val poster = fixImg(json.stringAny("cover").ifBlank { input.poster })
             val epsArr = json.optJSONArray("episodes") ?: JSONArray()
             val eps = epsArr.objects().map { o ->
-                // Ambil subtitle Indonesia jika ada
                 val subsArr = o.optJSONArray("subtitles") ?: JSONArray()
                 val subtitleUrl = (0 until subsArr.length()).mapNotNull { i ->
                     val s = subsArr.optJSONObject(i)
@@ -3455,7 +3478,7 @@ private class DramakuRepository {
                 }.firstOrNull().orEmpty()
                 EpisodeInfo(
                     number = o.intAny("number", "episode", 0),
-                    streaming = o.stringAny("fileId", "id"), // fileId dipakai untuk resolve stream
+                    streaming = o.stringAny("fileId", "id"),
                     label = o.stringAny("title", "label"),
                     locked = !o.optBoolean("free", true),
                     subtitle = subtitleUrl
@@ -3463,6 +3486,26 @@ private class DramakuRepository {
             }
             val total = max(json.intAny("totalEpisodes", "episodes", input.episodes), eps.size)
             val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(json), p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+        }
+        if (p == "freereels") {
+            // Freereels: { id, name, desc, cover, episode_count, follow_count, episode_list: [{ id, name, episode_number, video_url, m3u8_url }] }
+            val title = json.stringAny("name", "title").ifBlank { input.title }
+            val desc = cleanText(json.stringAny("desc", "description")).ifBlank { input.description }
+            val poster = fixImg(json.stringAny("cover").ifBlank { input.poster })
+            // Episode list bisa ada inline di detail, atau dari endpoint terpisah
+            val epsArr = json.optJSONArray("episode_list") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = o.intAny("episode_number", "index", i + 1),
+                    streaming = o.stringAny("id"), // episode ID dipakai untuk resolve stream
+                    label = o.stringAny("name", "title"),
+                    locked = !o.optBoolean("free", true)
+                )
+            }
+            val total = max(json.intAny("episode_count", input.episodes), eps.size)
+            val viewCount = json.optLong("follow_count", 0).takeIf { it > 0 }?.let { "${it/1000}K" } ?: json.stringAny("view_count")
+            val drama = Drama(input.id, title, desc, poster, total, viewCount, tagsOf(json), p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
@@ -3500,7 +3543,6 @@ private class DramakuRepository {
             val fileId = epInfo?.streaming?.takeIf { it.isNotBlank() } ?: error("FileId episode tidak ditemukan")
             val json = getJson("$base/video?id=${enc(fileId)}")
             val videosArr = json.optJSONArray("videos") ?: JSONArray()
-            // Pilih kualitas tertinggi (1080p > 720p > lainnya)
             val bestVideo = videosArr.objects().maxByOrNull { o ->
                 when (o.stringAny("definition").lowercase()) {
                     "1080p" -> 3; "720p" -> 2; "480p" -> 1; else -> 0
@@ -3508,8 +3550,27 @@ private class DramakuRepository {
             }
             val link = bestVideo?.stringAny("main_url", "backup_url").orEmpty()
             if (link.isBlank()) error("Video belum tersedia")
-            // Pakai subtitle dari episode info (sudah disimpan saat loadDetail)
             val subtitle = epInfo?.subtitle?.takeIf { it.isNotBlank() }.orEmpty()
+            return StreamResult(link, subtitle)
+        }
+        if (d.drama.platform == "freereels") {
+            // Freereels: /dramas/{key}/play/{ep}?lang=id-ID → langsung dapat stream URL
+            val json = getJson("$base/dramas/${enc(id)}/play/${ep.coerceAtLeast(1)}?lang=id-ID")
+            // Pilih stream: external_audio_h264_m3u8 > video_url > m3u8_url
+            val link = listOf(
+                json.stringAny("external_audio_h264_m3u8"),
+                json.stringAny("video_url"),
+                json.stringAny("m3u8_url"),
+                json.stringAny("external_audio_h265_m3u8")
+            ).firstOrNull { it.isNotBlank() && it.startsWith("http") } ?: ""
+            if (link.isBlank()) error("Video belum tersedia")
+            // Subtitle Indonesia
+            val subsArr = json.optJSONArray("subtitle_list") ?: JSONArray()
+            val subtitle = (0 until subsArr.length()).mapNotNull { i ->
+                val s = subsArr.optJSONObject(i)
+                val lang = s?.stringAny("language").orEmpty().lowercase()
+                if (lang.startsWith("id") || lang == "in") s.stringAny("subtitle") else null
+            }.firstOrNull().orEmpty()
             return StreamResult(link, subtitle)
         }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
@@ -3576,8 +3637,8 @@ private fun homePageRequest(p: String, page: Int): HomePageRequest {
 
 // Proxy Melolo mengabaikan offset/page/session: tiap halaman mengembalikan
 // feed 18 judul yang sama, jadi jangan fetch ulang (hemat kuota + waktu).
-// Dramanova juga dibatasi 1 halaman karena endpoint recommend sudah penuh.
-private fun pagesFor(p: String): IntRange = if (p == "dramanova") 1..1 else 1..1
+// Dramanova dan Freereels juga dibatasi 1 halaman.
+private fun pagesFor(p: String): IntRange = 1..1
 
 private fun homeUrls(p: String, page: Int): List<String> {
     val base = apiBase(p)
@@ -3611,6 +3672,14 @@ private fun homeUrls(p: String, page: Int): List<String> {
             "$base/recommend?lang=in&categoryKey=dramanova_more&page=1&limit=20"
         )
     }
+    if (p == "freereels") {
+        // Freereels: foryou (recommended), popular, new
+        return listOf(
+            "$base/foryou?page=1&lang=id-ID",
+            "$base/popular?page=0&lang=id-ID",
+            "$base/new?page=0&lang=id-ID"
+        )
+    }
     return listOf("$base/bookmall?lang=id", "$base/bookmall/tabs?gender=0&lang=id", "$base/bookmall?lang=id")
 }
 
@@ -3619,6 +3688,7 @@ private fun detailUrl(d: Drama): String = when (d.platform) {
     "moviebox" -> "${apiBase(d.platform)}/subject/get?subjectId=${enc(d.id)}&lang=id"
     "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
     "dramanova" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
+    "freereels" -> "${apiBase(d.platform)}/dramas/${enc(d.id)}?lang=id-ID"
     else -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
 }
 
@@ -3631,9 +3701,9 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 private fun JSONObject.hasDramaSignal(): Boolean =
     stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url").isNotBlank() ||
         optJSONObject("cover") != null ||
-        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description").isNotBlank() ||
+        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc").isNotBlank() ||
         intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes") > 0 ||
-        has("subjectId")
+        has("subjectId") || has("key")
 
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
@@ -3641,7 +3711,7 @@ private fun flat(any: Any?, fp: String): List<Drama> {
         when (node) {
             is JSONArray -> node.objects().forEach { extractBooks(it) }
             is JSONObject -> {
-                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id")
+                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key")
                 val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name")
                 val cover = node.stringAny("cover", "thumb_url", "image", "poster")
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
@@ -3671,12 +3741,15 @@ private fun normalize(o: JSONObject, fp: String): Drama {
     // Semua sumber non-Melolo sudah dimatikan; platform selalu dari pemanggil.
     val p = fp
     return Drama(
-        o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId"),
+        o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key"),
         o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name"),
-        cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract")),
+        cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc")),
         fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg").ifBlank { o.coverUrl() }),
         o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", 0),
-        o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers").ifBlank { o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty() },
+        o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers").ifBlank {
+            val fc = o.optLong("follow_count", 0)
+            if (fc > 0) "${fc/1000}K" else o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty()
+        },
         tagsOf(o),
         p,
         o.intAny("subjectType", 1)

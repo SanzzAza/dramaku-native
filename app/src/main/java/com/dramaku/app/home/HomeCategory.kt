@@ -18,8 +18,8 @@ enum class HomeCategory(
     ShortDrama(
         id = "short_drama",
         title = "Short Drama",
-        subtitle = "Drama pendek dari Melolo, Dramanova & DramaBox",
-        platforms = listOf("melolo", "dramanova", "dramabox")
+        subtitle = "Drama pendek dari Melolo, Dramanova, FreeReels & DramaBox",
+        platforms = listOf("melolo", "dramanova", "freereels", "dramabox")
     ),
     MovieDrama(
         id = "movie_drama",
