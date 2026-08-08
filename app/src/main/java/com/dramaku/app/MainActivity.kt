@@ -569,7 +569,7 @@ private fun BottomNavBar(selected: Tab, onSelect: (Tab) -> Unit) {
             val rightTabs = navTabs.drop(2)
 
             leftTabs.forEach { tab ->
-                NavItem(tab, tab == selected, onSelect)
+                NavItem(tab, tab == selected, onSelect, Modifier.weight(1f))
             }
 
             // Center Clips button — prominent, elevated
@@ -587,7 +587,7 @@ private fun BottomNavBar(selected: Tab, onSelect: (Tab) -> Unit) {
                         .size(width = 52.dp, height = 34.dp)
                         .clip(RoundedCornerShape(17.dp))
                         .background(
-                            if (clipsActive) DS.Green
+                            if (clipsActive) Brush.verticalGradient(listOf(DS.Green, DS.Green))
                             else Brush.verticalGradient(listOf(DS.Green.copy(alpha = 0.9f), DS.GreenDeep))
                         ),
                     contentAlignment = Alignment.Center
@@ -610,18 +610,17 @@ private fun BottomNavBar(selected: Tab, onSelect: (Tab) -> Unit) {
             }
 
             rightTabs.forEach { tab ->
-                NavItem(tab, tab == selected, onSelect)
+                NavItem(tab, tab == selected, onSelect, Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun NavItem(tab: Tab, active: Boolean, onSelect: (Tab) -> Unit) {
+private fun NavItem(tab: Tab, active: Boolean, onSelect: (Tab) -> Unit, modifier: Modifier = Modifier) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .weight(1f)
+        modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .clickable { onSelect(tab) }
             .padding(vertical = 2.dp)
