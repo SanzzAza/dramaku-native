@@ -529,8 +529,13 @@ private fun App() {
         }
 
         if (showPlatformPicker) {
+            // Filter platform sesuai kategori aktif
+            val pickerPlatforms = category?.let { cat ->
+                Platforms.filter { cat.platforms.contains(it.id) }
+            } ?: Platforms.filter { it.id in listOf("melolo", "dramanova", "freereels", "dramabox") }
+
             PlatformPickerModal(
-                platforms = Platforms,
+                platforms = pickerPlatforms,
                 currentPlatform = selPlatform,
                 remoteConfig = remoteConfig,
                 onSelect = { id ->
@@ -724,68 +729,43 @@ private fun PlatformPickerModal(
     ) {
         Surface(
             color = DS.Raise,
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .heightIn(max = 520.dp)
+                .wrapContentHeight()
         ) {
             Column(
                 Modifier
-                    .padding(horizontal = 20.dp, vertical = 20.dp)
-                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
                 // Handle bar
                 Box(
                     Modifier
-                        .size(width = 40.dp, height = 4.dp)
+                        .size(width = 32.dp, height = 3.dp)
                         .clip(RoundedCornerShape(50))
                         .background(DS.Faint)
                         .align(Alignment.CenterHorizontally)
                 )
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(14.dp))
 
-                // Title + close
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Pilih Platform",
-                            color = DS.Hi,
-                            fontSize = 20.sp,
-                            fontFamily = Type.Sans,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "${platforms.size} platform tersedia",
-                            color = DS.Muted,
-                            fontSize = 12.sp,
-                            fontFamily = Type.Sans
-                        )
-                    }
-                    Box(
-                        Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(DS.Card)
-                            .clickable { onDismiss() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Rounded.Close, "Tutup", tint = DS.Body, modifier = Modifier.size(18.dp))
-                    }
-                }
+                // Title
+                Text(
+                    "Pilih Platform",
+                    color = DS.Hi,
+                    fontSize = 15.sp,
+                    fontFamily = Type.Sans,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(14.dp))
 
-                // Grid 3 kolom
-                val columns = 3
-                platforms.chunked(columns).forEach { row ->
+                // Grid 2 kolom
+                platforms.chunked(2).forEach { row ->
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         row.forEach { platform ->
                             val selected = platform.id == currentPlatform
@@ -799,15 +779,12 @@ private fun PlatformPickerModal(
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        // Pad for last row
-                        repeat(columns - row.size) {
+                        if (row.size == 1) {
                             Spacer(Modifier.weight(1f))
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(8.dp))
                 }
-
-                Spacer(Modifier.height(16.dp))
             }
         }
     }
@@ -824,24 +801,24 @@ private fun PlatformCard(
 ) {
     Column(
         modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(
                 if (selected) accentColor.copy(alpha = 0.12f) else DS.Card
             )
             .border(
-                1.5.dp,
+                1.dp,
                 if (selected) accentColor else DS.Line,
-                RoundedCornerShape(16.dp)
+                RoundedCornerShape(12.dp)
             )
             .clickable(enabled = enabled) { onClick() }
-            .padding(vertical = 16.dp, horizontal = 8.dp),
+            .padding(vertical = 10.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Logo box
         Box(
             Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .size(36.dp)
+                .clip(RoundedCornerShape(8.dp))
                 .background(if (selected) accentColor else DS.Card2),
             contentAlignment = Alignment.Center
         ) {
@@ -851,8 +828,8 @@ private fun PlatformCard(
                         platform.logoRes,
                         platform.label,
                         Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(6.dp)),
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(4.dp)),
                         contentScale = ContentScale.Crop
                     )
                 }
@@ -861,8 +838,8 @@ private fun PlatformCard(
                         platform.logoUrl,
                         platform.label,
                         Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(6.dp)),
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(4.dp)),
                         contentScale = ContentScale.Fit
                     )
                 }
@@ -872,19 +849,19 @@ private fun PlatformCard(
                         color = if (selected) DS.Ink else accentColor,
                         fontFamily = Type.Sans,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
+                        fontSize = 14.sp
                     )
                 }
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(6.dp))
 
         // Platform name
         Text(
             platform.label,
             color = if (selected) accentColor else if (enabled) DS.Hi else DS.Faint,
-            fontSize = 11.sp,
+            fontSize = 10.5.sp,
             fontFamily = Type.Sans,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
@@ -892,20 +869,20 @@ private fun PlatformCard(
         )
 
         if (!enabled) {
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(2.dp))
             Text(
-                "Maintenance",
+                "Off",
                 color = DS.Faint,
-                fontSize = 9.sp,
+                fontSize = 8.sp,
                 fontFamily = Type.Sans
             )
         }
 
         if (selected) {
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Box(
                 Modifier
-                    .size(20.dp)
+                    .size(16.dp)
                     .clip(CircleShape)
                     .background(accentColor),
                 contentAlignment = Alignment.Center
@@ -914,7 +891,7 @@ private fun PlatformCard(
                     Icons.Rounded.Check,
                     null,
                     tint = DS.Ink,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(10.dp)
                 )
             }
         }
@@ -1408,41 +1385,38 @@ private fun HomeHeader(
             }
         }
 
-        // Platform picker button
-        Spacer(Modifier.height(14.dp))
-        Row(
+        // Platform picker — compact pill
+        Spacer(Modifier.height(12.dp))
+        Box(
             Modifier
                 .padding(horizontal = 20.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
+                .clip(RoundedCornerShape(50))
                 .background(DS.Card)
-                .border(1.dp, DS.Line, RoundedCornerShape(12.dp))
+                .border(1.dp, DS.Line, RoundedCornerShape(50))
                 .clickable { onPickPlatform() }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
-            Box(
-                Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(DS.GreenWash),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Rounded.Grid3x3, null, tint = DS.Green, modifier = Modifier.size(18.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Platform", color = DS.Muted, fontSize = 10.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Medium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(DS.GreenWash),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.Apps, null, tint = DS.Green, modifier = Modifier.size(12.dp))
+                }
+                Spacer(Modifier.width(8.dp))
                 Text(
                     platformLabel(platformId),
                     color = DS.Hi,
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     fontFamily = Type.Sans,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
+                    fontWeight = FontWeight.SemiBold
                 )
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Rounded.KeyboardArrowDown, null, tint = DS.Faint, modifier = Modifier.size(14.dp))
             }
-            Icon(Icons.Rounded.ChevronRight, null, tint = DS.Faint, modifier = Modifier.size(18.dp))
         }
 
         // Alert banner

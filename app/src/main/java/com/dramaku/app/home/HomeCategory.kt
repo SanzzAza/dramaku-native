@@ -18,7 +18,7 @@ enum class HomeCategory(
     ShortDrama(
         id = "short_drama",
         title = "Short Drama",
-        subtitle = "Drama pendek dari Melolo, Dramanova, FreeReels & DramaBox",
+        subtitle = "Drama pendek vertikal episode singkat",
         platforms = listOf("melolo", "dramanova", "freereels", "dramabox")
     ),
     MovieDrama(
