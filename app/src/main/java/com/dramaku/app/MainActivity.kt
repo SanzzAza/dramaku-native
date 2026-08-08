@@ -396,10 +396,12 @@ private fun App() {
                 "Segera Tayang" to { repo.browseFreereels("coming-soon") }
             )
             selPlatform == "bstation" -> listOf(
-                "OGV Populer" to { repo.browseBstation() },
-                "Anime" to { repo.searchPlatform("anime", selPlatform) },
-                "Drama" to { repo.searchPlatform("drama", selPlatform) },
-                "Action" to { repo.searchPlatform("action", selPlatform) }
+                "Terpopuler" to { repo.browseBstation() },
+                "Hot-Blooded" to { repo.browseBstationGenre("20006") },
+                "Romance" to { repo.browseBstationGenre("20019") },
+                "Isekai" to { repo.browseBstationGenre("20007") },
+                "Action" to { repo.browseBstationGenre("20011") },
+                "Fantasy" to { repo.browseBstationGenre("20010") }
             )
             else -> listOf(
             "Populer" to { repo.searchPlatform("populer", selPlatform) },
@@ -3637,6 +3639,10 @@ private class DramakuRepository {
     suspend fun browseBstation(): List<Drama> =
         runCatching { flat(getJson("${apiBase("bstation")}/ogv/home?lang=id_ID").dataOrSelf(), "bstation") }.getOrDefault(emptyList())
 
+    // Bstation: ambil by genre style_id
+    suspend fun browseBstationGenre(styleId: String): List<Drama> =
+        runCatching { flat(getJson("${apiBase("bstation")}/ogv/season/result?style_id=${enc(styleId)}&page=1&lang=id_ID").dataOrSelf(), "bstation") }.getOrDefault(emptyList())
+
     suspend fun loadDetail(input: Drama): Detail {
         val p = input.platform
         val url = detailUrl(input); val json = getJson(url)
@@ -3972,11 +3978,11 @@ private fun homeUrls(p: String, page: Int): List<String> {
         )
     }
     if (p == "bstation") {
-        // Bstation: ogv/home untuk official content (anime/drama)
+        // Bstation: semua endpoint return items dengan season_id
         return listOf(
             "$base/ogv/home?lang=id_ID",
-            "$base/feed/home?idx=0&lang=id_ID",
-            "$base/ogv/home?lang=id_ID"
+            "$base/ogv/season/result?style_id=-1&page=1&lang=id_ID",
+            "$base/ogv/season/result?style_id=20006&page=1&lang=id_ID"
         )
     }
     return listOf("$base/bookmall?lang=id", "$base/bookmall/tabs?gender=0&lang=id", "$base/bookmall?lang=id")
@@ -3998,12 +4004,13 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 // Feed Melolo memuat rak ("Trending"), tab genre ("Peringkat", "Time Travel"),
 // dan section layer yang sama-sama punya pasangan id+name. Mereka bukan drama.
 // Syaratnya pakai sinyal konten nyata: cover, sinopsis, atau jumlah episode.
-    private fun JSONObject.hasDramaSignal(): Boolean =
-        stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url").isNotBlank() ||
-            optJSONObject("cover") != null ||
-            stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate").isNotBlank() ||
-            intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes") > 0 ||
-            has("subjectId") || has("key") || has("season_id") || has("ep_id") || (has("season_id") && stringAny("title").isNotBlank())
+private fun JSONObject.hasDramaSignal(): Boolean =
+    stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url").isNotBlank() ||
+        optJSONObject("cover") != null ||
+        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate").isNotBlank() ||
+        intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes") > 0 ||
+        has("subjectId") || has("key") || has("season_id") || has("ep_id") || has("aid") ||
+        (has("season_id") && stringAny("title").isNotBlank() && stringAny("cover").isNotBlank())
 
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
@@ -4011,9 +4018,8 @@ private fun flat(any: Any?, fp: String): List<Drama> {
         when (node) {
             is JSONArray -> node.objects().forEach { extractBooks(it) }
             is JSONObject -> {
-                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id")
+                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid")
                 val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name")
-                val cover = node.stringAny("cover", "thumb_url", "image", "poster")
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
                     val d = normalize(node, fp)
                     if (d.id.isNotBlank() && d.title.isNotBlank() && !d.title.equals("Populer", true) && !d.title.equals("Romansa", true) && !d.title.equals("Ceo", true)) {
@@ -4038,14 +4044,9 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 }
 
 private fun normalize(o: JSONObject, fp: String): Drama {
-    // Semua sumber non-Melolo sudah dimatikan; platform selalu dari pemanggil.
     val p = fp
-    // Bstation special handling: season_id sebagai ID, title sebagai title
-    val id = if (p == "bstation" && o.has("season_id")) {
-        o.opt("season_id")?.toString()?.takeIf { it != "null" && it.isNotBlank() } ?: o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key")
-    } else {
-        o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id")
-    }
+    // Bstation: season_id atau aid sebagai ID
+    val id = o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id", "aid")
     return Drama(
         id,
         o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name"),
