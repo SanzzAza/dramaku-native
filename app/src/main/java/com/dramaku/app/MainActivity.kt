@@ -303,6 +303,7 @@ private fun App() {
     var category by remember { mutableStateOf<HomeCategory?>(null) }
     var showSettings by remember { mutableStateOf(false) }
     var genreRows by remember { mutableStateOf<List<Pair<String, List<Drama>>>>(emptyList()) }
+    var showPlatformPicker by remember { mutableStateOf(false) }
 
     val playerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
@@ -501,7 +502,8 @@ private fun App() {
                                     else Toast.makeText(ctx, "Cuplikan belum tersedia", Toast.LENGTH_SHORT).show()
                                 },
                                 onResume = { h -> pendingResume = h; selectedDrama = Drama(h.id, h.title, poster = h.poster, platform = h.platform) },
-                                genreRows = genreRows
+                                genreRows = genreRows,
+                                onPickPlatform = { showPlatformPicker = true }
                             )
                             Tab.Search -> SearchScreen(repo, store, selPlatform, onDrama = { selectedDrama = it }, onBack = { tab = Tab.Home }, dataTick = dataTick, bump = { dataTick++ })
                             Tab.Clips -> ClipsScreen(homeState, repo, store, onBack = { tab = Tab.Home }, onWatchFull = { playerSession = PlayerSession(it, 1) }, onOpenDetail = { selectedDrama = it })
@@ -524,6 +526,27 @@ private fun App() {
                     onShare = { shareDrama(ctx, it) }
                 )
             }
+        }
+
+        if (showPlatformPicker) {
+            PlatformPickerModal(
+                platforms = Platforms,
+                currentPlatform = selPlatform,
+                remoteConfig = remoteConfig,
+                onSelect = { id ->
+                    val allowed = remoteConfig?.isPlatformEnabled(id) ?: true
+                    if (!allowed) Toast.makeText(ctx, "${platformLabel(id)}: Maintenance", Toast.LENGTH_SHORT).show()
+                    else {
+                        selPlatform = id
+                        store.setPlatform(id)
+                        val cat = category
+                        if (cat != null) store.setCategoryPlatform(cat.id, id)
+                        showPlatformPicker = false
+                        refreshKey++
+                    }
+                },
+                onDismiss = { showPlatformPicker = false }
+            )
         }
 
         playerSession?.let { s ->
@@ -670,6 +693,234 @@ private fun NavItem(tab: Tab, active: Boolean, onSelect: (Tab) -> Unit, modifier
 }
 
 // ─────────────────────────────────────────────────────────────────
+// PLATFORM PICKER MODAL
+// ─────────────────────────────────────────────────────────────────
+
+@Composable
+private fun PlatformPickerModal(
+    platforms: List<PlatformInfo>,
+    currentPlatform: String,
+    remoteConfig: NativeRemoteConfig?,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    // Color palette untuk platform tanpa logo
+    val platformColors = mapOf(
+        "melolo" to Color(0xFFFFCC00),
+        "dramanova" to Color(0xFF2EE8A0),
+        "freereels" to Color(0xFF7C4DFF),
+        "dramabox" to Color(0xFFFF4081),
+        "moviebox" to Color(0xFF00BCD4),
+        "mbshorts" to Color(0xFFFF6E40)
+    )
+
+    BackHandler { onDismiss() }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0x990A0908))
+            .clickable { onDismiss() }
+    ) {
+        Surface(
+            color = DS.Raise,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .heightIn(max = 520.dp)
+        ) {
+            Column(
+                Modifier
+                    .padding(horizontal = 20.dp, vertical = 20.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                // Handle bar
+                Box(
+                    Modifier
+                        .size(width = 40.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(DS.Faint)
+                        .align(Alignment.CenterHorizontally)
+                )
+                Spacer(Modifier.height(20.dp))
+
+                // Title + close
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "Pilih Platform",
+                            color = DS.Hi,
+                            fontSize = 20.sp,
+                            fontFamily = Type.Sans,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "${platforms.size} platform tersedia",
+                            color = DS.Muted,
+                            fontSize = 12.sp,
+                            fontFamily = Type.Sans
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(DS.Card)
+                            .clickable { onDismiss() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.Close, "Tutup", tint = DS.Body, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Grid 3 kolom
+                val columns = 3
+                platforms.chunked(columns).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        row.forEach { platform ->
+                            val selected = platform.id == currentPlatform
+                            val enabled = remoteConfig?.platform(platform.id)?.enabled ?: true
+                            PlatformCard(
+                                platform = platform,
+                                selected = selected,
+                                enabled = enabled,
+                                accentColor = platformColors[platform.id] ?: DS.Green,
+                                onClick = { if (enabled) onSelect(platform.id) }
+                            )
+                        }
+                        // Pad for last row
+                        repeat(columns - row.size) {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlatformCard(
+    platform: PlatformInfo,
+    selected: Boolean,
+    enabled: Boolean,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    Column(
+        Modifier
+            .weight(1f)
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (selected) accentColor.copy(alpha = 0.12f) else DS.Card
+            )
+            .border(
+                1.5.dp,
+                if (selected) accentColor else DS.Line,
+                RoundedCornerShape(16.dp)
+            )
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 16.dp, horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Logo box
+        Box(
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (selected) accentColor else DS.Card2),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                platform.logoRes != 0 -> {
+                    AsyncImage(
+                        platform.logoRes,
+                        platform.label,
+                        Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(6.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                platform.logoUrl.isNotBlank() -> {
+                    AsyncImage(
+                        platform.logoUrl,
+                        platform.label,
+                        Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(6.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                else -> {
+                    Text(
+                        platform.label.take(1).uppercase(),
+                        color = if (selected) DS.Ink else accentColor,
+                        fontFamily = Type.Sans,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Platform name
+        Text(
+            platform.label,
+            color = if (selected) accentColor else if (enabled) DS.Hi else DS.Faint,
+            fontSize = 11.sp,
+            fontFamily = Type.Sans,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        if (!enabled) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Maintenance",
+                color = DS.Faint,
+                fontSize = 9.sp,
+                fontFamily = Type.Sans
+            )
+        }
+
+        if (selected) {
+            Spacer(Modifier.height(6.dp))
+            Box(
+                Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(accentColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Check,
+                    null,
+                    tint = DS.Ink,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
 // HOME SCREEN
 // ─────────────────────────────────────────────────────────────────
 
@@ -682,7 +933,8 @@ private fun HomeScreen(
     onDrama: (Drama) -> Unit, onSearch: () -> Unit, onRandom: () -> Unit,
     onClips: () -> Unit, onResume: (HistoryItem) -> Unit,
     category: HomeCategory? = null, onExitCategory: () -> Unit = {},
-    genreRows: List<Pair<String, List<Drama>>> = emptyList()
+    genreRows: List<Pair<String, List<Drama>>> = emptyList(),
+    onPickPlatform: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(scrollToTopSignal) {
@@ -722,7 +974,8 @@ private fun HomeScreen(
                 onExitCategory = onExitCategory,
                 onSearch = onSearch,
                 onRefresh = onRefresh,
-                onPlatform = onPlatform
+                onPlatform = onPlatform,
+                onPickPlatform = onPickPlatform
             )
         }
 
@@ -1076,7 +1329,8 @@ private fun HomeHeader(
     onExitCategory: () -> Unit,
     onSearch: () -> Unit,
     onRefresh: () -> Unit,
-    onPlatform: (String) -> Unit
+    onPlatform: (String) -> Unit,
+    onPickPlatform: () -> Unit = {}
 ) {
     val selectedState = remoteConfig?.platform(platformId)
     val online = selectedState?.enabled ?: true
@@ -1153,53 +1407,41 @@ private fun HomeHeader(
             }
         }
 
-        // Platform chips — grid 2 kolom, semua platform terlihat tanpa scroll
+        // Platform picker button
         Spacer(Modifier.height(14.dp))
-        Column(
-            Modifier.padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Row(
+            Modifier
+                .padding(horizontal = 20.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(DS.Card)
+                .border(1.dp, DS.Line, RoundedCornerShape(12.dp))
+                .clickable { onPickPlatform() }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            chips.chunked(2).forEach { row ->
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    row.forEach { source ->
-                        val selected = source.id == platformId
-                        val enabled = remoteConfig?.platform(source.id)?.enabled ?: true
-                        val shape = RoundedCornerShape(12.dp)
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .clip(shape)
-                                .background(if (selected) DS.Green else DS.Card)
-                                .border(
-                                    if (selected) 0.dp else 1.dp,
-                                    if (selected) Color.Transparent else DS.Line,
-                                    shape
-                                )
-                                .clickable(enabled = enabled) { onPlatform(source.id) }
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                PlatformLogo(source.id, Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    source.label,
-                                    color = if (selected) DS.Ink else if (enabled) DS.Body else DS.Faint,
-                                    fontSize = 12.sp,
-                                    fontFamily = Type.Sans,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        }
-                    }
-                    // Pad jika jumlah platform ganjil
-                    if (row.size == 1) {
-                        Spacer(Modifier.weight(1f))
-                    }
-                }
+            Box(
+                Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(DS.GreenWash),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.Grid3x3, null, tint = DS.Green, modifier = Modifier.size(18.dp))
             }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Platform", color = DS.Muted, fontSize = 10.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Medium)
+                Text(
+                    platformLabel(platformId),
+                    color = DS.Hi,
+                    fontSize = 14.sp,
+                    fontFamily = Type.Sans,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+            }
+            Icon(Icons.Rounded.ChevronRight, null, tint = DS.Faint, modifier = Modifier.size(18.dp))
         }
 
         // Alert banner
