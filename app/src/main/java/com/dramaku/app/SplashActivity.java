@@ -27,13 +27,13 @@ import androidx.core.content.res.ResourcesCompat;
 
 public class SplashActivity extends AppCompatActivity {
 
-    // Palet hangat yang sama dengan layar utama
-    private static final int BG = Color.rgb(18, 16, 13);      // 0x12100D
-    private static final int HI = Color.rgb(240, 235, 224);   // krem
-    private static final int MUTED = Color.rgb(143, 138, 123);
-    private static final int FAINT = Color.rgb(95, 91, 79);
-    private static final int GREEN = Color.rgb(60, 215, 158); // mint Dramaku
-    private static final int TRACK = Color.rgb(43, 37, 28);
+    // Palet sinematik — gelap premium
+    private static final int BG = Color.rgb(10, 9, 8);        // 0x0A0908
+    private static final int HI = Color.rgb(245, 240, 232);   // krem
+    private static final int MUTED = Color.rgb(120, 112, 104);
+    private static final int FAINT = Color.rgb(74, 68, 61);
+    private static final int GREEN = Color.rgb(46, 232, 160);  // mint elektrik
+    private static final int TRACK = Color.rgb(34, 30, 24);
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {

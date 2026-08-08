@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">#12100D</item>
-        <item name="android:statusBarColor">#12100D</item>
-        <item name="android:navigationBarColor">#12100D</item>
+        <item name="android:windowBackground">#0A0908</item>
+        <item name="android:statusBarColor">#0A0908</item>
+        <item name="android:navigationBarColor">#0A0908</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:forceDarkAllowed">false</item>
