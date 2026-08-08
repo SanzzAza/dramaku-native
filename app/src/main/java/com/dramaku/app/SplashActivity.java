@@ -47,8 +47,8 @@ public class SplashActivity extends AppCompatActivity {
                         | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         );
 
-        Typeface display = font(R.font.fraunces_semibold);
-        Typeface displayBold = font(R.font.fraunces_bold);
+        Typeface display = font(R.font.jakarta_semibold);
+        Typeface displayBold = font(R.font.jakarta_bold);
         Typeface sans = font(R.font.jakarta_medium);
         Typeface sansBold = font(R.font.jakarta_semibold);
 

@@ -156,11 +156,6 @@ private object DS {
 }
 
 private object Type {
-    val Display = FontFamily(
-        Font(R.font.fraunces_medium, FontWeight.Medium),
-        Font(R.font.fraunces_semibold, FontWeight.SemiBold),
-        Font(R.font.fraunces_bold, FontWeight.Bold)
-    )
     val Sans = FontFamily(
         Font(R.font.jakarta_regular, FontWeight.Normal),
         Font(R.font.jakarta_medium, FontWeight.Medium),
@@ -752,7 +747,7 @@ private fun HomeScreen(
                     item {
                         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 30.dp, bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
                             Column(Modifier.weight(1f)) {
-                                Text("Jelajahi ${platformLabel(platformId)}", color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold)
+                                Text("Jelajahi ${platformLabel(platformId)}", color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
                                 Spacer(Modifier.height(3.dp))
                                 Text("${all.size} judul siap diputar", color = DS.Muted, fontSize = 12.sp, fontFamily = Type.Sans)
                             }
@@ -835,7 +830,7 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
             }
 
             Spacer(Modifier.height(52.dp))
-            Text("${greeting.text}.", color = DS.Hi, fontSize = 36.sp, lineHeight = 40.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp)
+            Text("${greeting.text}.", color = DS.Hi, fontSize = 34.sp, lineHeight = 38.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp)
             Spacer(Modifier.height(8.dp))
             Text(
                 "Pilih kategori tontonanmu.",
@@ -948,7 +943,7 @@ private fun CategoryCard(
         }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = DS.Hi, fontSize = 16.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+            Text(title, color = DS.Hi, fontSize = 16.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(3.dp))
             Text(subtitle, color = DS.Muted, fontSize = 12.sp, lineHeight = 16.sp, fontFamily = Type.Sans, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
@@ -976,9 +971,9 @@ private fun GateRow(index: String, title: String, subtitle: String, onClick: () 
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(index, color = DS.Faint, fontSize = 14.sp, fontFamily = Type.Display, fontWeight = FontWeight.Medium, modifier = Modifier.width(34.dp))
+        Text(index, color = DS.Faint, fontSize = 14.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Medium, modifier = Modifier.width(34.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = DS.Hi, fontSize = 21.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold)
+            Text(title, color = DS.Hi, fontSize = 21.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             Text(subtitle, color = DS.Muted, fontSize = 12.5.sp, lineHeight = 17.sp, fontFamily = Type.Sans, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
@@ -1011,7 +1006,7 @@ private fun GateSoonCard(category: HomeCategory, icon: ImageVector, modifier: Mo
             Text("Segera", color = DS.Faint, fontSize = 10.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp)
         }
         Spacer(Modifier.height(14.dp))
-        Text(category.title, color = DS.Hi, fontSize = 15.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+        Text(category.title, color = DS.Hi, fontSize = 15.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(3.dp))
         Text(category.subtitle, color = DS.Muted, fontSize = 11.sp, lineHeight = 15.sp, fontFamily = Type.Sans, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
@@ -1101,8 +1096,8 @@ private fun HomeHeader(
                             category?.title ?: "Dramaku",
                             color = DS.Hi,
                             fontSize = 24.sp,
-                            fontFamily = Type.Display,
-                            fontWeight = FontWeight.Bold,
+                            fontFamily = Type.Sans,
+                            fontWeight = FontWeight.SemiBold,
                             letterSpacing = (-0.3).sp
                         )
                         Text(
@@ -1319,7 +1314,7 @@ private fun SearchDramaCard(drama: Drama, onClick: (Drama) -> Unit, rank: Int? =
 @Composable
 private fun SearchSectionTitle(title: String, subtitle: String = "") {
     Column(Modifier.fillMaxWidth()) {
-        Text(title, color = DS.Hi, fontSize = 19.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold)
+        Text(title, color = DS.Hi, fontSize = 19.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
         if (subtitle.isNotBlank()) {
             Spacer(Modifier.height(4.dp))
             Text(subtitle, color = DS.Muted, fontSize = 12.sp, lineHeight = 16.sp, fontFamily = Type.Sans)
@@ -1341,8 +1336,8 @@ private fun Section(title: String, subtitle: String = "", onSeeAll: (() -> Unit)
                     title,
                     color = DS.Hi,
                     fontSize = 19.sp,
-                    fontFamily = Type.Display,
-                    fontWeight = FontWeight.Bold,
+                    fontFamily = Type.Sans,
+                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = (-0.2).sp
                 )
                 if (subtitle.isNotBlank()) {
@@ -1431,8 +1426,8 @@ private fun HeroCard(drama: Drama, onClick: (Drama) -> Unit) {
                 color = DS.Hi,
                 fontSize = 28.sp,
                 lineHeight = 32.sp,
-                fontFamily = Type.Display,
-                fontWeight = FontWeight.Bold,
+                fontFamily = Type.Sans,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1790,7 +1785,7 @@ private fun ErrorCard(message: String, onRetry: () -> Unit) {
             Icon(Icons.Rounded.CloudOff, null, tint = DS.Red, modifier = Modifier.size(28.dp))
         }
         Spacer(Modifier.height(20.dp))
-        Text("Gagal memuat", color = DS.Hi, fontSize = 18.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+        Text("Gagal memuat", color = DS.Hi, fontSize = 18.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(8.dp))
         Text(
             message,
@@ -1842,7 +1837,7 @@ private fun OfflineBanner(onRefresh: () -> Unit) {
             color = DS.Green,
             fontSize = 12.5.sp,
             fontFamily = Type.Sans,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
                 .background(DS.GreenWash)
@@ -1869,7 +1864,7 @@ private fun PlaceholderScreen(title: String, subtitle: String, icon: ImageVector
                 Icon(icon, null, tint = DS.Green, modifier = Modifier.size(30.dp))
             }
             Spacer(Modifier.height(20.dp))
-            Text(title, color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+            Text(title, color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(8.dp))
             Text(subtitle, color = DS.Muted, fontSize = 13.sp, lineHeight = 20.sp, fontFamily = Type.Sans, textAlign = TextAlign.Center)
         }
@@ -1895,7 +1890,7 @@ private fun EmptyState(title: String, subtitle: String, icon: ImageVector) {
             Icon(icon, null, tint = DS.Faint, modifier = Modifier.size(26.dp))
         }
         Spacer(Modifier.height(18.dp))
-        Text(title, color = DS.Hi, fontSize = 17.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+        Text(title, color = DS.Hi, fontSize = 17.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         Text(subtitle, color = DS.Muted, fontSize = 12.5.sp, lineHeight = 18.sp, fontFamily = Type.Sans, textAlign = TextAlign.Center)
     }
@@ -1967,7 +1962,7 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
             GhostIconButton(Icons.Rounded.ArrowBack, "Kembali", onBack)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Cari drama", color = DS.Hi, fontSize = 23.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold)
+                Text("Cari drama", color = DS.Hi, fontSize = 23.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
                 Text("Dari rak ${platformLabel(searchPlatformId)}", color = DS.Muted, fontSize = 12.sp, fontFamily = Type.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             PlatformBadge(searchPlatformId, compact = true)
@@ -2141,7 +2136,7 @@ private fun LibraryScreen(store: LocalStore, dataTick: Int, onDrama: (Drama) -> 
 
     Column(Modifier.fillMaxSize().background(DS.Bg).padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(16.dp))
-        Text("Koleksi", color = DS.Hi, fontSize = 24.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+        Text("Koleksi", color = DS.Hi, fontSize = 24.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(4.dp))
         Text("Riwayat dan favorit tersimpan di perangkatmu.", color = DS.Muted, fontSize = 12.5.sp, fontFamily = Type.Sans)
         Spacer(Modifier.height(18.dp))
@@ -2254,7 +2249,7 @@ private fun SegOption(text: String, selected: Boolean, modifier: Modifier, onCli
             text,
             fontSize = 12.5.sp,
             fontFamily = Type.Sans,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             color = if (selected) DS.Ink else DS.Muted
         )
     }
@@ -2280,7 +2275,7 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Profil", color = DS.Hi, fontSize = 24.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+                Text("Profil", color = DS.Hi, fontSize = 24.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(3.dp))
                 Text("Semua data tersimpan di perangkatmu.", color = DS.Muted, fontSize = 12.5.sp, fontFamily = Type.Sans)
             }
@@ -2332,7 +2327,7 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
             DangerRow("Hapus pencarian") { store.clearRecentSearches(); bump(); Toast.makeText(ctx, "Pencarian dihapus", Toast.LENGTH_SHORT).show() }
         }
         Spacer(Modifier.height(32.dp))
-        Text("Dibuat pelan-pelan, ditonton lama-lama.", color = DS.Faint, fontSize = 11.5.sp, fontFamily = Type.Display, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        Text("Dibuat pelan-pelan, ditonton lama-lama.", color = DS.Faint, fontSize = 11.5.sp, fontFamily = Type.Sans, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(28.dp))
     }
 
@@ -2347,7 +2342,7 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
         AlertDialog(
             onDismissRequest = { dialog = null },
             confirmButton = { TextButton(onClick = { dialog = null }) { Text("Tutup", color = DS.Green, fontFamily = Type.Sans, fontWeight = FontWeight.Bold) } },
-            title = { Text(title, color = DS.Hi, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold, fontSize = 20.sp) },
+            title = { Text(title, color = DS.Hi, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, fontSize = 20.sp) },
             text = { Text(body, color = DS.Body, fontSize = 13.5.sp, lineHeight = 20.sp, fontFamily = Type.Sans) },
             containerColor = DS.Raise,
             shape = RoundedCornerShape(22.dp)
@@ -2362,7 +2357,7 @@ private fun GroupTitle(title: String, danger: Boolean = false) {
         color = if (danger) DS.Red else DS.Faint,
         fontSize = 10.5.sp,
         fontFamily = Type.Sans,
-        fontWeight = FontWeight.Bold,
+        fontWeight = FontWeight.SemiBold,
         letterSpacing = 1.8.sp,
         modifier = Modifier.padding(bottom = 10.dp)
     )
@@ -2526,8 +2521,8 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                             drama.title,
                             color = DS.Hi,
                             fontSize = 26.sp,
-                            fontFamily = Type.Display,
-                            fontWeight = FontWeight.Bold,
+                            fontFamily = Type.Sans,
+                            fontWeight = FontWeight.SemiBold,
                             lineHeight = 30.sp,
                             maxLines = 3,
                             overflow = TextOverflow.Ellipsis
@@ -2609,7 +2604,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                             Text(
                                 if (hist != null) "Lanjut Ep $resumeEp" else "Mulai Nonton",
                                 color = if (state is Load.Ok) DS.Ink else DS.Faint,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.5.sp,
                                 fontFamily = Type.Sans
                             )
@@ -2680,7 +2675,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                     // Synopsis
                     if (drama.description.isNotBlank()) {
                         Spacer(Modifier.height(24.dp))
-                        Text("Sinopsis", color = DS.Hi, fontSize = 17.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+                        Text("Sinopsis", color = DS.Hi, fontSize = 17.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(8.dp))
                         Text(
                             drama.description,
@@ -2695,7 +2690,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                     Spacer(Modifier.height(24.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Column(Modifier.weight(1f)) {
-                            Text("Episode", color = DS.Hi, fontSize = 17.sp, fontFamily = Type.Display, fontWeight = FontWeight.Bold)
+                            Text("Episode", color = DS.Hi, fontSize = 17.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(2.dp))
                             Text("$total episode tersedia", color = DS.Muted, fontSize = 12.sp, fontFamily = Type.Sans)
                         }
@@ -2906,7 +2901,7 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
                         )
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text(display.title, color = DS.Hi, fontSize = 20.sp, lineHeight = 24.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(display.title, color = DS.Hi, fontSize = 20.sp, lineHeight = 24.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Spacer(Modifier.height(14.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Box(
@@ -3080,7 +3075,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                             if (preferLandscape) PlayerOverlayChip("Wide")
                         }
                         Spacer(Modifier.height(10.dp))
-                        Text(detail.drama.title, color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(detail.drama.title, color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(5.dp))
                         Text(
                             if (playing) "Geser naik atau turun untuk ganti episode" else "Ketuk layar untuk kontrol",
@@ -3171,7 +3166,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             Box(Modifier.fillMaxSize().background(DS.Bg.copy(alpha = 0.84f)).clickable { epSheet = false })
             Surface(color = DS.Raise, shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp), modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = 420.dp)) {
                 Column(Modifier.padding(18.dp)) {
-                    Text("Episode", color = DS.Hi, fontSize = 19.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold)
+                    Text("Episode", color = DS.Hi, fontSize = 19.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(3.dp))
                     Text(detail.drama.title, color = DS.Muted, fontSize = 12.sp, fontFamily = Type.Sans, maxLines = 1)
                     Spacer(Modifier.height(14.dp))
