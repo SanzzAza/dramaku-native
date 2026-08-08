@@ -1123,15 +1123,18 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
             )
         }
 
-        // Coming soon section
+        // Coming soon / next category
         Spacer(Modifier.height(32.dp))
         Column(Modifier.padding(horizontal = 20.dp)) {
-            Text("SEGERA HADIR", color = DS.Faint, fontSize = 10.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold, letterSpacing = 2.5.sp)
+            Text("KATEGORI LAIN", color = DS.Faint, fontSize = 10.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, letterSpacing = 2.5.sp)
             Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                GateSoonCard(HomeCategory.Anime, Icons.Rounded.AutoAwesome, Modifier.weight(1f)) { onSelect(HomeCategory.Anime) }
-                GateSoonCard(HomeCategory.Manga, Icons.Rounded.MenuBook, Modifier.weight(1f)) { onSelect(HomeCategory.Manga) }
-            }
+            CategoryCard(
+                icon = Icons.Rounded.AutoAwesome,
+                title = HomeCategory.Bstation.title,
+                subtitle = HomeCategory.Bstation.subtitle,
+                accentColor = Color(0xFF00A1D6),
+                onClick = { onSelect(HomeCategory.Bstation) }
+            )
         }
 
         // Support card
@@ -3610,7 +3613,7 @@ private class DramakuRepository {
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 "dramanova" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=in").dataOrSelf(), p)
                 "freereels" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id-ID&limit=50").dataOrSelf(), p)
-                "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=en_US").dataOrSelf(), p)
+                "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=id_ID").dataOrSelf(), p)
                 else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
             }
         }.getOrDefault(emptyList())
@@ -3830,7 +3833,7 @@ private class DramakuRepository {
         if (d.drama.platform == "bstation") {
             // Bstation: /stream/mpd?id={ep_id}&qn=64 → DASH MPD XML
             val epId = d.episodes.firstOrNull { it.number == ep }?.streaming ?: error("Episode ID tidak ditemukan")
-            val mpdXml = getString("$base/stream/mpd?id=${enc(epId)}&qn=64&lang=en_US")
+            val mpdXml = getString("$base/stream/mpd?id=${enc(epId)}&qn=64&lang=id_ID")
             // Parse BaseURL dari MPD XML (ambil video stream pertama)
             val videoUrl = Regex("<BaseURL>(.*?)</BaseURL>").find(mpdXml)?.groupValues?.getOrNull(1) ?: ""
             if (videoUrl.isBlank()) error("Video belum tersedia")
@@ -3984,7 +3987,7 @@ private fun detailUrl(d: Drama): String = when (d.platform) {
     "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
     "dramanova" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
     "freereels" -> "${apiBase(d.platform)}/dramas/${enc(d.id)}?lang=id-ID"
-    "bstation" -> "${apiBase(d.platform)}/view/info?id=${enc(d.id)}&lang=en_US"
+    "bstation" -> "${apiBase(d.platform)}/view/info?id=${enc(d.id)}&lang=id_ID"
     else -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
 }
 
