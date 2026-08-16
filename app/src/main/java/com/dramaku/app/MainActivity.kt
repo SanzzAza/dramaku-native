@@ -2525,6 +2525,7 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
     var dataSaver by remember(dataTick) { mutableStateOf(store.dataSaver()) }
     var autoNext by remember(dataTick) { mutableStateOf(store.autoNext()) }
     var fitContain by remember(dataTick) { mutableStateOf(store.fitContain()) }
+    var subtitleOn by remember(dataTick) { mutableStateOf(store.subtitleOn()) }
     var dialog by remember { mutableStateOf<String?>(null) }
     val hCount = remember(dataTick) { store.history(dataTick).size }
     val fCount = remember(dataTick) { store.favs().size }
@@ -2565,6 +2566,8 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
             SettingsSwitch("Putar lanjut otomatis", "Episode berikutnya diputar sendiri.", autoNext) { autoNext = it; store.setAutoNext(it); bump() }
             GroupDivider()
             SettingsSwitch("Rasio asli", "Tampilkan video tanpa crop.", fitContain) { fitContain = it; store.setFitContain(it); bump() }
+            GroupDivider()
+            SettingsSwitch("Subtitle", "Tampilkan teks kalau sumbernya menyediakan.", subtitleOn) { subtitleOn = it; store.setSubtitleOn(it); bump() }
         }
 
         Spacer(Modifier.height(22.dp))
@@ -3239,6 +3242,13 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var speedHold by remember { mutableStateOf(false) }
     var liked by remember { mutableStateOf(false) }
     var lastSaveMs by remember { mutableLongStateOf(0L) }
+    var hasSub by remember { mutableStateOf(false) }
+    var subOn by remember { mutableStateOf(store.subtitleOn()) }
+
+    // Nyala/matikan trek teks tanpa memuat ulang stream.
+    LaunchedEffect(player, subOn) {
+        runCatching { player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subOn).build() }
+    }
 
     fun saveProgress(ep: Int) { runCatching { store.updateProgress(detail.drama.id, detail.drama.platform, ep, player.currentPosition.coerceAtLeast(0L), player.duration.takeIf { it > 0 } ?: 0L) } }
     fun closePlayer() { saveProgress(pager.currentPage + 1); runCatching { player.pause() }; onClose() }
@@ -3301,6 +3311,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         catch (e: CancellationException) { throw e }
         catch (t: Throwable) { loading = false; error = t.message ?: "Video belum tersedia"; player.stop(); return@LaunchedEffect }
         if (stream.url.isBlank()) { loading = false; error = "Video belum tersedia"; player.stop(); return@LaunchedEffect }
+        hasSub = stream.subtitle.isNotBlank()
         runCatching { player.stop(); player.clearMediaItems() }
         // Bstation: gunakan MergingMediaSource untuk gabung video+audio
         if (detail.drama.platform == "bstation" && stream.url.contains("|||")) {
@@ -3402,6 +3413,11 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                         IconButton(onClick = { uiVis = true; epSheet = true }) { Icon(Icons.Rounded.List, "Episode", tint = DS.Body) }
                         IconButton(onClick = { uiVis = true; retryKey++ }) { Icon(Icons.Rounded.Refresh, "Muat ulang", tint = DS.Body) }
                         Spacer(Modifier.weight(1f))
+                        if (hasSub) {
+                            IconButton(onClick = { uiVis = true; subOn = !subOn; store.setSubtitleOn(subOn); flash = if (subOn) "Subtitle on" else "Subtitle off" }) {
+                                Icon(Icons.Rounded.ClosedCaption, "Subtitle", tint = if (subOn) DS.Green else DS.Muted)
+                            }
+                        }
                         IconButton(onClick = { uiVis = true; fitContain = !fitContain; if (!preferLandscape) store.setFitContain(fitContain) }) { Icon(if (fitContain) Icons.Rounded.AspectRatio else Icons.Rounded.Fullscreen, "Ukuran layar", tint = DS.Body) }
                         Spacer(Modifier.width(10.dp))
                         Box(
@@ -3527,8 +3543,9 @@ private fun PlayerErrorCard(message: String, modifier: Modifier = Modifier, onRe
 // HELPERS
 // ─────────────────────────────────────────────────────────────────
 
-// Sumber layar lebar (MovieBox/Drakor) sudah mati — semua memutar portrait.
-private fun prefersLandscapePlayback(drama: Drama): Boolean = false
+// MovieBox = katalog film/series 16:9, jadi diputar landscape.
+// Shorts (mbshorts) tetap portrait karena videonya memang vertikal.
+private fun prefersLandscapePlayback(drama: Drama): Boolean = drama.platform == "moviebox"
 
 private fun buildMediaItem(s: StreamResult): MediaItem {
     val url = cleanUrl(s.url)
@@ -3544,9 +3561,10 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     }
     val subtitle = cleanUrl(s.subtitle)
     if (subtitle.isNotBlank()) {
+        val path = subtitle.substringBefore('?').substringBefore('#').lowercase()
         val mime = when {
-            subtitle.lowercase().endsWith(".vtt") -> MimeTypes.TEXT_VTT
-            subtitle.lowercase().endsWith(".ass") -> MimeTypes.TEXT_SSA  // ASS/SSA
+            path.endsWith(".vtt") || path.endsWith(".webvtt") -> MimeTypes.TEXT_VTT
+            path.endsWith(".ass") || path.endsWith(".ssa") -> MimeTypes.TEXT_SSA  // ASS/SSA
             else -> MimeTypes.APPLICATION_SUBRIP
         }
         b.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle)).setMimeType(mime).setLanguage("id").setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
@@ -3832,15 +3850,20 @@ private class DramakuRepository {
             // Series MovieBox punya nomor season (se); episode paramnya per-season.
             val se = d.episodes.firstOrNull { it.number == ep }?.se ?: 1
             val json = getJson("$base/stream/${enc(id)}?ep=${ep.coerceAtLeast(1)}&se=$se&subjectId=${enc(id)}&lang=id")
-            val link = json.optJSONObject("data")?.stringAny("resourceLink", "url", "link").orEmpty()
+            val data = json.optJSONObject("data")
+            val link = data?.stringAny("resourceLink", "url", "link").orEmpty()
             if (link.isBlank()) error("Video belum tersedia")
-            return StreamResult(link)
+            // Proxy membalas field extCaptions, tapi sejauh ini selalu kosong.
+            // Kalau kosong, caption diambil langsung dari BFF web MovieBox.
+            val sub = pickSubtitleUrl(data, json).ifBlank { movieboxCaption(id, ep.coerceAtLeast(1), se) }
+            return StreamResult(link, sub)
         }
         if (d.drama.platform == "mbshorts") {
             val json = getJson("$base/shorts/mini-list?subjectId=${enc(id)}&ep=${ep.coerceAtLeast(1)}&lang=id")
-            val link = json.optJSONObject("data")?.stringAny("url", "resourceLink").orEmpty()
+            val data = json.optJSONObject("data")
+            val link = data?.stringAny("url", "resourceLink").orEmpty()
             if (link.isBlank()) error("Video belum tersedia")
-            return StreamResult(link)
+            return StreamResult(link, pickSubtitleUrl(data, json))
         }
         if (d.drama.platform == "dramanova") {
             // Dramanova: pakai fileId dari episode untuk hit endpoint video
@@ -3903,6 +3926,28 @@ private class DramakuRepository {
         return StreamResult(source)
     }
 
+    // Caption MovieBox: proxy captain.sapimu.au balas extCaptions kosong, jadi
+    // teksnya diambil dari BFF web MovieBox. Mirror-nya kadang region-locked,
+    // makanya dicoba beberapa host, hasilnya di-cache, dan kalau semuanya tolak
+    // fitur ini dimatikan untuk sesi ini supaya tidak memperlambat tiap episode.
+    private val captionCache = ConcurrentHashMap<String, String>()
+    @Volatile private var captionSourceDead = false
+    private suspend fun movieboxCaption(subjectId: String, ep: Int, se: Int): String {
+        if (captionSourceDead) return ""
+        val key = "$subjectId|$se|$ep"
+        captionCache[key]?.let { return it }
+        var anyReachable = false
+        MOVIEBOX_CAPTION_HOSTS.forEach { host ->
+            val url = "$host/wefeed-h5-bff/web/subject/play?subjectId=${enc(subjectId)}&se=$se&ep=$ep"
+            val json = runCatching { getJson(url) }.getOrNull() ?: return@forEach
+            anyReachable = true
+            val sub = pickSubtitleUrl(json.optJSONObject("data"), json)
+            if (sub.isNotBlank()) { captionCache[key] = sub; return sub }
+        }
+        if (!anyReachable) captionSourceDead = true else captionCache[key] = ""
+        return ""
+    }
+
     private suspend fun getJson(url: String, post: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
         // Origin di balik proxy kadang balas 5xx sementara.
         // Retry singkat supaya home tidak langsung error.
@@ -3916,6 +3961,12 @@ private class DramakuRepository {
                 if (post) reqBuilder.post(okhttp3.FormBody.Builder().build())
                 if (url.contains("captain.sapimu.au")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
+                }
+                if (url.contains("wefeed-h5-bff")) {
+                    // BFF web MovieBox menolak UA non-browser.
+                    val host = runCatching { java.net.URL(url).host }.getOrNull().orEmpty()
+                    reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                    if (host.isNotBlank()) reqBuilder.header("Referer", "https://$host/")
                 }
                 return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
                     val body = r.body?.string().orEmpty()
@@ -3951,6 +4002,12 @@ private class DramakuRepository {
                     .header("Accept", "*/*")
                 if (url.contains("captain.sapimu.au")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
+                }
+                if (url.contains("wefeed-h5-bff")) {
+                    // BFF web MovieBox menolak UA non-browser.
+                    val host = runCatching { java.net.URL(url).host }.getOrNull().orEmpty()
+                    reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+                    if (host.isNotBlank()) reqBuilder.header("Referer", "https://$host/")
                 }
                 return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
                     if (!r.isSuccessful) error("HTTP ${r.code}")
@@ -4143,6 +4200,8 @@ private class LocalStore(ctx: Context) {
     fun setAutoNext(v: Boolean) = p.edit().putBoolean("autoNext", v).apply()
     fun fitContain() = p.getBoolean("fitContain", false)
     fun setFitContain(v: Boolean) = p.edit().putBoolean("fitContain", v).apply()
+    fun subtitleOn() = p.getBoolean("subtitleOn", true)
+    fun setSubtitleOn(v: Boolean) = p.edit().putBoolean("subtitleOn", v).apply()
 
     fun history(tick: Int = 0): List<HistoryItem> = runCatching {
         val a = JSONArray(p.getString("history", "[]") ?: "[]")
@@ -4223,6 +4282,37 @@ private fun JSONObject.dataOrSelf(): Any = opt("data")?.takeUnless { it == JSONO
 private fun JSONArray.objects(): List<JSONObject> = (0 until length()).mapNotNull { optJSONObject(it) }
 private fun JSONObject.stringAny(vararg keys: String): String { keys.forEach { k -> val v = opt(k); if (v != null && v != JSONObject.NULL) { if (v is String && v.isNotBlank()) return v.trim(); if (v !is JSONObject && v !is JSONArray && v.toString().isNotBlank()) return v.toString().trim() } }; return "" }
 private fun JSONObject.intAny(vararg keys: Any): Int { var fb = 0; keys.forEach { k -> if (k is Int) fb = k; else if (k is String && has(k)) { val v = opt(k); val n = when (v) { is Number -> v.toInt(); is String -> v.filter { it.isDigit() }.toIntOrNull() ?: 0; else -> 0 }; if (n != 0) return n } }; return fb }
+// Subtitle: tiap sumber menamai listnya beda-beda (captions/subtitles/subs/...),
+// isinya pun bisa {lan,url} atau {language,link}. Dipungut semua lalu diurut:
+// Indonesia dulu, lalu Inggris, terakhir entri apa pun yang ada.
+private val MOVIEBOX_CAPTION_HOSTS = listOf("https://fmoviesunblocked.net", "https://movieboxhd.net", "https://themoviebox.org")
+private val SUB_LIST_KEYS = arrayOf("extCaptions", "captions", "caption_list", "captionList", "subtitles", "subtitle_list", "subtitleList", "subs")
+private val SUB_URL_KEYS = arrayOf("url", "link", "subtitle", "src", "file", "resourceLink")
+private val SUB_LANG_KEYS = arrayOf("lan", "lang", "language", "lanName", "languageName", "langName", "name", "label")
+
+private fun pickSubtitleUrl(vararg roots: JSONObject?): String {
+    val found = mutableListOf<Pair<String, String>>() // bahasa (lowercase) ke url
+    // Cek root-nya sendiri plus satu level anak objek (mis. data.playInfo.captions).
+    val scan = roots.filterNotNull().flatMap { r ->
+        listOf(r) + r.keys().asSequence().mapNotNull { k -> r.optJSONObject(k) }.toList()
+    }
+    scan.forEach { root ->
+        SUB_LIST_KEYS.forEach { key ->
+            val arr = root.optJSONArray(key) ?: return@forEach
+            arr.objects().forEach { o ->
+                val url = cleanUrl(o.stringAny(*SUB_URL_KEYS))
+                if (url.startsWith("http")) found += o.stringAny(*SUB_LANG_KEYS).lowercase().trim() to url
+            }
+        }
+    }
+    if (found.isEmpty()) return ""
+    fun isIndo(l: String) = l == "id" || l == "in" || l == "ind" || l == "id-id" || l.startsWith("indonesia") || l.contains("bahasa")
+    fun isEng(l: String) = l == "en" || l == "eng" || l.startsWith("en-") || l.startsWith("english")
+    return found.firstOrNull { isIndo(it.first) }?.second
+        ?: found.firstOrNull { isEng(it.first) }?.second
+        ?: found.first().second
+}
+
 private fun JSONObject.coverUrl(): String { val c = opt("cover"); return if (c is JSONObject) c.stringAny("url") else "" }
 private fun fixImg(u: String): String { if (u.contains("fizzopic.org") && u.contains(".heic")) { val m = Regex("novel-images-apsoutheast/([a-f0-9]+)~").find(u); if (m != null) return "https://p19-novel-sg.ibyteimg.com/img/novel-images-sg/${m.groupValues[1]}~tplv-resize:570:810.jpg" }; return u }
 private fun cleanText(s: String) = s.replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ").trim()
