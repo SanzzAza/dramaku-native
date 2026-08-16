@@ -71,6 +71,9 @@ jobs:
       - name: Verify Gradle Wrapper
         run: chmod +x gradlew && ./gradlew --version
 
+      - name: Unit tests
+        run: ./gradlew testReleaseUnitTest --stacktrace
+
       - name: Build release APK
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

@@ -103,6 +103,7 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
+import com.dramaku.app.catalog.MovieboxCatalog
 import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
@@ -234,6 +235,7 @@ private data class EpisodeInfo(val number: Int, val streaming: String = "", val 
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
 private data class StreamResult(val url: String, val subtitle: String = "")
+private const val STREAM_CACHE_TTL_MS = 90_000L
 private data class CachedStream(val result: StreamResult, val expiresAtMs: Long)
 private data class PlayerSession(val detail: Detail, val startEpisode: Int)
 private data class HistoryItem(
@@ -2561,7 +2563,7 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
         Spacer(Modifier.height(26.dp))
         GroupTitle("PEMUTARAN")
         SettingsGroup {
-            SettingsSwitch("Hemat data", "Kualitas lebih ringan saat streaming.", dataSaver) { dataSaver = it; store.setDataSaver(it); bump() }
+            SettingsSwitch("Hemat data", "Batasi video ke 480p supaya kuota lebih awet.", dataSaver) { dataSaver = it; store.setDataSaver(it); bump() }
             GroupDivider()
             SettingsSwitch("Putar lanjut otomatis", "Episode berikutnya diputar sendiri.", autoNext) { autoNext = it; store.setAutoNext(it); bump() }
             GroupDivider()
@@ -2710,6 +2712,9 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
     val hist = store.history().firstOrNull { it.id == drama.id && it.platform == drama.platform }
     val resumeEp = hist?.episode?.coerceAtLeast(1) ?: 1
     val total = episodeCount(detail).coerceAtLeast(1)
+    // Film = satu tayangan utuh (MovieBox subject/get balas episode 0). Jangan
+    // ditampilkan sebagai daftar episode.
+    val isMovie = total <= 1 && drama.platform == "moviebox"
     val preferLandscape = prefersLandscapePlayback(drama)
     var detailRange by remember(drama.id, total) { mutableIntStateOf(((resumeEp - 1) / 30).coerceAtLeast(0)) }
 
@@ -2865,7 +2870,12 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                if (hist != null) "Lanjut Ep $resumeEp" else "Mulai Nonton",
+                                when {
+                                    isMovie && hist != null -> "Lanjutkan Film"
+                                    isMovie -> "Putar Film"
+                                    hist != null -> "Lanjut Ep $resumeEp"
+                                    else -> "Mulai Nonton"
+                                },
                                 color = if (state is Load.Ok) DS.Ink else DS.Faint,
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.5.sp,
@@ -2919,7 +2929,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                                 Icon(Icons.Rounded.History, null, tint = DS.Green, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text("Lanjutkan menonton", color = DS.Hi, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, fontFamily = Type.Sans, modifier = Modifier.weight(1f))
-                                Text("Ep $resumeEp", color = DS.Green, fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = Type.Sans)
+                                if (!isMovie) Text("Ep $resumeEp", color = DS.Green, fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = Type.Sans)
                             }
                             if (hist.pct > 0) {
                                 Spacer(Modifier.height(10.dp))
@@ -2949,7 +2959,8 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                         )
                     }
 
-                    // Episode list
+                    // Episode list — film tidak punya daftar episode.
+                    if (!isMovie) {
                     Spacer(Modifier.height(24.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Column(Modifier.weight(1f)) {
@@ -3038,6 +3049,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                             repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
                         }
                         Spacer(Modifier.height(8.dp))
+                    }
                     }
                 }
             }
@@ -3244,10 +3256,25 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var lastSaveMs by remember { mutableLongStateOf(0L) }
     var hasSub by remember { mutableStateOf(false) }
     var subOn by remember { mutableStateOf(store.subtitleOn()) }
+    val dataSaver = remember(detail.drama.id) { store.dataSaver() }
 
-    // Nyala/matikan trek teks tanpa memuat ulang stream.
-    LaunchedEffect(player, subOn) {
-        runCatching { player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subOn).build() }
+    // Satu tempat untuk semua preferensi trek: teks nyala/mati dan batas kualitas
+    // saat Hemat Data. Keduanya berlaku tanpa perlu memuat ulang stream.
+    LaunchedEffect(player, subOn, dataSaver) {
+        runCatching {
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subOn)
+                .apply {
+                    if (dataSaver) {
+                        setMaxVideoSize(854, 480)
+                        setMaxVideoBitrate(1_200_000)
+                    } else {
+                        clearVideoSizeConstraints()
+                        setMaxVideoBitrate(Int.MAX_VALUE)
+                    }
+                }
+                .build()
+        }
     }
 
     fun saveProgress(ep: Int) { runCatching { store.updateProgress(detail.drama.id, detail.drama.platform, ep, player.currentPosition.coerceAtLeast(0L), player.duration.takeIf { it > 0 } ?: 0L) } }
@@ -3354,14 +3381,18 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             PlayerOverlayChip(platformLabel(detail.drama.platform))
-                            PlayerOverlayChip("Ep ${page + 1} / $total")
+                            if (total > 1) PlayerOverlayChip("Ep ${page + 1} / $total")
                             if (preferLandscape) PlayerOverlayChip("Wide")
                         }
                         Spacer(Modifier.height(10.dp))
                         Text(detail.drama.title, color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Spacer(Modifier.height(5.dp))
                         Text(
-                            if (playing) "Geser naik atau turun untuk ganti episode" else "Ketuk layar untuk kontrol",
+                            when {
+                                !playing -> "Ketuk layar untuk kontrol"
+                                total > 1 -> "Geser naik atau turun untuk ganti episode"
+                                else -> "Selamat menonton"
+                            },
                             color = DS.Body,
                             fontSize = 12.sp,
                             lineHeight = 16.sp,
@@ -3382,7 +3413,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(detail.drama.title, color = DS.Hi, fontSize = 13.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Ep ${pager.currentPage + 1} / $total", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans)
+                    if (total > 1) Text("Ep ${pager.currentPage + 1} / $total", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans)
                 }
                 Text(
                     if (preferLandscape) "Landscape" else "Portrait",
@@ -3411,7 +3442,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                     )
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { uiVis = true; epSheet = true }) { Icon(Icons.Rounded.List, "Episode", tint = DS.Body) }
-                        IconButton(onClick = { uiVis = true; retryKey++ }) { Icon(Icons.Rounded.Refresh, "Muat ulang", tint = DS.Body) }
+                        IconButton(onClick = { uiVis = true; repo.invalidateStream(detail.drama, pager.currentPage + 1); retryKey++ }) { Icon(Icons.Rounded.Refresh, "Muat ulang", tint = DS.Body) }
                         Spacer(Modifier.weight(1f))
                         if (hasSub) {
                             IconButton(onClick = { uiVis = true; subOn = !subOn; store.setSubtitleOn(subOn); flash = if (subOn) "Subtitle on" else "Subtitle off" }) {
@@ -3446,7 +3477,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         }
 
         error?.let { e ->
-            PlayerErrorCard(e, Modifier.align(Alignment.Center)) { retryKey++ }
+            PlayerErrorCard(e, Modifier.align(Alignment.Center)) { repo.invalidateStream(detail.drama, pager.currentPage + 1); retryKey++ }
         }
 
         // Sheet episode
@@ -3633,14 +3664,18 @@ private class DramakuRepository {
         return loadDetail(input).also { detailCache[k] = it }
     }
 
+    // Signed URL dari provider cepat expired, jadi cache-nya sengaja pendek: cukup
+    // untuk membuat prefetch episode berikutnya berguna, tidak cukup lama untuk
+    // menyajikan link basi. Tombol "Coba lagi" membuang entri lewat invalidateStream().
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
-        // Signed URL dari provider cepat expired. Jangan cache supaya Retry selalu ambil link/token baru.
-        if (d.drama.platform in setOf("melolo", "dramanova", "freereels", "bstation", "dramabox", "moviebox", "mbshorts")) {
-            return resolveStream(d, ep, ds)
-        }
         val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
         streamCache[k]?.takeIf { it.expiresAtMs > now }?.let { return it.result }
-        return resolveStream(d, ep, ds).also { r -> if (r.url.isNotBlank()) streamCache[k] = CachedStream(r, now + 300_000) }
+        return resolveStream(d, ep, ds).also { r -> if (r.url.isNotBlank()) streamCache[k] = CachedStream(r, now + STREAM_CACHE_TTL_MS) }
+    }
+
+    fun invalidateStream(d: Drama, ep: Int) {
+        streamCache.remove(streamKey(d, ep, true))
+        streamCache.remove(streamKey(d, ep, false))
     }
 
     private fun detailKey(d: Drama) = "${d.platform}|${d.id}"
@@ -3754,17 +3789,36 @@ private class DramakuRepository {
             val desc = cleanText(data.stringAny("description", "introduction", "synopsis")).ifBlank { input.description }
             val poster = fixImg(data.coverUrl().ifBlank { data.stringAny("cover_url", "image", "poster") }.ifBlank { input.poster })
             val epsArr = data.optJSONArray("episodes") ?: JSONArray()
-            val eps = epsArr.objects().mapIndexed { i, o ->
-                EpisodeInfo(
-                    o.intAny("episode", "index", i + 1),
-                    o.stringAny("stream_url", "streaming", "url"),
-                    o.stringAny("episode_label", "label").ifBlank { o.stringAny("title") },
-                    se = o.intAny("se", "season", 1)
-                )
+            // Penting: optInt, bukan intAny — untuk film API membalas episode 0 / se 0,
+            // sedangkan intAny menganggap nilai 0 sebagai "tidak ada" lalu memaksanya jadi 1.
+            val raw = epsArr.objects().mapIndexed { i, o ->
+                val epNo = if (o.has("episode")) o.optInt("episode", i + 1) else o.intAny("index", i + 1)
+                val seNo = if (o.has("se")) o.optInt("se", 1) else o.intAny("season", 1)
+                Triple(epNo, seNo, o.stringAny("episode_label", "label").ifBlank { o.stringAny("title") })
             }
-            val total = max(data.intAny("totalEpisode", "chapterCount", "episode_count", input.episodes), eps.size)
-            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data), p, input.subjectType)
-            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+            // Film (episode/se = 0) maupun serial multi-season direncanakan di
+            // MovieboxCatalog supaya logikanya bisa diuji tanpa jaringan.
+            val plan = MovieboxCatalog.plan(raw)
+            val listed = plan.episodes.map { e ->
+                EpisodeInfo(
+                    number = e.display,
+                    streaming = e.upstream.toString(),   // nomor asli untuk permintaan stream
+                    label = if (plan.isMovie) e.label.ifBlank { title } else e.label,
+                    se = e.season
+                )
+            }.ifEmpty { listOf(EpisodeInfo(1, "0", title, se = 0)) }
+            // Sebagian sumber (mis. Shorts) menyebut jumlah episode lebih banyak
+            // daripada isi array-nya. Selama cuma ada satu season, sisanya
+            // ditambahkan berurutan supaya tidak ada episode yang hilang.
+            val declared = data.intAny("totalEpisode", "chapterCount", "episode_count", 0)
+            val eps = if (!plan.isMovie && !plan.hasHiddenSeasons && declared > listed.size) {
+                val se = listed.firstOrNull()?.se ?: 1
+                listed + ((listed.size + 1)..declared).map { EpisodeInfo(it, it.toString(), "", se = se) }
+            } else listed
+            val total = eps.size.coerceAtLeast(1)
+            val extraTags = if (plan.hasHiddenSeasons) listOf("Season ${plan.seasons.first()} dari ${plan.seasons.size}") else emptyList()
+            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data) + extraTags, p, input.subjectType)
+            return Detail(drama, eps)
         }
         if (p == "dramanova") {
             // Dramanova: { id, title, cover, description, totalEpisodes, episodes: [{ id, number, title, fileId, free, subtitles: [{ lang, url }] }] }
@@ -3847,15 +3901,18 @@ private class DramakuRepository {
             return StreamResult("$base/stream?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in")
         }
         if (d.drama.platform == "moviebox") {
-            // Series MovieBox punya nomor season (se); episode paramnya per-season.
-            val se = d.episodes.firstOrNull { it.number == ep }?.se ?: 1
-            val json = getJson("$base/stream/${enc(id)}?ep=${ep.coerceAtLeast(1)}&se=$se&subjectId=${enc(id)}&lang=id")
+            // Nomor yang tampil di UI berurutan 1..N; nomor asli upstream (dan season-nya)
+            // disimpan di EpisodeInfo supaya serial multi-season & film tetap tepat sasaran.
+            val info = d.episodes.firstOrNull { it.number == ep }
+            val se = info?.se ?: 1
+            val realEp = info?.streaming?.toIntOrNull() ?: ep.coerceAtLeast(1)
+            val json = getJson("$base/stream/${enc(id)}?ep=$realEp&se=$se&subjectId=${enc(id)}&lang=id")
             val data = json.optJSONObject("data")
             val link = data?.stringAny("resourceLink", "url", "link").orEmpty()
             if (link.isBlank()) error("Video belum tersedia")
             // Proxy membalas field extCaptions, tapi sejauh ini selalu kosong.
             // Kalau kosong, caption diambil langsung dari BFF web MovieBox.
-            val sub = pickSubtitleUrl(data, json).ifBlank { movieboxCaption(id, ep.coerceAtLeast(1), se) }
+            val sub = pickSubtitleUrl(data, json).ifBlank { movieboxCaption(id, realEp, se) }
             return StreamResult(link, sub)
         }
         if (d.drama.platform == "mbshorts") {
