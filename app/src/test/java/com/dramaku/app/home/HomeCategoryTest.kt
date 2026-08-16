@@ -43,10 +43,13 @@ class HomeCategoryTest {
 
     @Test
     fun comingSoonCategoriesHaveNoPlatforms() {
+        // Kategori "segera hadir" tidak boleh punya platform aktif, dan sebaliknya.
+        val comingSoon = HomeCategory.values().filter { it.comingSoon }
+        assertTrue("harus ada minimal satu kategori segera hadir", comingSoon.isNotEmpty())
+        comingSoon.forEach { assertTrue("${it.id} masih punya platform", it.platforms.isEmpty()) }
+        HomeCategory.values().filterNot { it.comingSoon }
+            .forEach { assertTrue("${it.id} tidak punya platform", it.platforms.isNotEmpty()) }
         assertTrue(HomeCategory.Anime.comingSoon)
-        assertTrue(HomeCategory.Manga.comingSoon)
-        assertTrue(HomeCategory.Anime.platforms.isEmpty())
-        assertTrue(HomeCategory.Manga.platforms.isEmpty())
         assertFalse(HomeCategory.ShortDrama.comingSoon)
     }
 
