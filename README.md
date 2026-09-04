@@ -2,22 +2,21 @@
 
 Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
-Nonton drama & film dari 10 platform dalam satu aplikasi native Android.
+Nonton drama & film dari berbagai platform dalam satu aplikasi native Android.
 
 **Versi saat ini: 4.9.7**
 
-## Platform
+## Platform Aktif
 
-- Melolo
-- FreeReels
-- FlickReels
-- DramaNova
-- ReelShort
-- NetShort
-- DramaBox
-- GoodShort
-- MovieBox
-- Drakor
+- **Melolo** (Short drama vertikal)
+- **DramaNova** (Short drama vertikal)
+- **FreeReels** (Short drama vertikal)
+- **DramaBox** (Short drama vertikal)
+- **MovieBox** (Film layar lebar & serial)
+- **Shorts** (Shorts vertikal MovieBox)
+- **Bstation** (Anime & drama)
+
+*Slot segera hadir: Drama Asia & Anime khusus.*
 
 ## Tampilan 4.9
 
@@ -69,7 +68,6 @@ Antarmuka ditata ulang dengan arah "warm cinema": gelap hangat, aksen hijau mint
 ```txt
 app/src/main/java/com/dramaku/app/MainActivity.kt     # UI native Compose + data repository MVP
 app/src/main/java/com/dramaku/app/home/HomeCategory.kt # Kategori layar awal + greeting waktu
-app/src/main/java/com/dramaku/app/PlayerActivity.java # Native ExoPlayer
 app/src/main/java/com/dramaku/app/SplashActivity.java # Native splash
 app/src/main/java/com/dramaku/app/storage/             # Storage key helpers
 app/src/test/java/                                     # Unit tests

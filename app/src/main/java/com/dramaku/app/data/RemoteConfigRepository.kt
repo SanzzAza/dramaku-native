@@ -28,10 +28,13 @@ data class NativeRemoteConfig(
     val downloadUrl: String = "",
     val message: RemoteMessage = RemoteMessage(),
     val platforms: Map<String, PlatformRemoteState> = emptyMap(),
+    val api: Map<String, String> = emptyMap(),
+    val token: String = "",
     val source: String = "default"
 ) {
     fun platform(id: String): PlatformRemoteState = platforms[id] ?: PlatformRemoteState()
     fun isPlatformEnabled(id: String): Boolean = platform(id).enabled
+    fun apiUrl(id: String): String? = api[id]?.takeIf { it.isNotBlank() }
 }
 
 class RemoteConfigRepository(
@@ -72,6 +75,12 @@ class RemoteConfigRepository(
                 reason = p.optString("reason", if (p.optBoolean("enabled", true)) "Aktif" else "Maintenance")
             )
         }
+        val apiJson = json.optJSONObject("api") ?: JSONObject()
+        val api = mutableMapOf<String, String>()
+        apiJson.keys().forEach { key ->
+            val u = apiJson.optString(key, "").trim()
+            if (u.isNotBlank()) api[key] = u
+        }
         val update = json.optJSONObject("update")
         return NativeRemoteConfig(
             version = json.optInt("version", 0),
@@ -80,7 +89,9 @@ class RemoteConfigRepository(
             latestVersion = update?.optString("latestVersion")?.takeIf { it.isNotBlank() } ?: json.optString("latestVersion", ""),
             downloadUrl = update?.optString("downloadUrl")?.takeIf { it.isNotBlank() } ?: json.optString("downloadUrl", ""),
             message = msg,
-            platforms = platforms
+            platforms = platforms,
+            api = api,
+            token = json.optString("token", "").trim()
         )
     }
 }

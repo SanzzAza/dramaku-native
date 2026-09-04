@@ -28,7 +28,6 @@ class HomeCategoryTest {
 
     @Test
     fun shortDramaExcludesMovieEndpoints() {
-        // Sumber short drama aktif: Melolo & DramaBox; moviebox/drakor tetap mati.
         assertTrue(HomeCategory.ShortDrama.containsPlatform("melolo"))
         assertTrue(HomeCategory.ShortDrama.containsPlatform("dramabox"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("moviebox"))
@@ -37,20 +36,22 @@ class HomeCategoryTest {
 
     @Test
     fun singlePlatformCategoriesResolveDefaults() {
-        assertEquals("drakor", HomeCategory.MovieDrama.defaultPlatform())
         assertEquals("moviebox", HomeCategory.MovieBox.defaultPlatform())
+        assertEquals("bstation", HomeCategory.Bstation.defaultPlatform())
     }
 
     @Test
     fun comingSoonCategoriesHaveNoPlatforms() {
-        // Kategori "segera hadir" tidak boleh punya platform aktif, dan sebaliknya.
         val comingSoon = HomeCategory.values().filter { it.comingSoon }
         assertTrue("harus ada minimal satu kategori segera hadir", comingSoon.isNotEmpty())
         comingSoon.forEach { assertTrue("${it.id} masih punya platform", it.platforms.isEmpty()) }
         HomeCategory.values().filterNot { it.comingSoon }
             .forEach { assertTrue("${it.id} tidak punya platform", it.platforms.isNotEmpty()) }
         assertTrue(HomeCategory.Anime.comingSoon)
+        assertTrue(HomeCategory.MovieDrama.comingSoon)
         assertFalse(HomeCategory.ShortDrama.comingSoon)
+        assertFalse(HomeCategory.MovieBox.comingSoon)
+        assertFalse(HomeCategory.Bstation.comingSoon)
     }
 
     @Test
@@ -58,5 +59,7 @@ class HomeCategoryTest {
         assertEquals("short_drama", HomeCategory.ShortDrama.id)
         assertEquals("movie_drama", HomeCategory.MovieDrama.id)
         assertEquals("movie_box", HomeCategory.MovieBox.id)
+        assertEquals("anime", HomeCategory.Anime.id)
+        assertEquals("bstation", HomeCategory.Bstation.id)
     }
 }

@@ -7,7 +7,6 @@ Repo native ini mulai dipisah dari pola satu-file MVP menuju struktur production
 ```txt
 app/src/main/java/com/dramaku/app/
   MainActivity.kt                 # UI Compose utama, repository MVP, storage lokal
-  PlayerActivity.java             # fallback/simple ExoPlayer activity
   SplashActivity.java             # native splash
   data/RemoteConfigRepository.kt  # remote config native
   storage/ProgressKeys.kt          # platform-aware playback progress keys

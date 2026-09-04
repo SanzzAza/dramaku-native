@@ -3,10 +3,11 @@ package com.dramaku.app.home
 /**
  * Kategori pintu masuk di layar awal (desain ala SonzaixBox, brand Dramaku).
  *
- * Short Drama → platform short drama vertikal (Melolo & DramaBox).
- * Movie Drama → endpoint Drakor (Serial Korea & China).
+ * Short Drama → platform short drama vertikal (Melolo, DramaNova, FreeReels, DramaBox).
  * Movie Box   → endpoint MovieBox (film/serial global + Shorts vertikal).
- * Anime/Manga → disiapkan, belum terintegrasi ("segera hadir").
+ * Bstation    → Anime & drama dari Bilibili.
+ * Drama Asia  → serial Korea & China (segera hadir).
+ * Anime       → slot anime sedang disiapkan (segera hadir).
  */
 enum class HomeCategory(
     val id: String,
@@ -24,8 +25,9 @@ enum class HomeCategory(
     MovieDrama(
         id = "movie_drama",
         title = "Drama Asia",
-        subtitle = "Serial Korea & China buat maraton",
-        platforms = listOf("drakor")
+        subtitle = "Serial Korea & China sedang disiapkan",
+        platforms = emptyList(),
+        comingSoon = true
     ),
     MovieBox(
         id = "movie_box",

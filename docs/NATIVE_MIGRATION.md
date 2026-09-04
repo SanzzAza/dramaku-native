@@ -18,7 +18,7 @@ Project ini adalah Android full native berbasis **Kotlin + Jetpack Compose**.
   - Settings native
   - Share sheet Android native
 - Player utama sekarang native vertical swipe episode ala TikTok memakai Compose `VerticalPager` + Media3 ExoPlayer.
-- `PlayerActivity` masih ada sebagai fallback/native player sederhana.
+- Player native ExoPlayer penuh di Jetpack Compose (VerticalPager).
 - Resolusi stream 10 platform sudah berada di Kotlin repository untuk platform:
   - Melolo
   - FreeReels
@@ -34,7 +34,6 @@ Project ini adalah Android full native berbasis **Kotlin + Jetpack Compose**.
 ## File penting
 
 - `app/src/main/java/com/dramaku/app/MainActivity.kt` — app native Compose utama.
-- `app/src/main/java/com/dramaku/app/PlayerActivity.java` — native ExoPlayer.
 - `app/build.gradle` — Compose/Kotlin/Coil/OkHttp dependencies.
 
 ## Build

@@ -8,8 +8,8 @@ def versionProps = new Properties()
 if (versionPropsFile.exists()) {
     versionPropsFile.withInputStream { versionProps.load(it) }
 }
-def appVersionName = versionProps.getProperty('VERSION_NAME', '4.3.0')
-def appVersionCode = (versionProps.getProperty('VERSION_CODE', '37') as Integer)
+def appVersionName = versionProps.getProperty('VERSION_NAME', '4.9.7')
+def appVersionCode = (versionProps.getProperty('VERSION_CODE', '82') as Integer)
 
 // Prefer VERSION_CODE from CI (tag/build number) when provided.
 def ciVersionCode = System.getenv('DRAMAKU_VERSION_CODE')

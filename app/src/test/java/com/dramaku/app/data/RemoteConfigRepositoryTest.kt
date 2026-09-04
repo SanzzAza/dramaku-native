@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RemoteConfigRepositoryTest {
+
     private val repository = RemoteConfigRepository("https://example.invalid/config.json")
 
     @Test
@@ -34,12 +35,15 @@ class RemoteConfigRepositoryTest {
                       "status": "maintenance",
                       "reason": "Perbaikan server"
                     }
-                  }
+                  },
+                  "api": {
+                    "melolo": "https://captain.sapimu.au/melolo/api/v1"
+                  },
+                  "token": "secret-token-test"
                 }
                 """.trimIndent()
             )
         )
-
         assertEquals(20, config.version)
         assertEquals("4.7.0", config.minAppVersion)
         assertEquals("4.7.1", config.latestVersion)
@@ -47,16 +51,19 @@ class RemoteConfigRepositoryTest {
         assertTrue(config.message.enabled)
         assertFalse(config.isPlatformEnabled("melolo"))
         assertEquals("Perbaikan server", config.platform("melolo").reason)
+        assertEquals("https://captain.sapimu.au/melolo/api/v1", config.apiUrl("melolo"))
+        assertEquals("secret-token-test", config.token)
     }
 
     @Test
     fun `parse keeps safe defaults for missing optional fields`() {
         val config = repository.parse(JSONObject("{}"))
-
         assertEquals(0, config.version)
         assertFalse(config.message.enabled)
         assertTrue(config.isPlatformEnabled("unknown"))
         assertEquals("active", config.platform("unknown").status)
+        assertEquals("", config.token)
+        assertTrue(config.api.isEmpty())
     }
 
     @Test
@@ -75,7 +82,6 @@ class RemoteConfigRepositoryTest {
                 """.trimIndent()
             )
         )
-
         assertEquals("4.7.1", config.latestVersion)
         assertEquals("https://example.com/root.apk", config.downloadUrl)
     }

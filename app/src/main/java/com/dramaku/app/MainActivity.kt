@@ -311,20 +311,7 @@ private fun App() {
     var genreRows by remember { mutableStateOf<List<Pair<String, List<Drama>>>>(emptyList()) }
     var showPlatformPicker by remember { mutableStateOf(false) }
 
-    val playerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val data = result.data
-        if (result.resultCode == Activity.RESULT_OK && data != null) {
-            val id = data.getStringExtra(PlayerActivity.RESULT_DRAMA_ID).orEmpty()
-            val pid = data.getStringExtra(PlayerActivity.RESULT_PLATFORM).orEmpty()
-            val ep = data.getIntExtra(PlayerActivity.RESULT_EPISODE, 1)
-            val pos = data.getLongExtra(PlayerActivity.RESULT_POSITION, 0L)
-            val dur = data.getLongExtra(PlayerActivity.RESULT_DURATION, 0L)
-            if (id.isNotBlank() && pid.isNotBlank()) {
-                store.updateProgress(id, pid, ep, pos, dur)
-                dataTick++
-            }
-        }
-    }
+
 
     fun openPlayer(d: Detail, ep: Int) { playerSession = PlayerSession(d, ep) }
 
@@ -3897,7 +3884,7 @@ private class DramakuRepository {
         val base = apiBase(d.drama.platform); val id = d.drama.id
         if (d.drama.platform == "dramabox") {
             // Endpoint ini langsung membalas playlist m3u8 — URL-nya sendiri yang diputar.
-            // Header Bearer dipasang di data source player (buildPlayer / PlayerActivity).
+            // Header Bearer dipasang di data source player (buildPlayer).
             return StreamResult("$base/stream?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in")
         }
         if (d.drama.platform == "moviebox") {
@@ -4013,7 +4000,7 @@ private class DramakuRepository {
             if (attempt > 0) delay(450L * attempt)
             try {
                 val reqBuilder = Request.Builder().url(url)
-                    .header("User-Agent", "DramakuNative/5.0 Android")
+                    .header("User-Agent", "DramakuNative/4.9.7 Android")
                     .header("Accept", "application/json, text/plain, */*")
                 if (post) reqBuilder.post(okhttp3.FormBody.Builder().build())
                 if (url.contains("captain.sapimu.au")) {
@@ -4055,7 +4042,7 @@ private class DramakuRepository {
             if (attempt > 0) delay(450L * attempt)
             try {
                 val reqBuilder = Request.Builder().url(url)
-                    .header("User-Agent", "DramakuNative/5.0 Android")
+                    .header("User-Agent", "DramakuNative/4.9.7 Android")
                     .header("Accept", "*/*")
                 if (url.contains("captain.sapimu.au")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")

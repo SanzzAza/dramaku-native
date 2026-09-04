@@ -1,6 +1,5 @@
 # Keep activity entry points
 -keep class com.dramaku.app.MainActivity { *; }
--keep class com.dramaku.app.PlayerActivity { *; }
 -keep class com.dramaku.app.SplashActivity { *; }
 
 # Media3 / ExoPlayer
