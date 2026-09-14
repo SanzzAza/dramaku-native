@@ -258,7 +258,7 @@ private sealed class Load<out T> {
 
 private val Platforms = listOf(
     PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoRes = R.drawable.logo_melolo),
-    PlatformInfo("dramanova", "Dramanova", "https://captain.sapimu.au/dramanova/api/v1"),
+    PlatformInfo("dramanova", "Dramanova", "https://dramahub.be/dramanova"),
     PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1"),
     PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api"),
     PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api"),
@@ -372,13 +372,13 @@ private fun App() {
             )
             // Shorts: feed sudah dua rak dari reel/trending, tanpa kategori tambahan.
             selPlatform == "mbshorts" -> emptyList()
+            // dramanova_more & dramanova_baxi upstream kosong / shortTitle-nya
+            // semua null, jadi tidak dipakai.
             selPlatform == "dramanova" -> listOf(
+                "Katalog" to { repo.browsePath(selPlatform, "drama/list?pageNum=1&pageSize=20&languages=in") },
                 "Terpopuler" to { repo.browseDramanova("dramanova_hot") },
                 "Terbaru" to { repo.browseDramanova("dramanova_new") },
-                "Lainnya" to { repo.browseDramanova("dramanova_more") },
-                "Preview" to { repo.browseDramanova("dramanova_previews") },
-                "Gratis" to { repo.browseDramanova("dramanova_free") },
-                "Animasi" to { repo.browseDramanova("Dramanova_Animation") }
+                "Anime" to { repo.browseDramanova("dramanova_anime") }
             )
             selPlatform == "freereels" -> listOf(
                 "Untuk Wanita" to { repo.browseFreereels("female") },
@@ -3711,7 +3711,7 @@ private class DramakuRepository {
                 "dramabox" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in").dataOrSelf(), p)
                 // perPage di-radius upstream: 10–20 aman, 24 ke atas dibalas data kosong.
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
-                "dramanova" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=in").dataOrSelf(), p)
+                "dramanova" -> flat(getJson("${apiBase(p)}/drama/search?q=${enc(q)}&pageNum=1&pageSize=50&languages=in").dataOrSelf(), p)
                 "freereels" -> freereelsSearch(q, p)
                 "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=id_ID").dataOrSelf(), p)
                 else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
@@ -3748,9 +3748,10 @@ private class DramakuRepository {
     suspend fun browsePath(p: String, path: String): List<Drama> =
         runCatching { flat(getJson("${apiBase(p)}/$path").dataOrSelf(), p) }.getOrDefault(emptyList())
 
-    // Dramanova: ambil recommend by categoryKey
+    // Dramanova (dramahub.be): ambil items dari modul home
+    // (dramanova_hot, dramanova_new, dramanova_more, dramanova_baxi, dramanova_anime).
     suspend fun browseDramanova(categoryKey: String): List<Drama> =
-        runCatching { flat(getJson("${apiBase("dramanova")}/recommend?lang=in&categoryKey=${enc(categoryKey)}&page=1&limit=20").dataOrSelf(), "dramanova") }.getOrDefault(emptyList())
+        runCatching { flat(getJson("${apiBase("dramanova")}/home/modules/$categoryKey/items?pageNum=1&pageSize=20&languages=in").dataOrSelf(), "dramanova") }.getOrDefault(emptyList())
 
     // Freereels: ambil by category path (female, male, anime, dubbing, coming-soon)
     suspend fun browseFreereels(categoryPath: String): List<Drama> =
@@ -3849,27 +3850,26 @@ private class DramakuRepository {
             return Detail(drama, eps)
         }
         if (p == "dramanova") {
-            // Dramanova: { id, title, cover, description, totalEpisodes, episodes: [{ id, number, title, fileId, free, subtitles: [{ lang, url }] }] }
-            val title = json.stringAny("title").ifBlank { input.title }
-            val desc = cleanText(json.stringAny("description")).ifBlank { input.description }
-            val poster = fixImg(json.stringAny("cover").ifBlank { input.poster })
-            val epsArr = json.optJSONArray("episodes") ?: JSONArray()
-            val eps = epsArr.objects().map { o ->
-                val subsArr = o.optJSONArray("subtitles") ?: JSONArray()
-                val subtitleUrl = (0 until subsArr.length()).mapNotNull { i ->
-                    val s = subsArr.optJSONObject(i)
-                    if (s?.stringAny("lang") == "in") s.stringAny("url") else null
-                }.firstOrNull().orEmpty()
+            // Dramanova (dramahub.be): { drama: { dramaId, title, synopsis, poster (relatif!),
+            // totalEpisodes, tags, score }, episodes: [{ episodeNo, episodeId, title, wasLocked }] }.
+            // Subtitle tidak dibalas di detail — diambil dari endpoint unlock saat stream.
+            val data = json.optJSONObject("drama") ?: json
+            val title = data.stringAny("title").ifBlank { input.title }
+            val desc = cleanText(data.stringAny("synopsis", "description")).ifBlank { input.description }
+            // Poster balasan relatif (mis. "poster_i/xxx.jpg") — sambungkan ke CDN-nya.
+            var poster = data.stringAny("poster", "cover").ifBlank { input.poster }
+            if (poster.isNotBlank() && !poster.startsWith("http")) poster = "https://aasleeimg.yfeitrade.com/$poster"
+            poster = fixImg(poster)
+            val epsArr = json.optJSONArray("episodes") ?: data.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
                 EpisodeInfo(
-                    number = o.intAny("number", "episode", 0),
-                    streaming = o.stringAny("fileId", "id"),
+                    number = o.intAny("episodeNo", "number", "episode", i + 1),
                     label = o.stringAny("title", "label"),
-                    locked = !o.optBoolean("free", true),
-                    subtitle = subtitleUrl
+                    locked = o.optBoolean("wasLocked", false)
                 )
             }
-            val total = max(json.intAny("totalEpisodes", "episodes", input.episodes), eps.size)
-            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(json), p, input.subjectType)
+            val total = max(data.intAny("totalEpisodes", "episodes", input.episodes), eps.size)
+            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data), p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
         if (p == "freereels") {
@@ -3951,10 +3951,9 @@ private class DramakuRepository {
             return StreamResult(link, pickSubtitleUrl(data, json))
         }
         if (d.drama.platform == "dramanova") {
-            // Dramanova: pakai fileId dari episode untuk hit endpoint video
-            val epInfo = d.episodes.firstOrNull { it.number == ep }
-            val fileId = epInfo?.streaming?.takeIf { it.isNotBlank() } ?: error("FileId episode tidak ditemukan")
-            val json = getJson("$base/video?id=${enc(fileId)}")
+            // Dramanova (dramahub.be): unlock/{dramaId}/{ep}?languages=in&subtitles=true
+            // membalas videos (per definisi) + subtitles (srt) dalam satu balasan.
+            val json = getJson("$base/unlock/${enc(id)}/${ep.coerceAtLeast(1)}?languages=in&subtitles=true")
             val videosArr = json.optJSONArray("videos") ?: JSONArray()
             val bestVideo = videosArr.objects().maxByOrNull { o ->
                 when (o.stringAny("definition").lowercase()) {
@@ -3963,7 +3962,12 @@ private class DramakuRepository {
             }
             val link = bestVideo?.stringAny("main_url", "backup_url").orEmpty()
             if (link.isBlank()) error("Video belum tersedia")
-            val subtitle = epInfo?.subtitle?.takeIf { it.isNotBlank() }.orEmpty()
+            val subsArr = json.optJSONArray("subtitles") ?: JSONArray()
+            val subtitle = (0 until subsArr.length()).mapNotNull { i ->
+                val s = subsArr.optJSONObject(i)
+                val lang = s?.stringAny("language", "label").orEmpty().lowercase()
+                if (lang.startsWith("id") || lang == "in") s.stringAny("url") else null
+            }.firstOrNull().orEmpty()
             return StreamResult(link, subtitle)
         }
         if (d.drama.platform == "freereels") {
@@ -4150,11 +4154,12 @@ private fun homeUrls(p: String, page: Int): List<String> {
         )
     }
     if (p == "dramanova") {
-        // Dramanova: pakai recommend endpoint untuk hot/new/more.
+        // Dramanova (dramahub.be): discover feed + modul home (hot & new).
+        // Katalog lengkap (drama/list) dipakai rak genre "Katalog".
         return listOf(
-            "$base/recommend?lang=in&categoryKey=dramanova_hot&page=1&limit=6",
-            "$base/recommend?lang=in&categoryKey=dramanova_new&page=1&limit=12",
-            "$base/recommend?lang=in&categoryKey=dramanova_more&page=1&limit=20"
+            "$base/discover/feed?pageNum=1&pageSize=20&languages=in",
+            "$base/home/modules/dramanova_hot/items?pageNum=1&pageSize=20&languages=in",
+            "$base/home/modules/dramanova_new/items?pageNum=1&pageSize=20&languages=in"
         )
     }
     if (p == "freereels") {
@@ -4182,7 +4187,7 @@ private fun detailUrl(d: Drama): String = when (d.platform) {
     "dramabox" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
     "moviebox" -> "${apiBase(d.platform)}/subject/get?subjectId=${enc(d.id)}&lang=id"
     "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
-    "dramanova" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
+    "dramanova" -> "${apiBase(d.platform)}/detail/${enc(d.id)}?languages=in"
     "freereels" -> "${apiBase(d.platform)}/dramas/${enc(d.id)}?lang=id-ID"
     "bstation" -> "${apiBase(d.platform)}/view/info?id=${enc(d.id)}&lang=id_ID"
     else -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
@@ -4195,10 +4200,10 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 // dan section layer yang sama-sama punya pasangan id+name. Mereka bukan drama.
 // Syaratnya pakai sinyal konten nyata: cover, sinopsis, atau jumlah episode.
 private fun JSONObject.hasDramaSignal(): Boolean =
-    stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url").isNotBlank() ||
+    stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url", "posterUri").isNotBlank() ||
         optJSONObject("cover") != null ||
         stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate").isNotBlank() ||
-        intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes") > 0 ||
+        intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes", "totalEpisodes") > 0 ||
         has("subjectId") || has("key") || has("season_id") || has("ep_id") || has("aid") ||
         (has("season_id") && stringAny("title").isNotBlank() && stringAny("cover").isNotBlank())
 
@@ -4208,8 +4213,8 @@ private fun flat(any: Any?, fp: String): List<Drama> {
         when (node) {
             is JSONArray -> node.objects().forEach { extractBooks(it) }
             is JSONObject -> {
-                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid")
-                val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name")
+                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid", "dramaId")
+                val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name", "shortTitle")
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
                     val d = normalize(node, fp)
                     if (d.id.isNotBlank() && d.title.isNotBlank() && !d.title.equals("Populer", true) && !d.title.equals("Romansa", true) && !d.title.equals("Ceo", true)) {
@@ -4235,14 +4240,14 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 
 private fun normalize(o: JSONObject, fp: String): Drama {
     val p = fp
-    // Bstation: season_id atau aid sebagai ID
-    val id = o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id", "aid")
+    // Bstation: season_id atau aid sebagai ID; Dramanova (dramahub.be): dramaId.
+    val id = o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id", "aid", "dramaId")
     return Drama(
         id,
-        o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name"),
+        o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name", "shortTitle"),
         cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc", "evaluate")),
-        fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg").ifBlank { o.coverUrl() }),
-        o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", 0),
+        fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg", "posterUri").ifBlank { o.coverUrl() }),
+        o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", "totalEpisodes", 0),
         o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers", "views").ifBlank {
             val fc = o.optLong("follow_count", 0)
             if (fc > 0) "${fc/1000}K" else o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty()
