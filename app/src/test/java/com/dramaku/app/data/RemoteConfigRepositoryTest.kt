@@ -37,7 +37,7 @@ class RemoteConfigRepositoryTest {
                     }
                   },
                   "api": {
-                    "melolo": "https://captain.sapimu.au/melolo/api/v1"
+                    "melolo": "https://dramahub.be/melolo/api/v1"
                   },
                   "token": "secret-token-test"
                 }
@@ -51,7 +51,7 @@ class RemoteConfigRepositoryTest {
         assertTrue(config.message.enabled)
         assertFalse(config.isPlatformEnabled("melolo"))
         assertEquals("Perbaikan server", config.platform("melolo").reason)
-        assertEquals("https://captain.sapimu.au/melolo/api/v1", config.apiUrl("melolo"))
+        assertEquals("https://dramahub.be/melolo/api/v1", config.apiUrl("melolo"))
         assertEquals("secret-token-test", config.token)
     }
 

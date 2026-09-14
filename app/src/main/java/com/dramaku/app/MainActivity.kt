@@ -257,7 +257,7 @@ private sealed class Load<out T> {
 // ─────────────────────────────────────────────────────────────────
 
 private val Platforms = listOf(
-    PlatformInfo("melolo", "Melolo", "https://captain.sapimu.au/melolo/api/v1", logoRes = R.drawable.logo_melolo),
+    PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoRes = R.drawable.logo_melolo),
     PlatformInfo("dramanova", "Dramanova", "https://captain.sapimu.au/dramanova/api/v1"),
     PlatformInfo("freereels", "FreeReels", "https://captain.sapimu.au/freereels/api/v1"),
     PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api"),
@@ -394,6 +394,23 @@ private fun App() {
                 "Isekai" to { repo.browseBstationGenre("20007") },
                 "Action" to { repo.browseBstationGenre("20011") },
                 "Fantasy" to { repo.browseBstationGenre("20010") }
+            )
+            // Melolo: rak asli dari API dramahub.be (peringkat + anime),
+            // sisanya lewat katalog search (feed mentok 18 judul, katalognya
+            // jauh lebih dalam).
+            selPlatform == "melolo" -> listOf(
+                "Peringkat" to { repo.browsePath(selPlatform, "rank?page=1&lang=id") },
+                "Anime" to { repo.browsePath(selPlatform, "anime?page=1&lang=id") },
+                "Populer" to { repo.searchPlatform("populer", selPlatform) },
+                "Romansa" to { repo.searchPlatform("cinta", selPlatform) },
+                "Sistem" to { repo.searchPlatform("sistem", selPlatform) },
+                "Harem" to { repo.searchPlatform("harem", selPlatform) },
+                "CEO & harta" to { repo.searchPlatform("ceo", selPlatform) },
+                "Balas dendam" to { repo.searchPlatform("balas dendam", selPlatform) },
+                "Lintas waktu" to { repo.searchPlatform("time travel", selPlatform) },
+                "Kekuatan super" to { repo.searchPlatform("kekuatan super", selPlatform) },
+                "Wanita kuat" to { repo.searchPlatform("wanita kuat", selPlatform) },
+                "Kelahiran kembali" to { repo.searchPlatform("kelahiran kembali", selPlatform) }
             )
             else -> listOf(
             "Populer" to { repo.searchPlatform("populer", selPlatform) },
@@ -3057,8 +3074,9 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15_000).setReadTimeoutMs(30_000)
-    // Playlist DramaBox di-proxy (captain.sapimu.au) dan wajib Bearer; segmen .ts
-    // di CDN bebas token, jadi aman kalau header ikut terkirim ke sana juga.
+    // Playlist DramaBox di-proxy (captain.sapimu.au) dan Melolo (dramahub.be)
+    // wajib Bearer; segmen .ts / file di CDN bebas token, jadi aman kalau
+    // header ikut terkirim ke sana juga.
     val headers = requestHeaders.toMutableMap()
     if (!headers.containsKey("Authorization")) headers["Authorization"] = "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"
     http.setDefaultRequestProperties(headers)
@@ -4003,7 +4021,7 @@ private class DramakuRepository {
                     .header("User-Agent", "DramakuNative/4.9.7 Android")
                     .header("Accept", "application/json, text/plain, */*")
                 if (post) reqBuilder.post(okhttp3.FormBody.Builder().build())
-                if (url.contains("captain.sapimu.au")) {
+                if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
                 }
                 if (url.contains("wefeed-h5-bff")) {
@@ -4044,7 +4062,7 @@ private class DramakuRepository {
                 val reqBuilder = Request.Builder().url(url)
                     .header("User-Agent", "DramakuNative/4.9.7 Android")
                     .header("Accept", "*/*")
-                if (url.contains("captain.sapimu.au")) {
+                if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
                 }
                 if (url.contains("wefeed-h5-bff")) {
@@ -4079,9 +4097,9 @@ private fun homePageRequest(p: String, page: Int): HomePageRequest {
     return HomePageRequest(section, url, vp, vp < total)
 }
 
-// Proxy Melolo mengabaikan offset/page/session: tiap halaman mengembalikan
-// feed 18 judul yang sama, jadi jangan fetch ulang (hemat kuota + waktu).
-// Dramanova dan Freereels juga dibatasi 1 halaman.
+// API Melolo (dramahub.be) mengabaikan offset/page/session: tiap halaman
+// mengembalikan feed 18 judul yang sama, jadi jangan fetch ulang (hemat
+// kuota + waktu). Dramanova dan Freereels juga dibatasi 1 halaman.
 private fun pagesFor(p: String): IntRange = 1..1
 
 private fun homeUrls(p: String, page: Int): List<String> {
@@ -4132,7 +4150,9 @@ private fun homeUrls(p: String, page: Int): List<String> {
             "$base/ogv/season/result?style_id=20006&page=1&lang=id_ID"
         )
     }
-    return listOf("$base/bookmall?lang=id", "$base/bookmall/tabs?gender=0&lang=id", "$base/bookmall?lang=id")
+    // Melolo (dramahub.be): bookmall = feed trending, rank = daftar peringkat,
+    // bookmall/tabs = kumpulan judul lain di tab genre.
+    return listOf("$base/bookmall?lang=id", "$base/rank?page=1&lang=id", "$base/bookmall/tabs?gender=0&lang=id")
 }
 
 private fun detailUrl(d: Drama): String = when (d.platform) {
