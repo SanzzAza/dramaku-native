@@ -103,6 +103,8 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
+import com.dramaku.app.catalog.DramaboxCatalog
+import com.dramaku.app.catalog.DramaboxCategory
 import com.dramaku.app.catalog.MovieboxCatalog
 import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.Dispatcher
@@ -260,10 +262,22 @@ private val Platforms = listOf(
     PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoRes = R.drawable.logo_melolo),
     PlatformInfo("dramanova", "Dramanova", "https://dramahub.be/dramanova"),
     PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1"),
-    PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api"),
+    PlatformInfo("dramabox", "DramaBox", "https://dramahub.be/dramaboxbaru/api"),
     PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api"),
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api")
+)
+
+// Rak genre DramaBox cadangan: dipakai kalau /categories tidak terbaca, supaya
+// beranda tetap punya rak. Type id-nya sama dengan yang dipakai versi sebelumnya.
+private val DRAMABOX_FALLBACK_GENRES = listOf(
+    "Kekuatan super" to 433,
+    "Kawin kontrak" to 454,
+    "Melawan balik" to 462,
+    "Kelahiran kembali" to 450,
+    "Balas dendam" to 458,
+    "Cinta pahit" to 449,
+    "Perjalanan waktu" to 451
 )
 
 private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
@@ -346,22 +360,27 @@ private fun App() {
     }
 
     // Rak genre: Melolo lewat katalog search (feed mentok 18 judul, katalognya
-    // jauh lebih dalam), DramaBox lewat kategori asli endpoint-nya (browse + gems).
+    // jauh lebih dalam), DramaBox lewat kategori asli endpoint barunya
+    // (/categories → browse?type=..., plus rak hidden-gems).
     LaunchedEffect(homeState) {
         val ok = (homeState as? Load.Ok)?.data
         if (ok == null) { genreRows = emptyList(); return@LaunchedEffect }
         val known = (ok.popular + ok.newest + ok.recommended).map { it.platform + "|" + it.id }.toSet()
         val wanted: List<Pair<String, suspend () -> List<Drama>>> = when {
-            selPlatform == "dramabox" -> listOf(
-                "Permata tersembunyi" to { repo.browsePath(selPlatform, "hidden-gems?lang=in") },
-                "Kekuatan super" to { repo.browsePath(selPlatform, "browse?type=433&page=1&lang=in") },
-                "Kawin kontrak" to { repo.browsePath(selPlatform, "browse?type=454&page=1&lang=in") },
-                "Melawan balik" to { repo.browsePath(selPlatform, "browse?type=462&page=1&lang=in") },
-                "Kelahiran kembali" to { repo.browsePath(selPlatform, "browse?type=450&page=1&lang=in") },
-                "Balas dendam" to { repo.browsePath(selPlatform, "browse?type=458&page=1&lang=in") },
-                "Cinta pahit" to { repo.browsePath(selPlatform, "browse?type=449&page=1&lang=in") },
-                "Perjalanan waktu" to { repo.browsePath(selPlatform, "browse?type=451&page=1&lang=in") }
-            )
+            // DramaBox (dramahub.be): genre diambil dari /categories, jadi rak
+            // beranda ikut berubah kalau katalog upstream menambah genre baru.
+            // Kalau endpoint itu kosong/gagal, daftar type id lama dipakai.
+            selPlatform == "dramabox" -> {
+                val cats = repo.dramaboxCategories()
+                val genres: List<Pair<String, Int>> =
+                    if (cats.isEmpty()) DRAMABOX_FALLBACK_GENRES else cats.map { it.name to it.id }
+                val gems: Pair<String, suspend () -> List<Drama>> =
+                    "Permata tersembunyi" to { repo.browsePath(selPlatform, DramaboxCatalog.HIDDEN_GEMS_PATH) }
+                val rows: List<Pair<String, suspend () -> List<Drama>>> = genres.map { (label, typeId) ->
+                    label to { repo.browsePath(selPlatform, DramaboxCatalog.browsePath(typeId)) }
+                }
+                listOf(gems) + rows
+            }
             selPlatform == "moviebox" -> listOf(
                 "K-Drama" to { repo.browsePath(selPlatform, "tabs/category-content?type=4380734070238626200&lang=id") },
                 "C-Drama" to { repo.browsePath(selPlatform, "tabs/category-content?type=173752404280836544&lang=id") },
@@ -3074,9 +3093,9 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15_000).setReadTimeoutMs(30_000)
-    // Playlist DramaBox di-proxy (captain.sapimu.au) dan Melolo (dramahub.be)
-    // wajib Bearer; segmen .ts / file di CDN bebas token, jadi aman kalau
-    // header ikut terkirim ke sana juga.
+    // Proxy DramaBox (dramahub.be/dramaboxbaru) dan Melolo (dramahub.be)
+    // wajib Bearer; segmen mp4 di CDN dramaboxdb bebas token, jadi aman kalau
+    // header ikut terkirim ke sana juga (sudah dicek: rentang byte 206 tetap OK).
     val headers = requestHeaders.toMutableMap()
     if (!headers.containsKey("Authorization")) headers["Authorization"] = "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"
     http.setDefaultRequestProperties(headers)
@@ -3590,10 +3609,14 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     when {
         // DASH MPD dari Bstation
         lower.contains("mpd") || lower.contains("dash") -> b.setMimeType(MimeTypes.APPLICATION_MPD)
-        // Hanya playlist DramaBox yang butuh hint HLS (URL-nya tanpa .m3u8).
-        // Stream Melolo juga mengandung "/stream?" tapi itu MP4 — jangan disamaratakan.
-        lower.contains("m3u8") || lower.contains("dramaboxbaru/api/stream") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
+        // DramaBox (proxy dramahub.be/dramaboxbaru) membalas mp4 ber-token:
+        // ".../api/stream?...&seg=video.mp4&k=..." — jangan dikira playlist.
         lower.contains(".mp4") -> b.setMimeType(MimeTypes.APPLICATION_MP4)
+        // Playlist tanpa ekstensi .m3u8 tetap butuh hint HLS. Endpoint /stream
+        // tidak lagi ditebak HLS: DramaBox dan Melolo dua-duanya mp4 progresif,
+        // dan kalau ada playlist asli tanpa ekstensi, ExoPlayer bisa menebak
+        // dari Content-Type-nya.
+        lower.contains("m3u8") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
     }
     val subtitle = cleanUrl(s.subtitle)
     if (subtitle.isNotBlank()) {
@@ -3747,6 +3770,25 @@ private class DramakuRepository {
     // "browse?type=433&page=1&lang=in") — dipakai rak genre di beranda.
     suspend fun browsePath(p: String, path: String): List<Drama> =
         runCatching { flat(getJson("${apiBase(p)}/$path").dataOrSelf(), p) }.getOrDefault(emptyList())
+
+    // DramaBox (dramahub.be): daftar genre resmi dari /categories, dipakai rak
+    // beranda supaya labelnya ikut katalog upstream. Gagal/kosong = pemanggil
+    // jatuh ke daftar type id cadangan. Genre jarang berubah, jadi disimpan
+    // sekali per sesi biar pindah platform bolak-balik tidak menembak ulang.
+    private var dramaboxCategoriesCache: List<DramaboxCategory>? = null
+
+    suspend fun dramaboxCategories(): List<DramaboxCategory> {
+        dramaboxCategoriesCache?.takeIf { it.isNotEmpty() }?.let { return it }
+        val fetched = try {
+            DramaboxCatalog.categories(getJson("${apiBase("dramabox")}/categories?lang=in"))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        if (fetched.isNotEmpty()) dramaboxCategoriesCache = fetched
+        return fetched
+    }
 
     // Dramanova (dramahub.be): ambil items dari modul home
     // (dramanova_hot, dramanova_new, dramanova_more, dramanova_baxi, dramanova_anime).
@@ -3924,9 +3966,16 @@ private class DramakuRepository {
     suspend fun resolveStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
         val base = apiBase(d.drama.platform); val id = d.drama.id
         if (d.drama.platform == "dramabox") {
-            // Endpoint ini langsung membalas playlist m3u8 — URL-nya sendiri yang diputar.
-            // Header Bearer dipasang di data source player (buildPlayer).
-            return StreamResult("$base/stream?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in")
+            // Proxy baru (dramahub.be) membalas JSON: { code, video, duration, subtitles }.
+            // `video` itu mp4 ber-token yang redirect 302 ke CDN dramaboxdb, jadi yang
+            // diputar adalah URL di dalam balasan — bukan URL endpoint-nya. Kalau
+            // balasannya bukan JSON (proxy gaya lama yang mengirim playlist), URL
+            // endpoint tetap dipakai supaya tidak ada yang hilang.
+            val url = "$base/stream?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in"
+            val json = try { getJson(url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
+            val video = json?.let { DramaboxCatalog.streamUrl(it) }.orEmpty()
+            if (video.isNotBlank()) return StreamResult(video, pickSubtitleUrl(json))
+            return StreamResult(url)
         }
         if (d.drama.platform == "moviebox") {
             // Nomor yang tampil di UI berurutan 1..N; nomor asli upstream (dan season-nya)
@@ -4045,7 +4094,7 @@ private class DramakuRepository {
             if (attempt > 0) delay(450L * attempt)
             try {
                 val reqBuilder = Request.Builder().url(url)
-                    .header("User-Agent", "DramakuNative/4.9.7 Android")
+                    .header("User-Agent", "DramakuNative/4.9.8 Android")
                     .header("Accept", "application/json, text/plain, */*")
                 if (post) reqBuilder.post(okhttp3.FormBody.Builder().build())
                 if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
@@ -4087,7 +4136,7 @@ private class DramakuRepository {
             if (attempt > 0) delay(450L * attempt)
             try {
                 val reqBuilder = Request.Builder().url(url)
-                    .header("User-Agent", "DramakuNative/4.9.7 Android")
+                    .header("User-Agent", "DramakuNative/4.9.8 Android")
                     .header("Accept", "*/*")
                 if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
@@ -4247,7 +4296,8 @@ private fun normalize(o: JSONObject, fp: String): Drama {
         o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name", "shortTitle"),
         cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc", "evaluate")),
         fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg", "posterUri").ifBlank { o.coverUrl() }),
-        o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", "totalEpisodes", 0),
+        // totalChapterNum = nama field jumlah episode di balasan /search DramaBox.
+        o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", "totalEpisodes", "totalChapterNum", 0),
         o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers", "views").ifBlank {
             val fc = o.optLong("follow_count", 0)
             if (fc > 0) "${fc/1000}K" else o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty()

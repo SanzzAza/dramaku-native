@@ -2,6 +2,29 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.8 (2026-09-14)
+
+- DramaBox pindah ke proxy baru `dramahub.be/dramaboxbaru/api` (host lama
+  `captain.sapimu.au` sudah tidak resolve / mati): home (banner + section),
+  rank, recommend/book, hidden-gems, categories, search, drama/{id}, dan stream
+- Parser stream DramaBox baru: `/stream` kini membalas JSON
+  `{ code, video, duration, subtitles }` — yang diputar adalah `video`
+  (mp4 ber-token yang redirect 302 ke CDN dramaboxdb), bukan URL endpoint-nya.
+  Balasan non-JSON tetap didukung sebagai cadangan
+- Hint MIME player diperbaiki: mp4 ber-token `…&seg=video.mp4&k=…` tidak lagi
+  ditebak sebagai playlist HLS (sebelumnya semua URL dramaboxbaru/api/stream
+  dianggap HLS, jadi video baru gagal dibaca ExoPlayer)
+- Subtitle DramaBox ikut dibaca dari balasan stream (`subtitles`) kalau upstream
+  mengirimnya
+- Rak genre DramaBox sekarang dari `/categories` (label & type id ikut katalog
+  upstream, saat ini 39 genre; rak dibatasi 10 genre pertama + hidden-gems, dan
+  daftarnya di-cache per sesi). Daftar type id lama tetap dipakai sebagai
+  cadangan kalau endpoint itu kosong
+- Kartu hasil `/search` DramaBox ikut menampilkan jumlah episode (field
+  upstream-nya `totalChapterNum`, sebelumnya terbaca 0)
+- Helper `DramaboxCatalog` (parser stream + kategori) beserta unit test-nya,
+  mengikuti pola `MovieboxCatalog`
+
 ## 4.9.7 (2026-08-02)
 
 - Fix stream Melolo tidak bisa diputar: hint HLS untuk URL "/stream?" ikut

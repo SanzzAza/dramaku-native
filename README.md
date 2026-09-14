@@ -4,7 +4,7 @@ Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
 Nonton drama & film dari berbagai platform dalam satu aplikasi native Android.
 
-**Versi saat ini: 4.9.7**
+**Versi saat ini: 4.9.8**
 
 ## Platform Aktif
 
@@ -61,6 +61,8 @@ Antarmuka ditata ulang dengan arah "warm cinema": gelap hangat, aksen hijau mint
 - Badge "Segera hadir" pada kartu Anime & Manga di layar awal
 - Retry otomatis + deteksi error JSON untuk endpoint MovieBox & Drakor
 - Stream resolver 10 platform di Kotlin
+- DramaBox pindah ke proxy `dramahub.be/dramaboxbaru/api`; `/stream` kini JSON
+  (`video` mp4 ber-token) dan rak genre diambil dari `/categories`
 - HTTPS-only network config
 
 ## Struktur Utama
