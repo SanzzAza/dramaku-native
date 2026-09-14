@@ -259,7 +259,7 @@ private sealed class Load<out T> {
 private val Platforms = listOf(
     PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoRes = R.drawable.logo_melolo),
     PlatformInfo("dramanova", "Dramanova", "https://captain.sapimu.au/dramanova/api/v1"),
-    PlatformInfo("freereels", "FreeReels", "https://captain.sapimu.au/freereels/api/v1"),
+    PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1"),
     PlatformInfo("dramabox", "DramaBox", "https://captain.sapimu.au/dramaboxbaru/api"),
     PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api"),
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
@@ -3712,12 +3712,35 @@ private class DramakuRepository {
                 // perPage di-radius upstream: 10–20 aman, 24 ke atas dibalas data kosong.
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 "dramanova" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=in").dataOrSelf(), p)
-                "freereels" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id-ID&limit=50").dataOrSelf(), p)
+                "freereels" -> freereelsSearch(q, p)
                 "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=id_ID").dataOrSelf(), p)
                 else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
             }
         }.getOrDefault(emptyList())
         dedupeAndRank(items, q).take(80)
+    }
+
+    // Endpoint /search di dramahub.be kadang balas 500 upstream (routing &
+    // validasinya jalan, backend-nya yang error). Kalau gagal/kosong,
+    // fallback: saring katalog home (foryou + popular + new) secara lokal
+    // supaya fitur Cari tetap kepakai.
+    private suspend fun freereelsSearch(q: String, p: String): List<Drama> = coroutineScope {
+        val direct = runCatching {
+            flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id-ID&limit=50").dataOrSelf(), p)
+        }.getOrDefault(emptyList())
+        if (direct.isNotEmpty()) return@coroutineScope direct
+        val base = apiBase(p)
+        val catalog = listOf(
+            "$base/foryou?page=1&lang=id-ID",
+            "$base/popular?page=0&lang=id-ID",
+            "$base/new?page=0&lang=id-ID"
+        ).map { url -> async { runCatching { flat(getJson(url).dataOrSelf(), p) }.getOrDefault(emptyList()) } }
+            .awaitAll().flatten().distinctBy { it.platform + "|" + it.id }
+        val words = normalizeKey(q).split(" ").filter { it.length >= 2 }
+        catalog.filter { d ->
+            val t = normalizeKey(d.title) + " " + normalizeKey(d.description)
+            words.any { t.contains(it) }
+        }
     }
 
     // Ambil satu rak konten dari path bebas (mis. "hidden-gems?lang=in" atau
