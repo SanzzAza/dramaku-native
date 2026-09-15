@@ -417,9 +417,7 @@ private fun App() {
             selPlatform == "netshort" -> {
                 val covered = setOf("dubbing", "vip", "kategori", "ranking")
                 val tabs = repo.netshortContentTabs().filter { it.name.trim().lowercase() !in covered }
-                val tagRows: List<Pair<String, String>> = repo.netshortTags()
-                    .map { it.name to it.labelId }
-                    .ifEmpty { NETSHORT_FALLBACK_TAGS }
+                val tagRows: List<Pair<String, String>> = repo.netshortTags().ifEmpty { NETSHORT_FALLBACK_TAGS }
                 val fixed: List<Pair<String, String>> = listOf(
                     "Sulih suara" to NetshortCatalog.DUBBING_PATH,
                     "VIP" to NetshortCatalog.VIP_PATH
@@ -3814,7 +3812,7 @@ private class DramakuRepository {
      * dengan nomor halaman naik (dua-duanya benar-benar berganti isi), jadi
      * infinite scroll tetap dapat judul baru.
      */
-    private suspend fun loadNetshortHome(page: Int): HomeBundle {
+    private suspend fun loadNetshortHome(page: Int): HomeBundle = coroutineScope {
         val vp = page.coerceAtLeast(1)
         val slots = listOf(
             "explore/$vp?lang=id_ID",
@@ -3832,7 +3830,7 @@ private class DramakuRepository {
         // dibatasi 3 halaman saja supaya tidak menarik katalog tanpa ujung.
         val more = nw.size >= 20 && vp < 3
         if (pop.isEmpty() && rec.isEmpty() && nw.isEmpty() && vp == 1) error("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
-        return HomeBundle(rec, pop, nw, vp, more)
+        return@coroutineScope HomeBundle(rec, pop, nw, vp, more)
     }
 
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
