@@ -4,7 +4,7 @@ Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
 Nonton drama & film dari berbagai platform dalam satu aplikasi native Android.
 
-**Versi saat ini: 4.9.8**
+**Versi saat ini: 4.9.9**
 
 ## Platform Aktif
 
@@ -12,6 +12,7 @@ Nonton drama & film dari berbagai platform dalam satu aplikasi native Android.
 - **DramaNova** (Short drama vertikal)
 - **FreeReels** (Short drama vertikal)
 - **DramaBox** (Short drama vertikal)
+- **NetShort** (Short drama vertikal)
 - **MovieBox** (Film layar lebar & serial)
 - **Shorts** (Shorts vertikal MovieBox)
 - **Bstation** (Anime & drama)
@@ -63,6 +64,9 @@ Antarmuka ditata ulang dengan arah "warm cinema": gelap hangat, aksen hijau mint
 - Stream resolver 10 platform di Kotlin
 - DramaBox pindah ke proxy `dramahub.be/dramaboxbaru/api`; `/stream` kini JSON
   (`video` mp4 ber-token) dan rak genre diambil dari `/categories`
+- NetShort masuk sebagai platform penuh lewat `dramahub.be/netshort/api/v1`
+  (tabs/feed/explore/new/dubbing/vip, kategori + tag, search, detail, similar,
+  stream 540p–1080p), plus chip saran pencarian dari `/search-hint`
 - HTTPS-only network config
 
 ## Struktur Utama

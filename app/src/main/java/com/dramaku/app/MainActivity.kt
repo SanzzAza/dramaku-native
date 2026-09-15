@@ -106,6 +106,8 @@ import androidx.media3.ui.PlayerView
 import com.dramaku.app.catalog.DramaboxCatalog
 import com.dramaku.app.catalog.DramaboxCategory
 import com.dramaku.app.catalog.MovieboxCatalog
+import com.dramaku.app.catalog.NetshortCatalog
+import com.dramaku.app.catalog.NetshortTab
 import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
@@ -259,10 +261,13 @@ private sealed class Load<out T> {
 // ─────────────────────────────────────────────────────────────────
 
 private val Platforms = listOf(
+    // Melolo & NetShort: endpoint penuh dengan Bearer; DramaBox: proxy baru
+    // (host lama captain.sapimu.au sudah mati, DNS-nya tidak resolve).
     PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoRes = R.drawable.logo_melolo),
     PlatformInfo("dramanova", "Dramanova", "https://dramahub.be/dramanova"),
     PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1"),
     PlatformInfo("dramabox", "DramaBox", "https://dramahub.be/dramaboxbaru/api"),
+    PlatformInfo("netshort", "NetShort", "https://dramahub.be/netshort/api/v1"),
     PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api"),
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api")
@@ -278,6 +283,17 @@ private val DRAMABOX_FALLBACK_GENRES = listOf(
     "Balas dendam" to 458,
     "Cinta pahit" to 449,
     "Perjalanan waktu" to 451
+)
+
+// Rak genre NetShort cadangan: tag id diambil dari /categories (labelName-nya
+// sudah Bahasa Indonesia). Dipakai kalau /categories tidak terbaca.
+private val NETSHORT_FALLBACK_TAGS = listOf(
+    "Kepuasan" to "1983832175759147019",
+    "Romantis Urban" to "1983832092736479243",
+    "Misteri dan Detektif" to "1983832036940267532",
+    "Balas Dendam" to "1983832036302733324",
+    "Konflik Keluarga Kaya" to "1983832091893424132",
+    "Sang Juara Kembali" to "1983832036285956107"
 )
 
 private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
@@ -389,6 +405,36 @@ private fun App() {
                 "Romance" to { repo.browsePath(selPlatform, "tabs/category-content?type=2389813900859556536&lang=id") },
                 "Comedy" to { repo.browsePath(selPlatform, "tabs/category-content?type=8785384881686725944&lang=id") }
             )
+            // NetShort (dramahub.be): rak dirakit dari dua endpoint katalog —
+            // /tabs untuk tab konten (Anime, Pelukan Jakarta, …) dan /categories
+            // untuk tag. Keduanya di-cache, dan kalau kosong pemanggil pakai
+            // daftar cadangan / jalur tetap.
+            //
+            // Jelajahi & Baru tidak dijadikan rak: isinya persis rak utama
+            // beranda (explore/feed/new), jadi bakal habis kena filter "known".
+            // Dubbing & VIP punya endpoint khusus di daftar `fixed`, jadi tab
+            // dengan nama sama dilewati supaya tidak dobel.
+            selPlatform == "netshort" -> {
+                val covered = setOf("dubbing", "vip", "kategori", "ranking")
+                val tabs = repo.netshortContentTabs().filter { it.name.trim().lowercase() !in covered }
+                val tagRows: List<Pair<String, String>> = repo.netshortTags()
+                    .map { it.name to it.labelId }
+                    .ifEmpty { NETSHORT_FALLBACK_TAGS }
+                val fixed: List<Pair<String, String>> = listOf(
+                    "Sulih suara" to NetshortCatalog.DUBBING_PATH,
+                    "VIP" to NetshortCatalog.VIP_PATH
+                )
+                val tabRows: List<Pair<String, suspend () -> List<Drama>>> = tabs.map { tab: NetshortTab ->
+                    tab.name to { repo.browsePath(selPlatform, NetshortCatalog.tabPath(tab.id)) }
+                }
+                val fixedRows: List<Pair<String, suspend () -> List<Drama>>> = fixed.map { (label, path) ->
+                    label to { repo.browsePath(selPlatform, path) }
+                }
+                val tagGenreRows: List<Pair<String, suspend () -> List<Drama>>> = tagRows.map { (label, tagId) ->
+                    label to { repo.browsePath(selPlatform, NetshortCatalog.categoryPath(tagId)) }
+                }
+                tabRows + fixedRows + tagGenreRows
+            }
             // Shorts: feed sudah dua rak dari reel/trending, tanpa kategori tambahan.
             selPlatform == "mbshorts" -> emptyList()
             // dramanova_more & dramanova_baxi upstream kosong / shortTitle-nya
@@ -752,6 +798,7 @@ private fun PlatformPickerModal(
         "dramanova" to Color(0xFF2EE8A0),
         "freereels" to Color(0xFF7C4DFF),
         "dramabox" to Color(0xFFFF4081),
+        "netshort" to Color(0xFF2F6BFF),
         "moviebox" to Color(0xFF00BCD4),
         "mbshorts" to Color(0xFFFF6E40)
     )
@@ -2218,9 +2265,17 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
     var searchPlatformId by remember { mutableStateOf(currentPlatform) }
     var searchTick by remember { mutableIntStateOf(0) }
     val recent = remember(dataTick) { store.recentSearches() }
+    // Saran dari /search-hint — saat ini cuma NetShort yang punya endpoint ini.
+    var hints by remember { mutableStateOf(emptyList<String>()) }
 
     BackHandler { onBack() }
     LaunchedEffect(currentPlatform) { searchPlatformId = currentPlatform }
+
+    LaunchedEffect(searchPlatformId) {
+        hints = if (searchPlatformId == "netshort") {
+            runCatching { repo.netshortSearchHints() }.getOrDefault(emptyList())
+        } else emptyList()
+    }
 
     LaunchedEffect(searchPlatformId) {
         if (q.trim().length < 2) {
@@ -2361,6 +2416,29 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
                                     }
                                 }
                                 GateHairline()
+                            }
+                            Spacer(Modifier.height(22.dp))
+                        }
+
+                        if (hints.isNotEmpty()) {
+                            SearchSectionTitle("Saran pencarian", "Kata kunci yang sedang dicari di platform ini.")
+                            Spacer(Modifier.height(10.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(hints, key = { it }) { hint ->
+                                    Row(
+                                        Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .background(DS.Card)
+                                            .border(1.dp, DS.Line, RoundedCornerShape(50))
+                                            .clickable { q = hint }
+                                            .padding(horizontal = 13.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Rounded.Search, null, tint = DS.Faint, modifier = Modifier.size(13.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text(hint, color = DS.Hi, fontSize = 12.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Medium, maxLines = 1)
+                                    }
+                                }
                             }
                             Spacer(Modifier.height(22.dp))
                         }
@@ -3611,7 +3689,9 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
         lower.contains("mpd") || lower.contains("dash") -> b.setMimeType(MimeTypes.APPLICATION_MPD)
         // DramaBox (proxy dramahub.be/dramaboxbaru) membalas mp4 ber-token:
         // ".../api/stream?...&seg=video.mp4&k=..." — jangan dikira playlist.
-        lower.contains(".mp4") -> b.setMimeType(MimeTypes.APPLICATION_MP4)
+        // NetShort (video.netshort.com) jalur URL-nya tanpa ekstensi, tapi query
+        // auth_key-nya membawa mime_type=video_mp4.
+        lower.contains(".mp4") || lower.contains("mime_type=video_mp4") -> b.setMimeType(MimeTypes.APPLICATION_MP4)
         // Playlist tanpa ekstensi .m3u8 tetap butuh hint HLS. Endpoint /stream
         // tidak lagi ditebak HLS: DramaBox dan Melolo dua-duanya mp4 progresif,
         // dan kalau ada playlist asli tanpa ekstensi, ExoPlayer bisa menebak
@@ -3716,6 +3796,7 @@ private class DramakuRepository {
         if (url.startsWith("POST ")) getJson(url.removePrefix("POST ").trim(), post = true) else getJson(url)
 
     suspend fun loadHomePage(p: String, page: Int): HomeBundle = coroutineScope {
+        if (p == "netshort") return@coroutineScope loadNetshortHome(page)
         val req = homePageRequest(p, page)
         val json = try { fetchHome(req.url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
         val items = dedupe(json?.let { flat(it.dataOrSelf(), p) }.orEmpty())
@@ -3726,12 +3807,42 @@ private class DramakuRepository {
         HomeBundle(rec, pop, nw, req.virtualPage, more)
     }
 
+    /**
+     * Beranda NetShort: tiga slot HomeBundle diisi endpoint berbeda supaya
+     * layar pertama variatif — explore (Jelajahi), feed (rekomendasi), new
+     * (rilisan terbaru). Halaman berikutnya mengambil /feed dan /explore
+     * dengan nomor halaman naik (dua-duanya benar-benar berganti isi), jadi
+     * infinite scroll tetap dapat judul baru.
+     */
+    private suspend fun loadNetshortHome(page: Int): HomeBundle {
+        val vp = page.coerceAtLeast(1)
+        val slots = listOf(
+            "explore/$vp?lang=id_ID",
+            "feed/$vp?lang=id_ID",
+            "new/$vp?lang=id_ID"
+        )
+        val fetched = slots.map { path ->
+            async { netshortJson(path)?.let { flat(it.dataOrSelf(), "netshort") }.orEmpty() }
+        }.awaitAll()
+        val pop = dedupe(fetched.getOrElse(0) { emptyList() })
+        val rec = dedupe(fetched.getOrElse(1) { emptyList() })
+        val nw = dedupe(fetched.getOrElse(2) { emptyList() })
+        // Tiap halaman menambah ~10 judul feed + belasan judul explore baru
+        // (dua-duanya sudah dites berganti isi di halaman 2 dan 3), jadi
+        // dibatasi 3 halaman saja supaya tidak menarik katalog tanpa ujung.
+        val more = nw.size >= 20 && vp < 3
+        if (pop.isEmpty() && rec.isEmpty() && nw.isEmpty() && vp == 1) error("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
+        return HomeBundle(rec, pop, nw, vp, more)
+    }
+
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
         // Shorts belum punya endpoint pencarian — balikin kosong saja.
         if (p == "mbshorts") return@coroutineScope emptyList()
         val items = runCatching {
             when (p) {
                 "dramabox" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in").dataOrSelf(), p)
+                // NetShort: keyword masuk ke path (bukan query), spasi harus %20.
+                "netshort" -> flat(getJson("${apiBase(p)}/${NetshortCatalog.searchPath(q)}").dataOrSelf(), p)
                 // perPage di-radius upstream: 10–20 aman, 24 ke atas dibalas data kosong.
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 "dramanova" -> flat(getJson("${apiBase(p)}/drama/search?q=${enc(q)}&pageNum=1&pageSize=50&languages=in").dataOrSelf(), p)
@@ -3776,6 +3887,40 @@ private class DramakuRepository {
     // jatuh ke daftar type id cadangan. Genre jarang berubah, jadi disimpan
     // sekali per sesi biar pindah platform bolak-balik tidak menembak ulang.
     private var dramaboxCategoriesCache: List<DramaboxCategory>? = null
+
+    // NetShort (dramahub.be): /tabs untuk tab konten dan /categories untuk tag.
+    // Dua-duanya jarang berubah, jadi disimpan sekali per sesi seperti DramaBox.
+    private var netshortTabsCache: List<NetshortTab>? = null
+    private var netshortTagsCache: List<Pair<String, String>>? = null
+
+    // Pembungkus anti-gagal: endpoint katalog yang kosong/error tidak boleh
+    // menjatuhkan beranda, cukup bikin rak-nya dilewati.
+    private suspend fun netshortJson(path: String): JSONObject? = try {
+        getJson("${apiBase("netshort")}/$path")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        null
+    }
+
+    suspend fun netshortContentTabs(): List<NetshortTab> {
+        netshortTabsCache?.takeIf { it.isNotEmpty() }?.let { return it }
+        val tabs = netshortJson(NetshortCatalog.TABS_PATH)?.let { NetshortCatalog.contentTabs(it) }.orEmpty()
+        if (tabs.isNotEmpty()) netshortTabsCache = tabs
+        return tabs
+    }
+
+    suspend fun netshortTags(): List<Pair<String, String>> {
+        netshortTagsCache?.takeIf { it.isNotEmpty() }?.let { return it }
+        val tags = netshortJson(NetshortCatalog.CATEGORIES_PATH)
+            ?.let { json -> NetshortCatalog.tags(json).map { it.name to it.labelId } }.orEmpty()
+        if (tags.isNotEmpty()) netshortTagsCache = tags
+        return tags
+    }
+
+    // Saran pencarian NetShort (/search-hint), dipakai chip di layar Cari.
+    suspend fun netshortSearchHints(): List<String> =
+        netshortJson("search-hint?lang=id_ID")?.let { NetshortCatalog.searchHints(it) }.orEmpty()
 
     suspend fun dramaboxCategories(): List<DramaboxCategory> {
         dramaboxCategoriesCache?.takeIf { it.isNotEmpty() }?.let { return it }
@@ -3850,6 +3995,26 @@ private class DramakuRepository {
             }
             val total = max(info.intAny("chapterCount", "chapter_count", input.episodes), eps.size)
             val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(info), p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+        }
+        if (p == "netshort") {
+            // NetShort: data { id, title, cover, description, labels, totalEpisodes,
+            // isFinished, episodes: [{ episodeNo, episodeId, cover, isLocked }] }.
+            // Endpoint /episode memang tetap melayani episode isLocked=true, jadi
+            // penandanya tidak dipakai untuk menyembunyikan episode.
+            val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
+            val title = data.stringAny("title", "name").ifBlank { input.title }
+            val desc = cleanText(data.stringAny("description", "introduction", "synopsis")).ifBlank { input.description }
+            val poster = fixImg(data.stringAny("cover").ifBlank { input.poster })
+            val epsArr = data.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = o.intAny("episodeNo", "episode", i + 1),
+                    label = o.stringAny("title", "label")
+                )
+            }
+            val total = max(data.intAny("totalEpisodes", "episodeCount", input.episodes), eps.size)
+            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data), p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
         if (p == "moviebox" || p == "mbshorts") {
@@ -3977,6 +4142,19 @@ private class DramakuRepository {
             if (video.isNotBlank()) return StreamResult(video, pickSubtitleUrl(json))
             return StreamResult(url)
         }
+        if (d.drama.platform == "netshort") {
+            // /episode/{id}/{ep} membalas { episodeNo, episodeId, videos:[{quality,url}], subtitles }.
+            // URL-nya mp4 progresif di video.netshort.com (ber-auth_key, terdeteksi
+            // dari Content-Type), pilih kualitas sesuai mode hemat data.
+            val json = getJson("$base/${NetshortCatalog.episodePath(id, ep)}")
+            val data = json.optJSONObject("data") ?: json
+            val videos = (data.optJSONArray("videos") ?: JSONArray()).objects().map { o ->
+                o.stringAny("quality", "definition") to o.stringAny("url", "link")
+            }
+            val link = NetshortCatalog.pickVideo(videos, ds)
+            if (link.isBlank()) error("Video belum tersedia")
+            return StreamResult(link, pickSubtitleUrl(data, json))
+        }
         if (d.drama.platform == "moviebox") {
             // Nomor yang tampil di UI berurutan 1..N; nomor asli upstream (dan season-nya)
             // disimpan di EpisodeInfo supaya serial multi-season & film tetap tepat sasaran.
@@ -4094,7 +4272,7 @@ private class DramakuRepository {
             if (attempt > 0) delay(450L * attempt)
             try {
                 val reqBuilder = Request.Builder().url(url)
-                    .header("User-Agent", "DramakuNative/4.9.8 Android")
+                    .header("User-Agent", "DramakuNative/4.9.9 Android")
                     .header("Accept", "application/json, text/plain, */*")
                 if (post) reqBuilder.post(okhttp3.FormBody.Builder().build())
                 if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
@@ -4136,7 +4314,7 @@ private class DramakuRepository {
             if (attempt > 0) delay(450L * attempt)
             try {
                 val reqBuilder = Request.Builder().url(url)
-                    .header("User-Agent", "DramakuNative/4.9.8 Android")
+                    .header("User-Agent", "DramakuNative/4.9.9 Android")
                     .header("Accept", "*/*")
                 if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
@@ -4183,6 +4361,15 @@ private fun homeUrls(p: String, page: Int): List<String> {
     // Kode Bahasa Indonesia di proxy DramaBox adalah "in"; "lang=id" malah 500 di upstream-nya.
     if (p == "dramabox") {
         return listOf("$base/recommend/book?lang=in", "$base/rank?lang=in", "$base/home?lang=in")
+    }
+    // NetShort: daftar NetShort punya jalur sendiri (loadNetshortHome), jadi
+    // tiga URL ini jarang dipakai — hanya saat pemanggil generik terlanjur minta.
+    if (p == "netshort") {
+        return listOf(
+            "$base/${NetshortCatalog.EXPLORE_PATH}",
+            "$base/${NetshortCatalog.FEED_PATH}",
+            "$base/${NetshortCatalog.NEW_PATH}"
+        )
     }
     // MovieBox: list-nya kaya (home-content 237 judul), taruh di slot Popular
     // supaya catatan pertama layar langsung penuh. Sisanya rak kategori asli.
@@ -4234,6 +4421,7 @@ private fun homeUrls(p: String, page: Int): List<String> {
 
 private fun detailUrl(d: Drama): String = when (d.platform) {
     "dramabox" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
+    "netshort" -> "${apiBase(d.platform)}/${NetshortCatalog.detailPath(d.id)}"
     "moviebox" -> "${apiBase(d.platform)}/subject/get?subjectId=${enc(d.id)}&lang=id"
     "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
     "dramanova" -> "${apiBase(d.platform)}/detail/${enc(d.id)}?languages=in"
@@ -4260,7 +4448,16 @@ private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
     fun extractBooks(node: Any?) {
         when (node) {
-            is JSONArray -> node.objects().forEach { extractBooks(it) }
+            is JSONArray -> {
+                // Array dapat berisi drama langsung (NetShort) atau potongan
+                // JSON mentah; yang bukan objek diurai ulang supaya array
+                // bertingkat tetap tembus.
+                node.objects().forEach { extractBooks(it) }
+                (0 until node.length()).forEach { i ->
+                    val v = node.opt(i)
+                    if (v is String) runCatching { extractBooks(JSONObject(v)) }
+                }
+            }
             is JSONObject -> {
                 val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid", "dramaId")
                 val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name", "shortTitle")

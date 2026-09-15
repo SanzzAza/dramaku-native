@@ -30,6 +30,7 @@ class HomeCategoryTest {
     fun shortDramaExcludesMovieEndpoints() {
         assertTrue(HomeCategory.ShortDrama.containsPlatform("melolo"))
         assertTrue(HomeCategory.ShortDrama.containsPlatform("dramabox"))
+        assertTrue(HomeCategory.ShortDrama.containsPlatform("netshort"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("moviebox"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("drakor"))
     }

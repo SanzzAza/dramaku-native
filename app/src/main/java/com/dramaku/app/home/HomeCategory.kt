@@ -3,7 +3,8 @@ package com.dramaku.app.home
 /**
  * Kategori pintu masuk di layar awal (desain ala SonzaixBox, brand Dramaku).
  *
- * Short Drama → platform short drama vertikal (Melolo, DramaNova, FreeReels, DramaBox).
+ * Short Drama → platform short drama vertikal (Melolo, DramaNova, FreeReels,
+ *               DramaBox, NetShort).
  * Movie Box   → endpoint MovieBox (film/serial global + Shorts vertikal).
  * Bstation    → Anime & drama dari Bilibili.
  * Drama Asia  → serial Korea & China (segera hadir).
@@ -20,7 +21,7 @@ enum class HomeCategory(
         id = "short_drama",
         title = "Short Drama",
         subtitle = "Drama pendek vertikal episode singkat",
-        platforms = listOf("melolo", "dramanova", "freereels", "dramabox")
+        platforms = listOf("melolo", "dramanova", "freereels", "dramabox", "netshort")
     ),
     MovieDrama(
         id = "movie_drama",

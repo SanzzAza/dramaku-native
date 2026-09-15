@@ -2,6 +2,32 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.9 (2026-09-14)
+
+- Platform baru **NetShort** lewat proxy `dramahub.be/netshort/api/v1` (Bearer):
+  tabs, tab/{id}/{page}, feed, explore, new, dubbing, vip, search, search-hint,
+  categories, category (region/audio/tagId), detail, similar, dan episode
+- Beranda NetShort: tiga slot rak diisi endpoint berbeda (explore, feed, new)
+  supaya layar pertama variatif, halaman berikutnya memakai feed/explore dengan
+  nomor halaman naik — infinite scroll dapat judul baru
+- Rak genre NetShort dirakit dari `/tabs` (tab konten: Dubbing, Pelukan Jakarta,
+  Anime) dan `/categories` (tag Bahasa Indonesia), keduanya di-cache per sesi
+  dan punya daftar cadangan kalau endpoint katalog sedang kosong
+- Detail NetShort memakai `data.episodes` (episodeNo + episodeId) dan
+  `totalEpisodes`; episode bertanda `isLocked` tetap bisa dibuka karena
+  `/episode` upstream memang melayaninya
+- Stream NetShort: `/episode/{id}/{ep}` → pilih kualitas 720p (normal) atau
+  540p (mode hemat data), balasan `subtitles` ikut dipakai kalau ada
+- Pencarian NetShort: keyword masuk ke path (`search/{keyword}/{page}`), spasi
+  di-encode %20 karena proxy menolak "+", dan chip saran pencarian dari
+  `/search-hint` dibersihkan dari emoji (API menolak emoji di keyword)
+- Hint MIME player menambahkan `mime_type=video_mp4` supaya URL NetShort tanpa
+  ekstensi (video.netshort.com) tetap dianggap mp4, bukan playlist
+- Parser list `flat()` kini menembus array bertingkat yang berisi potongan JSON
+  (dipakai feed NetShort), tidak cuma array of object
+- Helper baru `NetshortCatalog` (tabs/tag/saran/URL/quality picker) + 10 unit
+  test
+
 ## 4.9.8 (2026-09-14)
 
 - DramaBox pindah ke proxy baru `dramahub.be/dramaboxbaru/api` (host lama
