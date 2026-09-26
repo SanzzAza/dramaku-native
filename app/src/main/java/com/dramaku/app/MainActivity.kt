@@ -476,14 +476,14 @@ private fun App() {
                     REELSHORT_FALLBACK_GENRES.map { (label, id) -> ReelshortTab(id, label) }
                 }
                 // Hindari duplikasi: foryou/new/completed sudah jadi home bundle, jadi jadikan romance/drama sebagai rak utama
-                val main = listOf(
-                    "Romance" to { repo.browsePath(selPlatform, ReelshortCatalog.ROMANCE_PATH) },
-                    "Drama" to { repo.browsePath(selPlatform, ReelshortCatalog.DRAMA_PATH) },
-                    "Completed" to { repo.browsePath(selPlatform, ReelshortCatalog.COMPLETED_PATH) },
-                    "Terbaru" to { repo.browsePath(selPlatform, ReelshortCatalog.NEW_PATH) }
+                val main: List<Pair<String, suspend () -> List<Drama>>> = listOf(
+                    "Romance" to suspend { repo.browsePath(selPlatform, ReelshortCatalog.ROMANCE_PATH) },
+                    "Drama" to suspend { repo.browsePath(selPlatform, ReelshortCatalog.DRAMA_PATH) },
+                    "Completed" to suspend { repo.browsePath(selPlatform, ReelshortCatalog.COMPLETED_PATH) },
+                    "Terbaru" to suspend { repo.browsePath(selPlatform, ReelshortCatalog.NEW_PATH) }
                 )
-                val tabRows = tabs.filter { it.id !in setOf("foryou", "new", "completed", "romance", "drama") }.map { tab ->
-                    tab.name to { repo.browsePath(selPlatform, ReelshortCatalog.feedPath(tab.id)) }
+                val tabRows: List<Pair<String, suspend () -> List<Drama>>> = tabs.filter { it.id !in setOf("foryou", "new", "completed", "romance", "drama") }.map { tab ->
+                    tab.name to suspend { repo.browsePath(selPlatform, ReelshortCatalog.feedPath(tab.id)) }
                 }
                 main + tabRows
             }
