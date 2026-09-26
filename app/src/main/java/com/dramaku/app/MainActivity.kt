@@ -108,6 +108,8 @@ import com.dramaku.app.catalog.DramaboxCategory
 import com.dramaku.app.catalog.MovieboxCatalog
 import com.dramaku.app.catalog.NetshortCatalog
 import com.dramaku.app.catalog.NetshortTab
+import com.dramaku.app.catalog.ReelshortCatalog
+import com.dramaku.app.catalog.ReelshortTab
 import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
@@ -268,6 +270,7 @@ private val Platforms = listOf(
     PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1"),
     PlatformInfo("dramabox", "DramaBox", "https://dramahub.be/dramaboxbaru/api"),
     PlatformInfo("netshort", "NetShort", "https://dramahub.be/netshort/api/v1"),
+    PlatformInfo("reelshort", "ReelShort", "https://dramahub.be/reelshort/api/v1"),
     PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api"),
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api")
@@ -294,6 +297,15 @@ private val NETSHORT_FALLBACK_TAGS = listOf(
     "Balas Dendam" to "1983832036302733324",
     "Konflik Keluarga Kaya" to "1983832091893424132",
     "Sang Juara Kembali" to "1983832036285956107"
+)
+
+// Rak genre ReelShort cadangan: dipakai kalau tabs tidak terbaca.
+private val REELSHORT_FALLBACK_GENRES = listOf(
+    "Romance" to "romance",
+    "Drama" to "drama",
+    "Completed" to "completed",
+    "Terbaru" to "new",
+    "Untukmu" to "foryou"
 )
 
 private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
@@ -458,6 +470,23 @@ private fun App() {
                 "Action" to { repo.browseBstationGenre("20011") },
                 "Fantasy" to { repo.browseBstationGenre("20010") }
             )
+            // ReelShort (dramahub.be): tabs dari /foryou + endpoint khusus romance/drama/completed
+            selPlatform == "reelshort" -> {
+                val tabs = repo.reelshortTabs().ifEmpty {
+                    REELSHORT_FALLBACK_GENRES.map { (label, id) -> ReelshortTab(id, label) }
+                }
+                // Hindari duplikasi: foryou/new/completed sudah jadi home bundle, jadi jadikan romance/drama sebagai rak utama
+                val main = listOf(
+                    "Romance" to { repo.browsePath(selPlatform, ReelshortCatalog.ROMANCE_PATH) },
+                    "Drama" to { repo.browsePath(selPlatform, ReelshortCatalog.DRAMA_PATH) },
+                    "Completed" to { repo.browsePath(selPlatform, ReelshortCatalog.COMPLETED_PATH) },
+                    "Terbaru" to { repo.browsePath(selPlatform, ReelshortCatalog.NEW_PATH) }
+                )
+                val tabRows = tabs.filter { it.id !in setOf("foryou", "new", "completed", "romance", "drama") }.map { tab ->
+                    tab.name to { repo.browsePath(selPlatform, ReelshortCatalog.feedPath(tab.id)) }
+                }
+                main + tabRows
+            }
             // Melolo: rak asli dari API dramahub.be (peringkat + anime),
             // sisanya lewat katalog search (feed mentok 18 judul, katalognya
             // jauh lebih dalam).
@@ -613,7 +642,7 @@ private fun App() {
             // Filter platform sesuai kategori aktif
             val pickerPlatforms = category?.let { cat ->
                 Platforms.filter { cat.platforms.contains(it.id) }
-            } ?: Platforms.filter { it.id in listOf("melolo", "dramanova", "freereels", "dramabox") }
+            } ?: Platforms.filter { it.id in listOf("melolo", "dramanova", "freereels", "dramabox", "netshort", "reelshort") }
 
             PlatformPickerModal(
                 platforms = pickerPlatforms,
@@ -797,6 +826,7 @@ private fun PlatformPickerModal(
         "freereels" to Color(0xFF7C4DFF),
         "dramabox" to Color(0xFFFF4081),
         "netshort" to Color(0xFF2F6BFF),
+        "reelshort" to Color(0xFFE53935),
         "moviebox" to Color(0xFF00BCD4),
         "mbshorts" to Color(0xFFFF6E40)
     )
@@ -2270,9 +2300,11 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
     LaunchedEffect(currentPlatform) { searchPlatformId = currentPlatform }
 
     LaunchedEffect(searchPlatformId) {
-        hints = if (searchPlatformId == "netshort") {
-            runCatching { repo.netshortSearchHints() }.getOrDefault(emptyList())
-        } else emptyList()
+        hints = when (searchPlatformId) {
+            "netshort" -> runCatching { repo.netshortSearchHints() }.getOrDefault(emptyList())
+            "reelshort" -> runCatching { repo.reelshortSearchHints() }.getOrDefault(emptyList())
+            else -> emptyList()
+        }
     }
 
     LaunchedEffect(searchPlatformId) {
@@ -3795,6 +3827,7 @@ private class DramakuRepository {
 
     suspend fun loadHomePage(p: String, page: Int): HomeBundle = coroutineScope {
         if (p == "netshort") return@coroutineScope loadNetshortHome(page)
+        if (p == "reelshort") return@coroutineScope loadReelshortHome(page)
         val req = homePageRequest(p, page)
         val json = try { fetchHome(req.url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
         val items = dedupe(json?.let { flat(it.dataOrSelf(), p) }.orEmpty())
@@ -3833,6 +3866,41 @@ private class DramakuRepository {
         return@coroutineScope HomeBundle(rec, pop, nw, vp, more)
     }
 
+    /**
+     * Beranda ReelShort: foryou = recommended, new = newest, completed = popular.
+     * Plus romance & drama sebagai extra untuk genre rows.
+     * Endpoint: /foryou, /new, /completed, /romance, /drama
+     */
+    private suspend fun loadReelshortHome(page: Int): HomeBundle = coroutineScope {
+        val vp = page.coerceAtLeast(1)
+        // Untuk page 1: ambil 3 endpoint utama
+        // Untuk page >1: coba pakai feed dengan tab_id? Tapi API reelshort tidak support page param,
+        // jadi untuk infinite scroll kita fallback ke feed tab populer/new
+        val slots = if (vp == 1) {
+            listOf(
+                ReelshortCatalog.FORYOU_PATH,
+                ReelshortCatalog.NEW_PATH,
+                ReelshortCatalog.COMPLETED_PATH
+            )
+        } else {
+            // Page >1: ambil dari tab_list kalau ada, atau ulang foryou dengan page param (dicoba)
+            listOf(
+                "foryou?lang=in&page=$vp",
+                "new?lang=in&page=$vp",
+                "completed?lang=in&page=$vp"
+            )
+        }
+        val fetched = slots.map { path ->
+            async { reelshortJson(path)?.let { flat(it.dataOrSelf(), "reelshort") }.orEmpty() }
+        }.awaitAll()
+        val rec = dedupe(fetched.getOrElse(0) { emptyList() }) // foryou
+        val nw = dedupe(fetched.getOrElse(1) { emptyList() })  // new
+        val pop = dedupe(fetched.getOrElse(2) { emptyList() }) // completed
+        val more = vp < 3 && (rec.size + pop.size + nw.size) >= 20
+        if (pop.isEmpty() && rec.isEmpty() && nw.isEmpty() && vp == 1) error("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
+        return@coroutineScope HomeBundle(rec, pop, nw, vp, more)
+    }
+
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
         // Shorts belum punya endpoint pencarian — balikin kosong saja.
         if (p == "mbshorts") return@coroutineScope emptyList()
@@ -3841,6 +3909,8 @@ private class DramakuRepository {
                 "dramabox" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in").dataOrSelf(), p)
                 // NetShort: keyword masuk ke path (bukan query), spasi harus %20.
                 "netshort" -> flat(getJson("${apiBase(p)}/${NetshortCatalog.searchPath(q)}").dataOrSelf(), p)
+                // ReelShort: /search?q=&page=&lang=in
+                "reelshort" -> flat(getJson("${apiBase(p)}/${ReelshortCatalog.searchPath(q, 1)}").dataOrSelf(), p)
                 // perPage di-radius upstream: 10–20 aman, 24 ke atas dibalas data kosong.
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 "dramanova" -> flat(getJson("${apiBase(p)}/drama/search?q=${enc(q)}&pageNum=1&pageSize=50&languages=in").dataOrSelf(), p)
@@ -3891,10 +3961,22 @@ private class DramakuRepository {
     private var netshortTabsCache: List<NetshortTab>? = null
     private var netshortTagsCache: List<Pair<String, String>>? = null
 
+    // ReelShort (dramahub.be): /foryou tabs
+    private var reelshortTabsCache: List<ReelshortTab>? = null
+    private var reelshortSearchHintsCache: List<String>? = null
+
     // Pembungkus anti-gagal: endpoint katalog yang kosong/error tidak boleh
     // menjatuhkan beranda, cukup bikin rak-nya dilewati.
     private suspend fun netshortJson(path: String): JSONObject? = try {
         getJson("${apiBase("netshort")}/$path")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        null
+    }
+
+    private suspend fun reelshortJson(path: String): JSONObject? = try {
+        getJson("${apiBase("reelshort")}/$path")
     } catch (e: CancellationException) {
         throw e
     } catch (_: Throwable) {
@@ -3919,6 +4001,27 @@ private class DramakuRepository {
     // Saran pencarian NetShort (/search-hint), dipakai chip di layar Cari.
     suspend fun netshortSearchHints(): List<String> =
         netshortJson("search-hint?lang=id_ID")?.let { NetshortCatalog.searchHints(it) }.orEmpty()
+
+    // ReelShort tabs dari /foryou
+    suspend fun reelshortTabs(): List<ReelshortTab> {
+        reelshortTabsCache?.takeIf { it.isNotEmpty() }?.let { return it }
+        val tabs = reelshortJson(ReelshortCatalog.FORYOU_PATH)?.let { ReelshortCatalog.tabs(it) }.orEmpty()
+        if (tabs.isNotEmpty()) reelshortTabsCache = tabs
+        return tabs
+    }
+
+    // Saran pencarian ReelShort: dari search_keyword_list di foryou + suggestions
+    suspend fun reelshortSearchHints(): List<String> {
+        reelshortSearchHintsCache?.takeIf { it.isNotEmpty() }?.let { return it }
+        val hints = mutableListOf<String>()
+        reelshortJson(ReelshortCatalog.FORYOU_PATH)?.let { hints += ReelshortCatalog.searchHintsFromHome(it) }
+        if (hints.size < 8) {
+            reelshortJson(ReelshortCatalog.SEARCH_SUGGESTIONS_PATH)?.let { hints += ReelshortCatalog.searchHintsFromSuggestions(it) }
+        }
+        val distinct = hints.distinct().take(12)
+        if (distinct.isNotEmpty()) reelshortSearchHintsCache = distinct
+        return distinct
+    }
 
     suspend fun dramaboxCategories(): List<DramaboxCategory> {
         dramaboxCategoriesCache?.takeIf { it.isNotEmpty() }?.let { return it }
@@ -4118,6 +4221,46 @@ private class DramakuRepository {
             val drama = Drama(input.id, title, desc, poster, total, "", tags, p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
+        if (p == "reelshort") {
+            // ReelShort: detail dari /book/{id}?lang=in = data {book_id, book_title, book_pic, special_desc, chapter_count, tag, theme, etc}
+            // chapters dari /book/{id}/chapters?lang=in = data.chapters [{chapter_id, chapter_name, serial_number, duration}]
+            val data = json.optJSONObject("data") ?: json
+            val title = data.stringAny("book_title", "title", "name").ifBlank { input.title }
+            val desc = cleanText(data.stringAny("special_desc", "description", "introduction", "synopsis")).ifBlank { input.description }
+            val poster = fixImg(data.stringAny("book_pic", "cover", "poster").ifBlank { input.poster })
+            val totalFromDetail = data.intAny("chapter_count", "totalEpisodes", "episode_count", input.episodes)
+            // Ambil chapters
+            val chaptersJson = runCatching { getJson("${apiBase(p)}/${ReelshortCatalog.chaptersPath(input.id)}") }.getOrNull()
+            val chapters = chaptersJson?.let { ReelshortCatalog.chapters(it) }.orEmpty()
+            val eps = if (chapters.isNotEmpty()) {
+                chapters.map { ch ->
+                    EpisodeInfo(
+                        number = ch.number,
+                        streaming = ch.id, // chapter_id dipakai untuk resolve stream
+                        label = ch.name,
+                        locked = ch.isLocked
+                    )
+                }
+            } else {
+                // Fallback: buat episode list dari total
+                (1..totalFromDetail.coerceAtLeast(1)).map { EpisodeInfo(it) }
+            }
+            val total = max(totalFromDetail, eps.size).coerceAtLeast(1)
+            val tags = mutableListOf<String>()
+            // theme dan tag
+            data.optJSONArray("theme")?.let { arr -> for (i in 0 until arr.length()) { val t = arr.optString(i); if (t.isNotBlank()) tags.add(t) } }
+            data.optJSONArray("tag")?.let { arr -> for (i in 0 until arr.length()) { val t = arr.optString(i); if (t.isNotBlank()) tags.add(t) } }
+            data.optJSONArray("tag_list")?.let { arr ->
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val n = o.optString("tag_name").trim()
+                    if (n.isNotBlank()) tags.add(n)
+                }
+            }
+            if (tags.isEmpty()) tags.addAll(tagsOf(data))
+            val drama = Drama(input.id, title, desc, poster, total, input.views, tags.distinct().take(8), p, input.subjectType)
+            return Detail(drama, eps)
+        }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
@@ -4228,6 +4371,17 @@ private class DramakuRepository {
             // Format: videoURL|||audioURL (dipisah special delimiter, di-parse di buildMediaItem)
             val streamUrl = if (audioUrl.isNotBlank()) "$videoUrl|||$audioUrl" else videoUrl
             return StreamResult(streamUrl, "")
+        }
+        if (d.drama.platform == "reelshort") {
+            // ReelShort: /book/{id}/chapter/{chapterId}/video -> {data: {videos: [{PlayURL, Dpi, Encode}]}}
+            val chapterId = d.episodes.firstOrNull { it.number == ep }?.streaming ?: d.episodes.getOrNull(ep - 1)?.streaming ?: error("Chapter ID tidak ditemukan")
+            val json = getJson("$base/${ReelshortCatalog.videoPath(id, chapterId)}")
+            val bestUrl = ReelshortCatalog.bestVideoUrl(json)
+            if (bestUrl.isBlank()) error("Video belum tersedia")
+            // Subtitle: cek vtt di response
+            val data = json.optJSONObject("data") ?: json
+            val vtt = data.optString("vtt").ifBlank { data.optJSONObject("vtt")?.optString("url").orEmpty() }
+            return StreamResult(bestUrl, vtt)
         }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
@@ -4412,6 +4566,14 @@ private fun homeUrls(p: String, page: Int): List<String> {
             "$base/ogv/season/result?style_id=20006&page=1&lang=id_ID"
         )
     }
+    if (p == "reelshort") {
+        // ReelShort: foryou (recommended), new, completed, romance, drama - 3 utama dipakai home
+        return listOf(
+            "$base/${ReelshortCatalog.FORYOU_PATH}",
+            "$base/${ReelshortCatalog.NEW_PATH}",
+            "$base/${ReelshortCatalog.COMPLETED_PATH}"
+        )
+    }
     // Melolo (dramahub.be): bookmall = feed trending, rank = daftar peringkat,
     // bookmall/tabs = kumpulan judul lain di tab genre.
     return listOf("$base/bookmall?lang=id", "$base/rank?page=1&lang=id", "$base/bookmall/tabs?gender=0&lang=id")
@@ -4420,6 +4582,7 @@ private fun homeUrls(p: String, page: Int): List<String> {
 private fun detailUrl(d: Drama): String = when (d.platform) {
     "dramabox" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
     "netshort" -> "${apiBase(d.platform)}/${NetshortCatalog.detailPath(d.id)}"
+    "reelshort" -> "${apiBase(d.platform)}/${ReelshortCatalog.detailPath(d.id)}"
     "moviebox" -> "${apiBase(d.platform)}/subject/get?subjectId=${enc(d.id)}&lang=id"
     "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
     "dramanova" -> "${apiBase(d.platform)}/detail/${enc(d.id)}?languages=in"
@@ -4435,9 +4598,9 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 // dan section layer yang sama-sama punya pasangan id+name. Mereka bukan drama.
 // Syaratnya pakai sinyal konten nyata: cover, sinopsis, atau jumlah episode.
 private fun JSONObject.hasDramaSignal(): Boolean =
-    stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url", "posterUri").isNotBlank() ||
+    stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url", "posterUri", "book_pic", "bookPic").isNotBlank() ||
         optJSONObject("cover") != null ||
-        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate").isNotBlank() ||
+        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate", "special_desc").isNotBlank() ||
         intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes", "totalEpisodes") > 0 ||
         has("subjectId") || has("key") || has("season_id") || has("ep_id") || has("aid") ||
         (has("season_id") && stringAny("title").isNotBlank() && stringAny("cover").isNotBlank())
@@ -4457,8 +4620,8 @@ private fun flat(any: Any?, fp: String): List<Drama> {
                 }
             }
             is JSONObject -> {
-                val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid", "dramaId")
-                val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "name", "shortTitle")
+                            val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid", "dramaId", "t_book_id")
+                val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "book_title", "bookTitle", "name", "shortTitle")
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
                     val d = normalize(node, fp)
                     if (d.id.isNotBlank() && d.title.isNotBlank() && !d.title.equals("Populer", true) && !d.title.equals("Romansa", true) && !d.title.equals("Ceo", true)) {
@@ -4485,12 +4648,12 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 private fun normalize(o: JSONObject, fp: String): Drama {
     val p = fp
     // Bstation: season_id atau aid sebagai ID; Dramanova (dramahub.be): dramaId.
-    val id = o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id", "aid", "dramaId")
+    val id = o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id", "aid", "dramaId", "t_book_id")
     return Drama(
         id,
-        o.stringAny("drama_name", "book_name", "bookName", "title", "bookTitle", "name", "shortTitle"),
-        cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc", "evaluate")),
-        fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg", "posterUri").ifBlank { o.coverUrl() }),
+        o.stringAny("drama_name", "book_name", "bookName", "title", "book_title", "bookTitle", "name", "shortTitle"),
+        cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc", "evaluate", "special_desc")),
+        fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg", "posterUri", "book_pic", "bookPic").ifBlank { o.coverUrl() }),
         // totalChapterNum = nama field jumlah episode di balasan /search DramaBox.
         o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", "totalEpisodes", "totalChapterNum", 0),
         o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers", "views").ifBlank {
@@ -4506,7 +4669,15 @@ private fun normalize(o: JSONObject, fp: String): Drama {
 private fun tagsOf(o: JSONObject): List<String> {
     val out = mutableListOf<String>()
     fun add(a: JSONArray?) { a?.let { for (i in 0 until it.length()) when (val v = it.opt(i)) { is JSONObject -> out += v.stringAny("tagName", "name", "title"); else -> out += v?.toString().orEmpty() } } }
-    add(o.optJSONArray("tags")); add(o.optJSONArray("tagV3s")); add(o.optJSONArray("categories"))
+    add(o.optJSONArray("tags")); add(o.optJSONArray("tagV3s")); add(o.optJSONArray("categories")); add(o.optJSONArray("theme"))
+    // ReelShort tag_list = [{tag_name}]
+    o.optJSONArray("tag_list")?.let { arr ->
+        for (i in 0 until arr.length()) {
+            val jo = arr.optJSONObject(i) ?: continue
+            val n = jo.optString("tag_name").trim()
+            if (n.isNotBlank()) out.add(n)
+        }
+    }
     o.stringAny("category", "genre").split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { out += it }
     return out.map { it.trim() }.filter { it.isNotBlank() }.distinct().take(8)
 }
