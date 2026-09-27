@@ -199,6 +199,20 @@ class MainActivity : ComponentActivity() {
                 .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.25).build() }
                 .diskCache { DiskCache.Builder().directory(cacheDir.resolve("coil_img")).maxSizePercent(0.05).build() }
                 .crossfade(true)
+                .okHttpClient {
+                    OkHttpClient.Builder()
+                        .addInterceptor { chain ->
+                            val req = chain.request().newBuilder()
+                                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                                .header("Referer", "https://anichin.moe/")
+                                .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                                .build()
+                            chain.proceed(req)
+                        }
+                        .connectTimeout(15, TimeUnit.SECONDS)
+                        .readTimeout(20, TimeUnit.SECONDS)
+                        .build()
+                }
                 .build()
         )
         window.statusBarColor = AndroidColor.rgb(10, 9, 8)
@@ -3556,19 +3570,30 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                                     settings.mediaPlaybackRequiresUserGesture = false
                                     settings.allowFileAccess = true
                                     settings.allowContentAccess = true
+                                    settings.allowFileAccessFromFileURLs = true
+                                    settings.allowUniversalAccessFromFileURLs = true
                                     settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                                     webChromeClient = WebChromeClient()
                                     webViewClient = object : WebViewClient() {
                                         override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                                             return false
                                         }
+                                        override fun onPageFinished(view: WebView?, url: String?) {
+                                            super.onPageFinished(view, url)
+                                        }
                                     }
-                                    loadUrl(curStreamUrl)
+                                    // Untuk anichin embed, pakai iframe wrapper biar fullscreen dan referer aman
+                                    val html = """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"><style>body{margin:0;padding:0;background:#000;overflow:hidden}iframe{border:0;width:100vw;height:100vh}</style></head><body><iframe src="$curStreamUrl" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe></body></html>"""
+                                    loadDataWithBaseURL("https://anichin.moe/", html, "text/html", "UTF-8", null)
                                 }
                             },
                             update = { webView ->
-                                if (webView.url != curStreamUrl) {
-                                    webView.loadUrl(curStreamUrl)
+                                // Jika URL berubah, reload wrapper
+                                val current = webView.url ?: ""
+                                if (!current.contains(curStreamUrl) && curStreamUrl.isNotBlank()) {
+                                    val html = """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"><style>body{margin:0;padding:0;background:#000;overflow:hidden}iframe{border:0;width:100vw;height:100vh}</style></head><body><iframe src="$curStreamUrl" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe></body></html>"""
+                                    webView.loadDataWithBaseURL("https://anichin.moe/", html, "text/html", "UTF-8", null)
                                 }
                             },
                             modifier = Modifier.fillMaxSize()
@@ -4567,11 +4592,16 @@ private class DramakuRepository {
             val epSlug = d.episodes.firstOrNull { it.number == ep }?.streaming ?: d.episodes.getOrNull(ep - 1)?.streaming ?: error("Episode slug tidak ditemukan")
             val json = getJson("$base/${AnichinCatalog.episodePath(epSlug)}")
             val epStream = AnichinCatalog.parseEpisode(json) ?: error("Video belum tersedia")
-            // Pilih server: prioritaskan yang mp4/m3u8, atau yang tidak terlalu banyak ads
-            // Daftar server biasanya: OK.ru, Dailymotion, Rumble, D-Tube, etc. OK.ru sering work di ExoPlayer? Kadang perlu webview.
-            // Untuk native, kita coba ambil URL yang mengandung .m3u8 atau .mp4, kalau tidak ada, pakai primary.
-            val bestServer = epStream.servers.firstOrNull { it.url.contains(".m3u8") || it.url.contains(".mp4") } 
-                ?: epStream.servers.firstOrNull { it.name.contains("OK", true) || it.name.contains("Primary", true) }
+            // Pilih server: prioritaskan mp4/m3u8, lalu player lokal anichin yang paling stabil di ID
+            // OK.ru kadang diblokir di ID / butuh VPN, jadi prioritas rendah
+            val bestServer = epStream.servers.firstOrNull { it.url.contains(".m3u8") || it.url.contains(".mp4") }
+                ?: epStream.servers.firstOrNull { it.url.contains("anichin-player") }
+                ?: epStream.servers.firstOrNull { it.url.contains("abyssplayer") || it.url.contains("abyss") }
+                ?: epStream.servers.firstOrNull { it.url.contains("turbovid") }
+                ?: epStream.servers.firstOrNull { it.url.contains("dailymotion") }
+                ?: epStream.servers.firstOrNull { it.url.contains("rumble") }
+                ?: epStream.servers.firstOrNull { it.url.contains("ok.ru") }
+                ?: epStream.servers.firstOrNull { it.name.contains("Primary", true) }
                 ?: epStream.servers.firstOrNull()
             val url = bestServer?.url?.takeIf { it.isNotBlank() } ?: epStream.primaryUrl
             if (url.isBlank()) error("Video belum tersedia")
