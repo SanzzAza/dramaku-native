@@ -39,9 +39,9 @@ enum class HomeCategory(
     Anime(
         id = "anime",
         title = "Anime",
-        subtitle = "Slot anime sedang disiapkan",
-        platforms = emptyList(),
-        comingSoon = true
+        subtitle = "Donghua & anime subtitle Indonesia",
+        platforms = listOf("anichin"),
+        comingSoon = false
     ),
     Bstation(
         id = "bstation",

@@ -110,6 +110,8 @@ import com.dramaku.app.catalog.NetshortCatalog
 import com.dramaku.app.catalog.NetshortTab
 import com.dramaku.app.catalog.ReelshortCatalog
 import com.dramaku.app.catalog.ReelshortTab
+import com.dramaku.app.catalog.AnichinCatalog
+import com.dramaku.app.catalog.AnichinGenre
 import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
@@ -271,6 +273,7 @@ private val Platforms = listOf(
     PlatformInfo("dramabox", "DramaBox", "https://dramahub.be/dramaboxbaru/api"),
     PlatformInfo("netshort", "NetShort", "https://dramahub.be/netshort/api/v1"),
     PlatformInfo("reelshort", "ReelShort", "https://dramahub.be/reelshort/api/v1"),
+    PlatformInfo("anichin", "Anichin", "https://dramahub.be/anichin"),
     PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api"),
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api")
@@ -306,6 +309,17 @@ private val REELSHORT_FALLBACK_GENRES = listOf(
     "Completed" to "completed",
     "Terbaru" to "new",
     "Untukmu" to "foryou"
+)
+
+private val ANICHIN_FALLBACK_GENRES = listOf(
+    "Action" to "action",
+    "Adventure" to "adventure",
+    "Fantasy" to "fantasy",
+    "Romance" to "romance",
+    "Comedy" to "comedy",
+    "Drama" to "drama",
+    "Isekai" to "isekai",
+    "Martial Arts" to "martial-arts"
 )
 
 private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
@@ -487,6 +501,21 @@ private fun App() {
                 }
                 main + tabRows
             }
+            // Anichin (dramahub.be): genres + ongoing/completed/schedule
+            selPlatform == "anichin" -> {
+                val genres = repo.anichinGenres().ifEmpty {
+                    ANICHIN_FALLBACK_GENRES.map { (name, slug) -> AnichinGenre(name, slug) }
+                }
+                val genreRows: List<Pair<String, suspend () -> List<Drama>>> = genres.map { g ->
+                    g.name to suspend { repo.browsePath(selPlatform, AnichinCatalog.genrePath(g.slug)) }
+                }
+                val fixed: List<Pair<String, suspend () -> List<Drama>>> = listOf(
+                    "Ongoing" to suspend { repo.browsePath(selPlatform, AnichinCatalog.ONGOING_PATH) },
+                    "Completed" to suspend { repo.browsePath(selPlatform, AnichinCatalog.COMPLETED_PATH) },
+                    "Jadwal" to suspend { repo.browsePath(selPlatform, AnichinCatalog.SCHEDULE_PATH) }
+                )
+                fixed + genreRows
+            }
             // Melolo: rak asli dari API dramahub.be (peringkat + anime),
             // sisanya lewat katalog search (feed mentok 18 judul, katalognya
             // jauh lebih dalam).
@@ -642,7 +671,7 @@ private fun App() {
             // Filter platform sesuai kategori aktif
             val pickerPlatforms = category?.let { cat ->
                 Platforms.filter { cat.platforms.contains(it.id) }
-            } ?: Platforms.filter { it.id in listOf("melolo", "dramanova", "freereels", "dramabox", "netshort", "reelshort") }
+            } ?: Platforms.filter { it.id in listOf("melolo", "dramanova", "freereels", "dramabox", "netshort", "reelshort", "anichin") }
 
             PlatformPickerModal(
                 platforms = pickerPlatforms,
@@ -827,6 +856,7 @@ private fun PlatformPickerModal(
         "dramabox" to Color(0xFFFF4081),
         "netshort" to Color(0xFF2F6BFF),
         "reelshort" to Color(0xFFE53935),
+        "anichin" to Color(0xFF7C4DFF),
         "moviebox" to Color(0xFF00BCD4),
         "mbshorts" to Color(0xFFFF6E40)
     )
@@ -2303,6 +2333,7 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
         hints = when (searchPlatformId) {
             "netshort" -> runCatching { repo.netshortSearchHints() }.getOrDefault(emptyList())
             "reelshort" -> runCatching { repo.reelshortSearchHints() }.getOrDefault(emptyList())
+            "anichin" -> runCatching { repo.anichinSearchHints() }.getOrDefault(emptyList())
             else -> emptyList()
         }
     }
@@ -3828,6 +3859,7 @@ private class DramakuRepository {
     suspend fun loadHomePage(p: String, page: Int): HomeBundle = coroutineScope {
         if (p == "netshort") return@coroutineScope loadNetshortHome(page)
         if (p == "reelshort") return@coroutineScope loadReelshortHome(page)
+        if (p == "anichin") return@coroutineScope loadAnichinHome(page)
         val req = homePageRequest(p, page)
         val json = try { fetchHome(req.url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
         val items = dedupe(json?.let { flat(it.dataOrSelf(), p) }.orEmpty())
@@ -3901,6 +3933,36 @@ private class DramakuRepository {
         return@coroutineScope HomeBundle(rec, pop, nw, vp, more)
     }
 
+    /**
+     * Beranda Anichin: popular = ongoing, recommended = latest, newest = completed
+     * Endpoint: /home (popular+latest), /ongoing/, /completed/
+     */
+    private suspend fun loadAnichinHome(page: Int): HomeBundle = coroutineScope {
+        val vp = page.coerceAtLeast(1)
+        val slots = if (vp == 1) {
+            listOf(
+                AnichinCatalog.HOME_PATH,
+                AnichinCatalog.ONGOING_PATH,
+                AnichinCatalog.COMPLETED_PATH
+            )
+        } else {
+            listOf(
+                "${AnichinCatalog.ONGOING_PATH}?page=$vp",
+                "${AnichinCatalog.COMPLETED_PATH}?page=$vp",
+                "${AnichinCatalog.HOME_PATH}?page=$vp"
+            )
+        }
+        val fetched = slots.map { path ->
+            async { anichinJson(path)?.let { flat(it.dataOrSelf(), "anichin") }.orEmpty() }
+        }.awaitAll()
+        val rec = dedupe(fetched.getOrElse(0) { emptyList() })
+        val pop = dedupe(fetched.getOrElse(1) { emptyList() })
+        val nw = dedupe(fetched.getOrElse(2) { emptyList() })
+        val more = vp < 3 && (rec.size + pop.size + nw.size) >= 10
+        if (pop.isEmpty() && rec.isEmpty() && nw.isEmpty() && vp == 1) error("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
+        return@coroutineScope HomeBundle(rec, pop, nw, vp, more)
+    }
+
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
         // Shorts belum punya endpoint pencarian — balikin kosong saja.
         if (p == "mbshorts") return@coroutineScope emptyList()
@@ -3915,6 +3977,7 @@ private class DramakuRepository {
                 "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 "dramanova" -> flat(getJson("${apiBase(p)}/drama/search?q=${enc(q)}&pageNum=1&pageSize=50&languages=in").dataOrSelf(), p)
                 "freereels" -> freereelsSearch(q, p)
+                "anichin" -> flat(getJson("${apiBase(p)}/${AnichinCatalog.searchPath(q)}").dataOrSelf(), p)
                 "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=id_ID").dataOrSelf(), p)
                 else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
             }
@@ -3965,6 +4028,10 @@ private class DramakuRepository {
     private var reelshortTabsCache: List<ReelshortTab>? = null
     private var reelshortSearchHintsCache: List<String>? = null
 
+    // Anichin (dramahub.be): genres + schedule
+    private var anichinGenresCache: List<AnichinGenre>? = null
+    private var anichinSearchHintsCache: List<String>? = null
+
     // Pembungkus anti-gagal: endpoint katalog yang kosong/error tidak boleh
     // menjatuhkan beranda, cukup bikin rak-nya dilewati.
     private suspend fun netshortJson(path: String): JSONObject? = try {
@@ -3977,6 +4044,14 @@ private class DramakuRepository {
 
     private suspend fun reelshortJson(path: String): JSONObject? = try {
         getJson("${apiBase("reelshort")}/$path")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        null
+    }
+
+    private suspend fun anichinJson(path: String): JSONObject? = try {
+        getJson("${apiBase("anichin")}/$path")
     } catch (e: CancellationException) {
         throw e
     } catch (_: Throwable) {
@@ -4022,6 +4097,32 @@ private class DramakuRepository {
         if (distinct.isNotEmpty()) reelshortSearchHintsCache = distinct
         return distinct
     }
+
+    // Anichin genres dari /genres
+    suspend fun anichinGenres(): List<AnichinGenre> {
+        anichinGenresCache?.takeIf { it.isNotEmpty() }?.let { return it }
+        val genres = anichinJson(AnichinCatalog.GENRES_PATH)?.let { AnichinCatalog.parseGenres(it) }.orEmpty()
+        if (genres.isNotEmpty()) anichinGenresCache = genres
+        return genres
+    }
+
+    // Saran pencarian Anichin: dari genres + popular titles
+    suspend fun anichinSearchHints(): List<String> {
+        anichinSearchHintsCache?.takeIf { it.isNotEmpty() }?.let { return it }
+        val hints = mutableListOf<String>()
+        anichinGenres().take(8).forEach { hints.add(it.name) }
+        anichinJson(AnichinCatalog.HOME_PATH)?.let { json ->
+            val (popular, _) = AnichinCatalog.parseHome(json)
+            popular.take(6).forEach { hints.add(it.title) }
+        }
+        val distinct = hints.distinct().take(12)
+        if (distinct.isNotEmpty()) anichinSearchHintsCache = distinct
+        return distinct
+    }
+
+    // Anichin schedule
+    suspend fun anichinSchedule() = anichinJson(AnichinCatalog.SCHEDULE_PATH)?.let { AnichinCatalog.parseSchedule(it) }.orEmpty()
+
 
     suspend fun dramaboxCategories(): List<DramaboxCategory> {
         dramaboxCategoriesCache?.takeIf { it.isNotEmpty() }?.let { return it }
@@ -4261,6 +4362,35 @@ private class DramakuRepository {
             val drama = Drama(input.id, title, desc, poster, total, input.views, tags.distinct().take(8), p, input.subjectType)
             return Detail(drama, eps)
         }
+        if (p == "anichin") {
+            // Anichin: detail dari /anime/{slug} = data {title, poster, synopsis, genres[], info, episodes[]}
+            // json di sini sudah dari detailUrl (anime/{id})
+            val detail = AnichinCatalog.parseDetail(json) ?: error("Detail tidak ditemukan")
+            val title = detail.title.ifBlank { input.title }
+            val desc = cleanText(detail.synopsis).ifBlank { input.description }
+            val poster = fixImg(detail.poster.ifBlank { input.poster })
+            val eps = detail.episodes.mapIndexed { idx, ep ->
+                EpisodeInfo(
+                    number = ep.number.filter { it.isDigit() }.toIntOrNull() ?: (idx + 1),
+                    streaming = ep.slug, // episode slug dipakai untuk resolve stream
+                    label = ep.title.ifBlank { ep.number },
+                    locked = false
+                )
+            }
+            // Kalau episode number berupa "Movie", tetap jadikan 1
+            val normalizedEps = if (eps.isEmpty()) {
+                listOf(EpisodeInfo(1, input.id, title))
+            } else {
+                // Pastikan number urut 1..N kalau parsing gagal
+                eps.mapIndexed { i, e -> if (e.number <= 0) e.copy(number = i + 1) else e }
+            }
+            val total = normalizedEps.size.coerceAtLeast(1)
+            val tags = (detail.genres + detail.info.values).distinct().take(8)
+            val infoStatus = detail.info["status"] ?: detail.info["tipe"] ?: ""
+            val views = if (infoStatus.isNotBlank()) infoStatus else input.views
+            val drama = Drama(input.id, title, desc, poster, total, views, tags, p, input.subjectType)
+            return Detail(drama, normalizedEps)
+        }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
@@ -4382,6 +4512,24 @@ private class DramakuRepository {
             val data = json.optJSONObject("data") ?: json
             val vtt = data.optString("vtt").ifBlank { data.optJSONObject("vtt")?.optString("url").orEmpty() }
             return StreamResult(bestUrl, vtt)
+        }
+        if (d.drama.platform == "anichin") {
+            // Anichin: /episode/{slug} -> {data: {streaming, servers: [{name, url}]}}
+            // streaming bisa ok.ru embed, atau server lain. Kita coba ambil yang paling playable di ExoPlayer.
+            // Prioritas: cari mp4/m3u8 langsung, kalau tidak ada, pakai streaming primary (ok.ru) - ExoPlayer bisa handle via webview? Tapi kita coba return URL embed.
+            val epSlug = d.episodes.firstOrNull { it.number == ep }?.streaming ?: d.episodes.getOrNull(ep - 1)?.streaming ?: error("Episode slug tidak ditemukan")
+            val json = getJson("$base/${AnichinCatalog.episodePath(epSlug)}")
+            val epStream = AnichinCatalog.parseEpisode(json) ?: error("Video belum tersedia")
+            // Pilih server: prioritaskan yang mp4/m3u8, atau yang tidak terlalu banyak ads
+            // Daftar server biasanya: OK.ru, Dailymotion, Rumble, D-Tube, etc. OK.ru sering work di ExoPlayer? Kadang perlu webview.
+            // Untuk native, kita coba ambil URL yang mengandung .m3u8 atau .mp4, kalau tidak ada, pakai primary.
+            val bestServer = epStream.servers.firstOrNull { it.url.contains(".m3u8") || it.url.contains(".mp4") } 
+                ?: epStream.servers.firstOrNull { it.name.contains("OK", true) || it.name.contains("Primary", true) }
+                ?: epStream.servers.firstOrNull()
+            val url = bestServer?.url?.takeIf { it.isNotBlank() } ?: epStream.primaryUrl
+            if (url.isBlank()) error("Video belum tersedia")
+            // Anichin tidak punya subtitle terpisah di API, biasanya hardsub Indonesia
+            return StreamResult(url)
         }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
@@ -4574,6 +4722,14 @@ private fun homeUrls(p: String, page: Int): List<String> {
             "$base/${ReelshortCatalog.COMPLETED_PATH}"
         )
     }
+    if (p == "anichin") {
+        // Anichin: home (popular+latest), ongoing, completed
+        return listOf(
+            "$base/${AnichinCatalog.HOME_PATH}",
+            "$base/${AnichinCatalog.ONGOING_PATH}",
+            "$base/${AnichinCatalog.COMPLETED_PATH}"
+        )
+    }
     // Melolo (dramahub.be): bookmall = feed trending, rank = daftar peringkat,
     // bookmall/tabs = kumpulan judul lain di tab genre.
     return listOf("$base/bookmall?lang=id", "$base/rank?page=1&lang=id", "$base/bookmall/tabs?gender=0&lang=id")
@@ -4583,6 +4739,7 @@ private fun detailUrl(d: Drama): String = when (d.platform) {
     "dramabox" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
     "netshort" -> "${apiBase(d.platform)}/${NetshortCatalog.detailPath(d.id)}"
     "reelshort" -> "${apiBase(d.platform)}/${ReelshortCatalog.detailPath(d.id)}"
+    "anichin" -> "${apiBase(d.platform)}/${AnichinCatalog.detailPath(d.id)}"
     "moviebox" -> "${apiBase(d.platform)}/subject/get?subjectId=${enc(d.id)}&lang=id"
     "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
     "dramanova" -> "${apiBase(d.platform)}/detail/${enc(d.id)}?languages=in"
@@ -4620,8 +4777,8 @@ private fun flat(any: Any?, fp: String): List<Drama> {
                 }
             }
             is JSONObject -> {
-                            val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid", "dramaId", "t_book_id")
-                val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "book_title", "bookTitle", "name", "shortTitle")
+                            val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid", "dramaId", "t_book_id", "slug")
+                val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "book_title", "bookTitle", "name", "shortTitle", "anime_title")
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
                     val d = normalize(node, fp)
                     if (d.id.isNotBlank() && d.title.isNotBlank() && !d.title.equals("Populer", true) && !d.title.equals("Romansa", true) && !d.title.equals("Ceo", true)) {
@@ -4648,10 +4805,10 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 private fun normalize(o: JSONObject, fp: String): Drama {
     val p = fp
     // Bstation: season_id atau aid sebagai ID; Dramanova (dramahub.be): dramaId.
-    val id = o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id", "aid", "dramaId", "t_book_id")
+    val id = o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id", "aid", "dramaId", "t_book_id", "slug")
     return Drama(
         id,
-        o.stringAny("drama_name", "book_name", "bookName", "title", "book_title", "bookTitle", "name", "shortTitle"),
+        o.stringAny("drama_name", "book_name", "bookName", "title", "book_title", "bookTitle", "name", "shortTitle", "anime_title"),
         cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc", "evaluate", "special_desc")),
         fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg", "posterUri", "book_pic", "bookPic").ifBlank { o.coverUrl() }),
         // totalChapterNum = nama field jumlah episode di balasan /search DramaBox.
@@ -4822,7 +4979,20 @@ private fun pickSubtitleUrl(vararg roots: JSONObject?): String {
 }
 
 private fun JSONObject.coverUrl(): String { val c = opt("cover"); return if (c is JSONObject) c.stringAny("url") else "" }
-private fun fixImg(u: String): String { if (u.contains("fizzopic.org") && u.contains(".heic")) { val m = Regex("novel-images-apsoutheast/([a-f0-9]+)~").find(u); if (m != null) return "https://p19-novel-sg.ibyteimg.com/img/novel-images-sg/${m.groupValues[1]}~tplv-resize:570:810.jpg" }; return u }
+private fun fixImg(u: String): String {
+        if (u.contains("fizzopic.org") && u.contains(".heic")) {
+            val m = Regex("novel-images-apsoutheast/([a-f0-9]+)~").find(u)
+            if (m != null) return "https://p19-novel-sg.ibyteimg.com/img/novel-images-sg/${m.groupValues[1]}~tplv-resize:570:810.jpg"
+        }
+        if (u.startsWith("/wp-content")) {
+            return "https://anichin.be$u"
+        }
+        if (u.startsWith("/")) {
+            // Coba prefix anichin domain untuk poster relatif
+            return "https://anichin.be$u"
+        }
+        return u
+    }
 private fun cleanText(s: String) = s.replace(Regex("<[^>]+>"), " ").replace("&nbsp;", " ").replace(Regex("\\s+"), " ").trim()
 private fun cleanUrl(u: String): String {
     val t = u.trim()
