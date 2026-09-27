@@ -3564,6 +3564,11 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                     if (detail.drama.platform == "anichin" && curStreamUrl.isNotBlank() && (curStreamUrl.contains("ok.ru") || curStreamUrl.contains("dailymotion") || curStreamUrl.contains("rumble.com") || curStreamUrl.contains("anichin-player") || curStreamUrl.contains("embed") || curStreamUrl.contains("abyssplayer") || curStreamUrl.contains("vidhide") || curStreamUrl.contains("turbovid"))) {
                         AndroidView(
                             factory = { ctx ->
+                                // Enable cookies untuk ok.ru & anichin-player
+                                try {
+                                    android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+                                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(null, true)
+                                } catch (_: Throwable) {}
                                 WebView(ctx).apply {
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
@@ -3572,27 +3577,30 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                                     settings.allowContentAccess = true
                                     settings.allowFileAccessFromFileURLs = true
                                     settings.allowUniversalAccessFromFileURLs = true
+                                    settings.javaScriptCanOpenWindowsAutomatically = true
                                     settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                     settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                                    settings.loadWithOverviewMode = true
+                                    settings.useWideViewPort = true
                                     webChromeClient = WebChromeClient()
                                     webViewClient = object : WebViewClient() {
                                         override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                                             return false
                                         }
-                                        override fun onPageFinished(view: WebView?, url: String?) {
-                                            super.onPageFinished(view, url)
-                                        }
                                     }
-                                    // Untuk anichin embed, pakai iframe wrapper biar fullscreen dan referer aman
-                                    val html = """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"><style>body{margin:0;padding:0;background:#000;overflow:hidden}iframe{border:0;width:100vw;height:100vh}</style></head><body><iframe src="$curStreamUrl" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe></body></html>"""
+                                    tag = curStreamUrl
+                                    val html = """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}iframe{border:0;width:100%;height:100vh}</style></head><body><iframe src="$curStreamUrl" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture" style="width:100%;height:100vh;border:0"></iframe></body></html>"""
                                     loadDataWithBaseURL("https://anichin.moe/", html, "text/html", "UTF-8", null)
                                 }
                             },
                             update = { webView ->
-                                // Jika URL berubah, reload wrapper
-                                val current = webView.url ?: ""
-                                if (!current.contains(curStreamUrl) && curStreamUrl.isNotBlank()) {
-                                    val html = """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"><style>body{margin:0;padding:0;background:#000;overflow:hidden}iframe{border:0;width:100vw;height:100vh}</style></head><body><iframe src="$curStreamUrl" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe></body></html>"""
+                                val last = webView.tag as? String ?: ""
+                                if (last != curStreamUrl && curStreamUrl.isNotBlank()) {
+                                    webView.tag = curStreamUrl
+                                    try {
+                                        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+                                    } catch (_: Throwable) {}
+                                    val html = """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}iframe{border:0;width:100%;height:100vh}</style></head><body><iframe src="$curStreamUrl" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture" style="width:100%;height:100vh;border:0"></iframe></body></html>"""
                                     webView.loadDataWithBaseURL("https://anichin.moe/", html, "text/html", "UTF-8", null)
                                 }
                             },
