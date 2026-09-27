@@ -221,16 +221,13 @@ object AnichinCatalog {
     // Poster di anichin kadang relatif /wp-content/... -> perlu jadi absolute ke anichin
     fun fixPoster(poster: String): String {
         if (poster.isBlank()) return ""
-        if (poster.startsWith("http")) return poster
-        // poster relatif, gabungkan ke base anichin domain (biasanya https://anichin.)
-        // Tapi kita tidak punya domain pasti, biarkan proxy yang handle? Untuk sementara pakai https://anichin.
-        // Di dramahub.be, poster mungkin sudah di-proxy? Cek contoh: /wp-content/uploads/...
-        // Kita coba pakai https://anichin.academy atau biarkan relative tapi fixImg di MainActivity akan handle?
-        // Untuk aman, kalau mulai dengan /wp-content, prepend https://anichin.moe atau https://anichin
-        // Kita akan pakai https://anichin.care sebagai fallback, tapi sebenarnya ExoPlayer tidak butuh poster absolute untuk video, hanya untuk UI.
-        // Jadi kita coba jadikan https://anichin.moe atau simpan apa adanya dan fixImg akan coba.
-        // Di sini kita return apa adanya, nanti fixImg di MainActivity akan coba perbaiki.
-        // Tapi untuk UI, kita coba prepend https://anichin.moe jika mulai dengan /
+        if (poster.startsWith("http")) {
+            return poster.replace("https://anichin.be", "https://anichin.moe")
+                .replace("http://anichin.be", "https://anichin.moe")
+                .replace("https://anichin.care", "https://anichin.moe")
+                .replace("https://anichin.cafe", "https://anichin.moe")
+                .replace("https://anichin.academy", "https://anichin.moe")
+        }
         return if (poster.startsWith("/")) "https://anichin.moe$poster" else poster
     }
 

@@ -3554,8 +3554,15 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     settings.mediaPlaybackRequiresUserGesture = false
+                                    settings.allowFileAccess = true
+                                    settings.allowContentAccess = true
+                                    settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                     webChromeClient = WebChromeClient()
-                                    webViewClient = WebViewClient()
+                                    webViewClient = object : WebViewClient() {
+                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                                            return false
+                                        }
+                                    }
                                     loadUrl(curStreamUrl)
                                 }
                             },
@@ -5023,6 +5030,14 @@ private fun fixImg(u: String): String {
         if (u.contains("fizzopic.org") && u.contains(".heic")) {
             val m = Regex("novel-images-apsoutheast/([a-f0-9]+)~").find(u)
             if (m != null) return "https://p19-novel-sg.ibyteimg.com/img/novel-images-sg/${m.groupValues[1]}~tplv-resize:570:810.jpg"
+        }
+        // Anichin: ganti domain lama ke anichin.moe yang terbukti 200 OK
+        if (u.contains("anichin.be") || u.contains("anichin.care") || u.contains("anichin.cafe") || u.contains("anichin.academy")) {
+            return u.replace("https://anichin.be", "https://anichin.moe")
+                .replace("http://anichin.be", "https://anichin.moe")
+                .replace("https://anichin.care", "https://anichin.moe")
+                .replace("https://anichin.cafe", "https://anichin.moe")
+                .replace("https://anichin.academy", "https://anichin.moe")
         }
         if (u.startsWith("/wp-content")) {
             return "https://anichin.moe$u"
