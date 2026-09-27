@@ -31,8 +31,10 @@ class HomeCategoryTest {
         assertTrue(HomeCategory.ShortDrama.containsPlatform("melolo"))
         assertTrue(HomeCategory.ShortDrama.containsPlatform("dramabox"))
         assertTrue(HomeCategory.ShortDrama.containsPlatform("netshort"))
+        assertTrue(HomeCategory.ShortDrama.containsPlatform("reelshort"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("moviebox"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("drakor"))
+        assertFalse(HomeCategory.ShortDrama.containsPlatform("anichin"))
     }
 
     @Test
@@ -48,7 +50,9 @@ class HomeCategoryTest {
         comingSoon.forEach { assertTrue("${it.id} masih punya platform", it.platforms.isEmpty()) }
         HomeCategory.values().filterNot { it.comingSoon }
             .forEach { assertTrue("${it.id} tidak punya platform", it.platforms.isNotEmpty()) }
-        assertTrue(HomeCategory.Anime.comingSoon)
+        // Anime sekarang aktif dengan Anichin
+        assertFalse(HomeCategory.Anime.comingSoon)
+        assertTrue(HomeCategory.Anime.platforms.contains("anichin"))
         assertTrue(HomeCategory.MovieDrama.comingSoon)
         assertFalse(HomeCategory.ShortDrama.comingSoon)
         assertFalse(HomeCategory.MovieBox.comingSoon)

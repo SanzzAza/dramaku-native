@@ -108,25 +108,6 @@ object AnichinCatalog {
 
     // Genre / ongoing / completed / search: data = [{title, slug, poster, episode, type, status}]
     fun parseList(json: JSONObject): List<AnichinAnime> {
-        val data = json.optJSONObject("data")
-        val arr = when {
-            data != null && data.has("data") -> data.optJSONArray("data") ?: JSONArray()
-            data is JSONArray -> data as JSONArray
-            json.optJSONArray("data") != null -> json.optJSONArray("data")!!
-            else -> JSONArray()
-        }
-        // Actually for genre/action/, data is array at data key
-        val effectiveArr = json.optJSONArray("data") ?: data?.let { if (it is JSONArray) it else null } ?: run {
-            // kalau data adalah JSONObject yang punya popular/latest? fallback
-            if (json.has("data") && json.optJSONObject("data")?.has("popular") == true) {
-                // home case, not list
-                JSONArray()
-            } else {
-                json.optJSONArray("data") ?: JSONArray()
-            }
-        }
-        // Simplified: if json.data is JSONArray, use it, else if json.data is object with array inside?
-        // For our endpoints, data is JSONArray directly
         val listArr = json.optJSONArray("data") ?: JSONArray()
         return parseAnimeArray(listArr)
     }
