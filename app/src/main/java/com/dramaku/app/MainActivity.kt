@@ -1258,13 +1258,20 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
             )
         }
 
-        // Coming soon / next category
+        // Kategori lain - Anime (Anichin) & Bstation
         Spacer(Modifier.height(32.dp))
-        Column(Modifier.padding(horizontal = 20.dp)) {
+        Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("KATEGORI LAIN", color = DS.Faint, fontSize = 10.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, letterSpacing = 2.5.sp)
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(2.dp))
             CategoryCard(
                 icon = Icons.Rounded.AutoAwesome,
+                title = HomeCategory.Anime.title,
+                subtitle = HomeCategory.Anime.subtitle,
+                accentColor = Color(0xFF7C4DFF),
+                onClick = { onSelect(HomeCategory.Anime) }
+            )
+            CategoryCard(
+                icon = Icons.Rounded.LiveTv,
                 title = HomeCategory.Bstation.title,
                 subtitle = HomeCategory.Bstation.subtitle,
                 accentColor = Color(0xFF00A1D6),
