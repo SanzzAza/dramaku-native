@@ -10,6 +10,9 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -3425,6 +3428,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var liked by remember { mutableStateOf(false) }
     var lastSaveMs by remember { mutableLongStateOf(0L) }
     var hasSub by remember { mutableStateOf(false) }
+    var curStreamUrl by remember { mutableStateOf("") }
     var subOn by remember { mutableStateOf(store.subtitleOn()) }
     val dataSaver = remember(detail.drama.id) { store.dataSaver() }
 
@@ -3504,21 +3508,29 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         val savedDur = store.progressDurationMs(detail.drama.id, detail.drama.platform, ep)
         val start = if (savedDur > 0 && savedPos >= savedDur - 4000) 0L else savedPos
         store.saveHistory(detail.drama, ep)
-        val stream = try { repo.resolveStreamCached(detail, ep, store.dataSaver()) }
+        val stream = try { repo.resolveStreamCached(detail, ep, store.dataSaver()).also { curStreamUrl = it.url } }
         catch (e: CancellationException) { throw e }
         catch (t: Throwable) { loading = false; error = t.message ?: "Video belum tersedia"; player.stop(); return@LaunchedEffect }
         if (stream.url.isBlank()) { loading = false; error = "Video belum tersedia"; player.stop(); return@LaunchedEffect }
         hasSub = stream.subtitle.isNotBlank()
-        runCatching { player.stop(); player.clearMediaItems() }
-        // Bstation: gunakan MergingMediaSource untuk gabung video+audio
-        if (detail.drama.platform == "bstation" && stream.url.contains("|||")) {
-            val mediaSource = buildBstationMediaSources(stream)
-            player.setMediaSource(mediaSource); player.prepare()
+        // Anichin: embed URL (ok.ru, etc) tidak bisa di ExoPlayer, pakai WebView
+        if (detail.drama.platform == "anichin" && (stream.url.contains("ok.ru") || stream.url.contains("dailymotion") || stream.url.contains("rumble.com") || stream.url.contains("anichin-player") || stream.url.contains("abyssplayer") || stream.url.contains("vidhide") || stream.url.contains("turbovid") || stream.url.contains("embed"))) {
+            // Untuk anichin, jangan pakai ExoPlayer, biarkan WebView yang handle
+            runCatching { player.stop(); player.clearMediaItems() }
+            loading = false
+            // Simpan URL untuk WebView via state? Kita pakai stream.url langsung di UI nanti
         } else {
-            player.setMediaItem(buildMediaItem(stream)); player.prepare()
+            runCatching { player.stop(); player.clearMediaItems() }
+            // Bstation: gunakan MergingMediaSource untuk gabung video+audio
+            if (detail.drama.platform == "bstation" && stream.url.contains("|||")) {
+                val mediaSource = buildBstationMediaSources(stream)
+                player.setMediaSource(mediaSource); player.prepare()
+            } else {
+                player.setMediaItem(buildMediaItem(stream)); player.prepare()
+            }
+            if (start > 0) player.seekTo(start); player.playWhenReady = true; loading = false
+            if (ep < total) launch { try { repo.resolveStreamCached(detail, ep + 1, store.dataSaver()) } catch (_: Throwable) {} }
         }
-        if (start > 0) player.seekTo(start); player.playWhenReady = true; loading = false
-        if (ep < total) launch { try { repo.resolveStreamCached(detail, ep + 1, store.dataSaver()) } catch (_: Throwable) {} }
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(player, pager.currentPage) {
@@ -3535,7 +3547,28 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         VerticalPager(pager, Modifier.fillMaxSize()) { page ->
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 if (page == pager.currentPage) {
-                    AndroidView(factory = { PlayerView(it).apply { useController = false; this.player = player; resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM } }, update = { view -> view.player = player; view.resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM }, modifier = Modifier.fillMaxSize())
+                    if (detail.drama.platform == "anichin" && curStreamUrl.isNotBlank() && (curStreamUrl.contains("ok.ru") || curStreamUrl.contains("dailymotion") || curStreamUrl.contains("rumble.com") || curStreamUrl.contains("anichin-player") || curStreamUrl.contains("embed") || curStreamUrl.contains("abyssplayer") || curStreamUrl.contains("vidhide") || curStreamUrl.contains("turbovid"))) {
+                        AndroidView(
+                            factory = { ctx ->
+                                WebView(ctx).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.mediaPlaybackRequiresUserGesture = false
+                                    webChromeClient = WebChromeClient()
+                                    webViewClient = WebViewClient()
+                                    loadUrl(curStreamUrl)
+                                }
+                            },
+                            update = { webView ->
+                                if (webView.url != curStreamUrl) {
+                                    webView.loadUrl(curStreamUrl)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        AndroidView(factory = { PlayerView(it).apply { useController = false; this.player = player; resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM } }, update = { view -> view.player = player; view.resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM }, modifier = Modifier.fillMaxSize())
+                    }
                 }
                 if (uiVis || loading || error != null) {
                     Box(
@@ -4992,11 +5025,11 @@ private fun fixImg(u: String): String {
             if (m != null) return "https://p19-novel-sg.ibyteimg.com/img/novel-images-sg/${m.groupValues[1]}~tplv-resize:570:810.jpg"
         }
         if (u.startsWith("/wp-content")) {
-            return "https://anichin.be$u"
+            return "https://anichin.moe$u"
         }
         if (u.startsWith("/")) {
             // Coba prefix anichin domain untuk poster relatif
-            return "https://anichin.be$u"
+            return "https://anichin.moe$u"
         }
         return u
     }
