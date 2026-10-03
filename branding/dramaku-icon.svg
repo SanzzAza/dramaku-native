@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Dramaku logo">
+  <defs>
+    <radialGradient id="g1" cx="78%" cy="18%" r="72%"><stop offset="0" stop-color="#34d399"/><stop offset=".38" stop-color="#063a2b"/><stop offset="1" stop-color="#05080d"/></radialGradient>
+    <linearGradient id="g2" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#f0fff7"/><stop offset="1" stop-color="#baffdf"/></linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="22" stdDeviation="22" flood-opacity=".42"/></filter>
+  </defs>
+  <rect width="1024" height="1024" rx="236" fill="url(#g1)"/>
+  <circle cx="836" cy="170" r="230" fill="#34d399" opacity=".18"/>
+  <path d="M285 210h165c184 0 315 121 315 302S634 814 450 814H285V210Zm153 143v318h28c94 0 149-60 149-159s-55-159-149-159h-28Z" fill="url(#g2)" filter="url(#sh)"/>
+  <path d="M477 365v294l232-147-232-147Z" fill="#10f5a6"/>
+  <path d="M776 190l25 57 58 25-58 25-25 58-25-58-58-25 58-25 25-57Z" fill="#eafff4" opacity=".92"/>
+  <path d="M856 334l12 27 27 12-27 12-12 27-12-27-27-12 27-12 12-27Z" fill="#34d399" opacity=".9"/>
+</svg>

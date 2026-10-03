@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 460" role="img" aria-label="Dramaku wordmark">
+  <image href="dramaku-icon-1024.png" x="60" y="70" width="320" height="320"/>
+  <text x="430" y="230" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="170" font-weight="900" fill="#effff7">Dramaku</text>
+  <rect x="438" y="303" width="390" height="11" rx="6" fill="#10b981"/>
+  <rect x="838" y="303" width="110" height="11" rx="6" fill="#34d399" opacity=".7"/>
+  <text x="436" y="380" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="42" font-weight="700" fill="#91a4ba">mini drama • film • streaming hub</text>
+</svg>
