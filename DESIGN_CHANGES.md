@@ -1,117 +1,35 @@
-# 🎬 Dramaku — Redesign Summary
+# Dramaku Native — UI Update: Editorial Cinema
 
-## Overview
-Perombakan total UI/UX agar terlihat lebih profesional seperti aplikasi drama China premium (WeTV, iQIYI, ShortTV). Semua **business logic** (repository, local store, JSON helpers, API calls, data models) tetap **100% sama** — hanya layer visual yang diubah.
+## Arah desain
 
----
+Tampilan diganti menjadi gaya **editorial cinema**: gelap netral, sederhana, dan fokus pada poster serta judul drama.
 
-## 🎨 Design System (DS)
+- Tidak memakai kuning, mint elektrik, cyan terang, glow, atau efek neon.
+- Warna dasar: charcoal (`#111214`), surface abu gelap, dan teks off-white.
+- Aksen dipakai sangat terbatas dalam warna dusty rose yang desaturasi.
+- Sudut, border, dan spacing dibuat konsisten agar terlihat rapi tanpa dekorasi berlebihan.
+- Tipografi tetap memakai Fraunces untuk judul penting dan Plus Jakarta Sans untuk antarmuka agar tetap mudah dibaca.
 
-### Palet Warna Baru
-| Elemen | Lama | Baru |
-|--------|------|------|
-| Background | `#12100D` (gelap hangat) | `#0A0908` (near-black sinematik) |
-| Surface/Card | `#1A1712` | `#1A1714` (lebih dalam) |
-| Aksen Utama | `#3CD79E` (mint) | `#2EE8A0` (mint elektrik, lebih vibrant) |
-| Teks Utama | `#F0EBE0` | `#F5F0E8` (lebih clean) |
-| Teks Body | `#C7C1B2` | `#B8B0A0` |
-| Error | `#E0684F` | `#EF5350` (merah lebih tegas) |
-| Gold | `#D9A85C` | `#D4A853` |
-| Baris/Batas | `0x14F2E7D5` | `0x0DF5E8D0` (lebih subtle) |
+## Area UI yang diperbarui
 
-**Filosofi**: Lebih gelap, lebih kontras, lebih sinematik — seperti bioskop premium.
+1. **Splash screen & system bar** — palet awal aplikasi menjadi charcoal netral.
+2. **Layar kategori** — layout dipadatkan menjadi daftar kategori yang lebih tenang, tanpa glow atau kartu berwarna terang.
+3. **Navigasi bawah** — menjadi panel sederhana dengan active state yang halus.
+4. **Header beranda & pemilih platform** — struktur informasi diperjelas, dengan card dan border yang lebih ringan.
+5. **Hero, shelf, poster, pencarian** — poster diberi layer gelap untuk keterbacaan; kartu dan badge konsisten.
+6. **Detail drama** — backdrop menjadi panel poster yang rapi; CTA, daftar episode, dan status nonton memakai sistem visual yang sama.
+7. **Koleksi, profil, pengaturan, loading, empty/error state, dan player overlay** — mengikuti token warna, typography, dan komponen baru yang sama.
 
----
+## Batas perubahan
 
-## 📱 Perubahan Per-Layar
+Perubahan ini hanya berada pada layer tampilan:
 
-### 1. Layar Awal (CategoryHomeScreen)
-- ✅ **Card-based categories** — Setiap kategori punya card dengan ikon berwarna, subtitle, dan tombol panah
-- ✅ **Color-coded icons** — Short Drama (mint), Drama Asia (gold), Movie Box (purple)
-- ✅ **Spacing lebih lega** — 12dp gap antar card
-- ✅ **Header lebih compact** — Brand mark lebih kecil, tanggal lebih halus
+- `MainActivity.kt` pada Compose UI dan design token.
+- `SplashActivity.java` untuk tampilan splash.
+- `styles.xml` untuk warna window/system bar.
 
-### 2. Bottom Navigation
-- ✅ **Center action button** — Tombol "Cuplikan" di tengah lebih menonjol dengan background mint
-- ✅ **Active indicator** — Dot kecil di bawah ikon aktif
-- ✅ **Gradient top border** — Garis atas dengan gradient horizontal
-- ✅ **Spacing lebih baik** — Ikon lebih besar, teks lebih kecil
+Bagian berikut tidak diubah:
 
-### 3. Home Screen
-- ✅ **Hero Card lebih besar** — 440dp (dari 380dp), multi-layer gradient
-- ✅ **"TRENDING" badge** — Badge hijau di pojok kiri atas hero
-- ✅ **Platform logo di pojok** — Badge platform di pojok kanan atas hero
-- ✅ **Dual CTA buttons** — "Tonton" (solid mint) + "Detail" (outlined)
-- ✅ **Section headers** — Ada tombol "Semua" di kanan setiap section
-- ✅ **Platform chips** — Chip dengan logo platform di dalamnya
-
-### 4. Kartu Drama (DiscoverDramaCard)
-- ✅ **Aspect ratio 0.68** — Lebih proporsional seperti Netflix
-- ✅ **Rounded corners 12dp** — Lebih smooth
-- ✅ **Badge overlay** — "BARU" badge di kiri atas
-- ✅ **Episode + Views badges** — Bottom-left & bottom-right dengan ikon
-- ✅ **Platform logo** — Di pojok kanan atas poster
-
-### 5. Continue Watching Card
-- ✅ **Play icon overlay** — Lingkaran semi-transparan dengan ikon play di tengah
-- ✅ **Aspect ratio 0.7** — Lebih proporsional
-- ✅ **Progress bar** — Di bawah poster, warna mint
-- ✅ **Episode badge** — Hijau di pojok kiri atas
-
-### 6. Detail Screen
-- ✅ **Backdrop lebih besar** — 420dp dengan multi-layer gradient
-- ✅ **Tags di atas title** — Genre pills di atas judul
-- ✅ **Action buttons** — Play (solid), Favorite, Share — semua dalam rounded rectangles
-- ✅ **Resume card** — Card terpisah untuk melanjutkan menonton dengan progress bar
-- ✅ **Episode grid** — Chip range selector lebih profesional dengan border
-
-### 7. Search Screen
-- ✅ **SearchDramaCard** — Redesign dengan badge rank, platform logo, episode count
-- ✅ **Grid 3 kolom** — Lebih rapat, lebih banyak konten terlihat
-
-### 8. Library Screen
-- ✅ **Card-based rows** — Setiap item dibungkus card dengan background
-- ✅ **Spacing lebih lega** — 8dp gap antar item
-- ✅ **Tab switcher** — Rounded rectangle (12dp) bukan pill
-
-### 9. Player Overlay
-- ✅ **Chip design** — Background semi-transparan, rounded 6dp
-- ✅ **Error card** — Dengan ikon warning di atas
-- ✅ **Retry button** — Hijau mint dengan ikon refresh
-
-### 10. Error & Loading States
-- ✅ **Shimmer loader** — Lebih smooth dengan gradient 5-stop, skeleton lebih detail
-- ✅ **Error card** — Ikon cloud-off, tombol retry hijau mint
-- ✅ **Offline banner** — Background merah wash, tombol "Muat ulang" dengan background
-
----
-
-## 🔤 Typography
-- Tetap menggunakan **Fraunces** (display) + **Plus Jakarta Sans** (body)
-- Font weight lebih konsisten: Bold untuk heading, SemiBold untuk subheading, Medium untuk body
-- Letter spacing lebih ketat di heading untuk kesan premium
-
----
-
-## 🎯 Prinsip Desain
-1. **Dark cinematic** — Lebih gelap, kontras tinggi, fokus ke konten
-2. **Minimal chrome** — Border lebih tipis, spacing lebih lega
-3. **Consistent corners** — 12dp untuk card, 50dp untuk pill, 8dp untuk chip
-4. **Brand consistency** — Mint hijau tetap jadi aksen utama
-5. **Content-first** — Poster lebih besar, teks pendukung lebih kecil
-
----
-
-## 📁 File yang Diubah
-- `app/src/main/java/com/dramaku/app/MainActivity.kt` — UI composables (hanya visual)
-- `app/src/main/java/com/dramaku/app/SplashActivity.java` — Warna splash screen
-- `app/src/main/res/values/styles.xml` — Window background & bar colors
-
-## 📁 File yang TIDAK Diubah (Business Logic)
-- `DramakuRepository` — API calls, parsing, caching
-- `LocalStore` — SharedPreferences, history, favorites
-- `RemoteConfigRepository` — Remote config
-- `ProgressKeys` — Storage keys
-- `HomeCategory` — Category definitions
-- `PlayerActivity` — Native player
-- Semua data models
+- Endpoint, request header, parser JSON, repository, cache stream, dan resolver API.
+- State/alur pencarian, detail, episode, player, remote config, dan storage lokal.
+- Model data serta test API/catalog yang ada.

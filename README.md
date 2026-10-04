@@ -21,7 +21,7 @@ Nonton drama & film dari berbagai platform dalam satu aplikasi native Android.
 
 ## Tampilan 4.9
 
-Antarmuka ditata ulang dengan arah "warm cinema": gelap hangat, aksen hijau mint, tombol utama krem, tipografi **Fraunces** untuk judul dan **Plus Jakarta Sans** untuk antarmuka. Font tertanam di `app/src/main/res/font/`, jadi tidak bergantung ke font sistem.
+Antarmuka memakai arah **editorial cinema**: charcoal netral, teks off-white, dan aksen dusty rose yang sangat terbatas. Tidak memakai kuning atau neon; poster dan judul tetap menjadi fokus. Tipografi **Fraunces** dipakai untuk judul dan **Plus Jakarta Sans** untuk antarmuka. Font tertanam di `app/src/main/res/font/`, jadi tidak bergantung ke font sistem.
 
 ## Fitur Native MVP
 

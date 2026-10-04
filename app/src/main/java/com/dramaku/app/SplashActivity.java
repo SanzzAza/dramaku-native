@@ -27,13 +27,13 @@ import androidx.core.content.res.ResourcesCompat;
 
 public class SplashActivity extends AppCompatActivity {
 
-    // Palet sinematik — gelap premium
-    private static final int BG = Color.rgb(10, 9, 8);        // 0x0A0908
-    private static final int HI = Color.rgb(245, 240, 232);   // krem
-    private static final int MUTED = Color.rgb(120, 112, 104);
-    private static final int FAINT = Color.rgb(74, 68, 61);
-    private static final int GREEN = Color.rgb(46, 232, 160);  // mint elektrik
-    private static final int TRACK = Color.rgb(34, 30, 24);
+    // Palet editorial — charcoal netral dengan aksen dusty rose yang tenang.
+    private static final int BG = Color.rgb(17, 18, 20);       // #111214
+    private static final int HI = Color.rgb(244, 244, 242);    // off-white dingin
+    private static final int MUTED = Color.rgb(156, 155, 156);
+    private static final int FAINT = Color.rgb(110, 109, 112);
+    private static final int GREEN = Color.rgb(170, 128, 138); // aksen muted, bukan neon
+    private static final int TRACK = Color.rgb(41, 42, 47);
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -55,12 +55,12 @@ public class SplashActivity extends AppCompatActivity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(BG);
 
-        // Watermark "D" besar, nyaris tak terlihat
+        // Watermark monokrom yang sangat samar
         TextView watermark = new TextView(this);
         watermark.setText("D");
         watermark.setTypeface(displayBold);
         watermark.setTextSize(340f);
-        watermark.setTextColor(Color.argb(14, 240, 235, 224));
+        watermark.setTextColor(Color.argb(12, 244, 244, 242));
         watermark.setGravity(Gravity.CENTER);
         root.addView(watermark, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
