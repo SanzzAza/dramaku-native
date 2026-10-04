@@ -2764,7 +2764,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                 val backdropShape = RoundedCornerShape(28.dp)
                 Box(
                     Modifier
-                        .padding(horizontal = 16.dp, top = 8.dp)
+                        .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 0.dp)
                         .fillMaxWidth()
                         .height(438.dp)
                         .clip(backdropShape)
