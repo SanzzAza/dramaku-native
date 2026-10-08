@@ -145,4 +145,63 @@ class NetshortCatalogTest {
         assertEquals("", NetshortCatalog.pickVideo(listOf("720p" to ""), dataSaver = false))
         assertEquals("https://cdn/ok", NetshortCatalog.pickVideo(listOf("720p" to "", "540p" to "https://cdn/ok"), dataSaver = false))
     }
+
+    @Test
+    fun `pickSubtitle parses single subtitle with id_ID language and webvtt format`() {
+        val episodeJson = JSONObject(
+            """
+            {
+              "code": 200,
+              "data": {
+                "episodeNo": 15,
+                "episodeId": "2104114063532695564",
+                "videos": [],
+                "subtitles": [
+                  {
+                    "language": "id_ID",
+                    "format": "webvtt",
+                    "url": "https://video.netshort.com/81fb208084c1400aae88c8c26c62916d?auth_key=1792230188&mime_type=text_plain"
+                  }
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+        val sub = NetshortCatalog.pickSubtitle(episodeJson)
+        org.junit.Assert.assertNotNull(sub)
+        assertEquals("id_ID", sub!!.language)
+        assertEquals("webvtt", sub.format)
+        assertTrue(sub.url.startsWith("https://video.netshort.com/"))
+    }
+
+    @Test
+    fun `pickSubtitle prioritizes Indonesian when multiple subtitles exist`() {
+        val multiJson = JSONObject(
+            """
+            {
+              "code": 200,
+              "data": {
+                "subtitles": [
+                  {"language": "en_US", "format": "webvtt", "url": "https://video.netshort.com/en"},
+                  {"language": "id_ID", "format": "webvtt", "url": "https://video.netshort.com/id"},
+                  {"language": "zh_CN", "format": "webvtt", "url": "https://video.netshort.com/zh"}
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+        val sub = NetshortCatalog.pickSubtitle(multiJson)
+        org.junit.Assert.assertNotNull(sub)
+        assertEquals("id_ID", sub!!.language)
+        assertEquals("https://video.netshort.com/id", sub.url)
+    }
+
+    @Test
+    fun `pickSubtitle returns null on empty or invalid subtitles`() {
+        val emptyJson = JSONObject("""{"code": 200, "data": {"subtitles": []}}""")
+        org.junit.Assert.assertNull(NetshortCatalog.pickSubtitle(emptyJson))
+
+        val invalidJson = JSONObject("""{"code": 200, "data": {"subtitles": [{"language": "id_ID", "url": "not-http"}]}}""")
+        org.junit.Assert.assertNull(NetshortCatalog.pickSubtitle(invalidJson))
+    }
 }

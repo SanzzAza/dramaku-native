@@ -10,6 +10,9 @@ data class NetshortTab(val id: String, val name: String, val type: Int, val isDe
 /** Satu tag NetShort dari `/categories` — dipakai `category/{page}?tagId=…`. */
 data class NetshortTag(val labelId: String, val name: String)
 
+/** Satu subtitle NetShort dari balasan `/episode/{id}/{ep}`. */
+data class NetshortSubtitle(val url: String, val language: String, val format: String)
+
 /**
  * Helper NetShort untuk endpoint `dramahub.be/netshort/api/v1`.
  *
@@ -53,6 +56,39 @@ object NetshortCatalog {
             usable.firstOrNull { it.first.equals(wanted, true) }?.let { return it.second }
         }
         return (if (dataSaver) usable.minByOrNull { qualityRank(it.first) } else usable.maxByOrNull { qualityRank(it.first) })?.second.orEmpty()
+    }
+
+    /**
+     * Pilih subtitle terbaik dari balasan episode NetShort (`data.subtitles`).
+     *
+     * NetShort membalas `data.subtitles: [{language, format, url}]`. Format
+     * default NetShort adalah `webvtt`. Bahasa Indonesia (`id_ID`, `id`, dsb.)
+     * diprioritaskan, disusul bahasa Inggris.
+     */
+    fun pickSubtitle(json: JSONObject): NetshortSubtitle? {
+        val data = json.optJSONObject("data") ?: json
+        val arr = data.optJSONArray("subtitles") ?: JSONArray()
+        val list = mutableListOf<NetshortSubtitle>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val url = o.stringAny("url", "link").trim()
+            if (!url.startsWith("http")) continue
+            val lang = o.stringAny("language", "lang", "label").trim()
+            val format = o.stringAny("format", "type").ifBlank { "webvtt" }.trim()
+            list += NetshortSubtitle(url, lang, format)
+        }
+        if (list.isEmpty()) return null
+        fun isIndo(l: String): Boolean {
+            val norm = l.lowercase().replace('_', '-')
+            return norm == "id" || norm == "in" || norm == "ind" || norm.startsWith("id-") || norm.startsWith("indonesia") || norm.contains("bahasa")
+        }
+        fun isEng(l: String): Boolean {
+            val norm = l.lowercase().replace('_', '-')
+            return norm == "en" || norm == "eng" || norm.startsWith("en-") || norm.startsWith("english")
+        }
+        return list.firstOrNull { isIndo(it.language) }
+            ?: list.firstOrNull { isEng(it.language) }
+            ?: list.first()
     }
 
     /**

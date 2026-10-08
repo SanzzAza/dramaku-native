@@ -269,7 +269,7 @@ private data class Drama(
 private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false, val se: Int = 1, val subtitle: String = "")
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
-private data class StreamResult(val url: String, val subtitle: String = "")
+private data class StreamResult(val url: String, val subtitle: String = "", val subtitleMime: String = "")
 private const val STREAM_CACHE_TTL_MS = 90_000L
 private data class CachedStream(val result: StreamResult, val expiresAtMs: Long)
 private data class PlayerSession(val detail: Detail, val startEpisode: Int)
@@ -3127,7 +3127,17 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
     val cache = CacheDataSource.Factory().setCache(VideoCache.get(ctx)).setUpstreamDataSourceFactory(http).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     return ExoPlayer.Builder(ctx)
         .setRenderersFactory(DefaultRenderersFactory(ctx).setEnableDecoderFallback(true))
-        .setTrackSelector(DefaultTrackSelector(ctx).apply { setParameters(buildUponParameters().setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)) })
+        .setTrackSelector(
+            DefaultTrackSelector(ctx).apply {
+                setParameters(
+                    buildUponParameters()
+                        .setPreferredVideoMimeTypes(MimeTypes.VIDEO_H264, MimeTypes.VIDEO_H265)
+                        .setPreferredTextLanguage("id")
+                        .setPreferredTextLanguages("id", "in", "en")
+                        .setSelectUndeterminedTextLanguage(true)
+                )
+            }
+        )
         .setMediaSourceFactory(DefaultMediaSourceFactory(cache)).build()
 }
 
@@ -3314,6 +3324,9 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         runCatching {
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subOn)
+                .setPreferredTextLanguage("id")
+                .setPreferredTextLanguages("id", "in", "en")
+                .setSelectUndeterminedTextLanguage(true)
                 .apply {
                     if (dataSaver) {
                         setMaxVideoSize(854, 480)
@@ -3704,12 +3717,25 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     val subtitle = cleanUrl(s.subtitle)
     if (subtitle.isNotBlank()) {
         val path = subtitle.substringBefore('?').substringBefore('#').lowercase()
+        val lowerSub = subtitle.lowercase()
         val mime = when {
-            path.endsWith(".vtt") || path.endsWith(".webvtt") -> MimeTypes.TEXT_VTT
-            path.endsWith(".ass") || path.endsWith(".ssa") -> MimeTypes.TEXT_SSA  // ASS/SSA
-            else -> MimeTypes.APPLICATION_SUBRIP
+            s.subtitleMime.isNotBlank() -> s.subtitleMime
+            path.endsWith(".vtt") || path.endsWith(".webvtt") ||
+                lowerSub.contains(".vtt") || lowerSub.contains(".webvtt") ||
+                lowerSub.contains("format=webvtt") || lowerSub.contains("netshort.com") -> MimeTypes.TEXT_VTT
+            path.endsWith(".ass") || path.endsWith(".ssa") || lowerSub.contains(".ass") || lowerSub.contains(".ssa") -> MimeTypes.TEXT_SSA  // ASS/SSA
+            path.endsWith(".srt") || lowerSub.contains(".srt") -> MimeTypes.APPLICATION_SUBRIP
+            else -> MimeTypes.TEXT_VTT
         }
-        b.setSubtitleConfigurations(listOf(MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle)).setMimeType(mime).setLanguage("id").setSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()))
+        b.setSubtitleConfigurations(
+            listOf(
+                MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle))
+                    .setMimeType(mime)
+                    .setLanguage("id")
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT or C.SELECTION_FLAG_FORCED)
+                    .build()
+            )
+        )
     }
     return b.build()
 }
@@ -4392,7 +4418,12 @@ private class DramakuRepository {
             }
             val link = NetshortCatalog.pickVideo(videos, ds)
             if (link.isBlank()) error("Video belum tersedia")
-            return StreamResult(link, pickSubtitleUrl(data, json))
+            val netshortSub = NetshortCatalog.pickSubtitle(json) ?: NetshortCatalog.pickSubtitle(data)
+            val subUrl = netshortSub?.url.orEmpty().ifBlank { pickSubtitleUrl(data, json) }
+            val subMime = if (netshortSub?.format.equals("webvtt", true) || subUrl.contains("netshort.com")) {
+                MimeTypes.TEXT_VTT
+            } else ""
+            return StreamResult(link, subUrl, subMime)
         }
         if (d.drama.platform == "moviebox") {
             // Nomor yang tampil di UI berurutan 1..N; nomor asli upstream (dan season-nya)
@@ -4945,8 +4976,14 @@ private fun pickSubtitleUrl(vararg roots: JSONObject?): String {
         }
     }
     if (found.isEmpty()) return ""
-    fun isIndo(l: String) = l == "id" || l == "in" || l == "ind" || l == "id-id" || l.startsWith("indonesia") || l.contains("bahasa")
-    fun isEng(l: String) = l == "en" || l == "eng" || l.startsWith("en-") || l.startsWith("english")
+    fun isIndo(l: String): Boolean {
+        val norm = l.replace('_', '-')
+        return norm == "id" || norm == "in" || norm == "ind" || norm.startsWith("id-") || norm.startsWith("indonesia") || norm.contains("bahasa")
+    }
+    fun isEng(l: String): Boolean {
+        val norm = l.replace('_', '-')
+        return norm == "en" || norm == "eng" || norm.startsWith("en-") || norm.startsWith("english")
+    }
     return found.firstOrNull { isIndo(it.first) }?.second
         ?: found.firstOrNull { isEng(it.first) }?.second
         ?: found.first().second
