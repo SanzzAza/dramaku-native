@@ -118,8 +118,10 @@ import com.dramaku.app.catalog.AnichinCatalog
 import com.dramaku.app.catalog.AnichinGenre
 import androidx.media3.ui.AspectRatioFrameLayout
 import okhttp3.Dispatcher
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -213,10 +215,16 @@ class MainActivity : ComponentActivity() {
                 .okHttpClient {
                     OkHttpClient.Builder()
                         .addInterceptor { chain ->
-                            val req = chain.request().newBuilder()
+                            val orig = chain.request()
+                            val host = orig.url.host.lowercase()
+                            val req = orig.newBuilder()
                                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
-                                .header("Referer", "https://anichin.moe/")
-                                .header("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                                .header("Accept", "image/webp,image/png,image/jpeg,image/*,*/*;q=0.8")
+                                .apply {
+                                    if (host.contains("anichin") || host.contains("wp.com")) {
+                                        header("Referer", "https://anichin.moe/")
+                                    }
+                                }
                                 .build()
                             chain.proceed(req)
                         }
@@ -561,6 +569,10 @@ private fun App() {
                 "Kekuatan super" to { repo.searchPlatform("kekuatan super", selPlatform) },
                 "Wanita kuat" to { repo.searchPlatform("wanita kuat", selPlatform) },
                 "Kelahiran kembali" to { repo.searchPlatform("kelahiran kembali", selPlatform) }
+            )
+            ExtraPlatforms.isExtraPlatform(selPlatform) -> listOf(
+                "Romansa" to { repo.searchPlatform("cinta", selPlatform) },
+                "CEO & harta" to { repo.searchPlatform("ceo", selPlatform) }
             )
             else -> listOf(
             "Populer" to { repo.searchPlatform("populer", selPlatform) },
@@ -3126,6 +3138,7 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
     // header ikut terkirim ke sana juga (sudah dicek: rentang byte 206 tetap OK).
     val headers = requestHeaders.toMutableMap()
     if (!headers.containsKey("Authorization")) headers["Authorization"] = "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"
+    if (!headers.containsKey("Referer")) headers["Referer"] = "https://www.cdreader.com/"
     http.setDefaultRequestProperties(headers)
     val cache = CacheDataSource.Factory().setCache(VideoCache.get(ctx)).setUpstreamDataSourceFactory(http).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     return ExoPlayer.Builder(ctx)
@@ -3704,18 +3717,15 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     val b = MediaItem.Builder().setUri(Uri.parse(url))
     val lower = url.lowercase()
     when {
-        // DASH MPD dari Bstation
-        lower.contains("mpd") || lower.contains("dash") -> b.setMimeType(MimeTypes.APPLICATION_MPD)
+        // Playlist HLS (harus dicek sebelum "dash" karena URL seperti Shorten punya path "/dash/hls-.../main.m3u8")
+        lower.contains(".m3u8") || lower.contains("m3u8") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
         // DramaBox (proxy dramahub.be/dramaboxbaru) membalas mp4 ber-token:
         // ".../api/stream?...&seg=video.mp4&k=..." — jangan dikira playlist.
         // NetShort (video.netshort.com) jalur URL-nya tanpa ekstensi, tapi query
         // auth_key-nya membawa mime_type=video_mp4.
         lower.contains(".mp4") || lower.contains("mime_type=video_mp4") -> b.setMimeType(MimeTypes.APPLICATION_MP4)
-        // Playlist tanpa ekstensi .m3u8 tetap butuh hint HLS. Endpoint /stream
-        // tidak lagi ditebak HLS: DramaBox dan Melolo dua-duanya mp4 progresif,
-        // dan kalau ada playlist asli tanpa ekstensi, ExoPlayer bisa menebak
-        // dari Content-Type-nya.
-        lower.contains("m3u8") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
+        // DASH MPD dari Bstation
+        lower.contains(".mpd") || lower.contains("/stream/mpd") -> b.setMimeType(MimeTypes.APPLICATION_MPD)
     }
     val subtitle = cleanUrl(s.subtitle)
     if (subtitle.isNotBlank()) {
@@ -3832,6 +3842,7 @@ private class DramakuRepository {
         if (p == "netshort") return@coroutineScope loadNetshortHome(page)
         if (p == "reelshort") return@coroutineScope loadReelshortHome(page)
         if (p == "anichin") return@coroutineScope loadAnichinHome(page)
+        if (ExtraPlatforms.isExtraPlatform(p)) return@coroutineScope loadExtraPlatformHome(p, page)
         val req = homePageRequest(p, page)
         val json = try { fetchHome(req.url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
         val items = dedupe(json?.let { flat(it.dataOrSelf(), p) }.orEmpty())
@@ -3840,6 +3851,29 @@ private class DramakuRepository {
         val more = req.hasMore
         if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty() && req.virtualPage == 1) error("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
         HomeBundle(rec, pop, nw, req.virtualPage, more)
+    }
+
+    private suspend fun loadExtraPlatformHome(p: String, page: Int): HomeBundle = coroutineScope {
+        val vp = page.coerceAtLeast(1)
+        val urls = homeUrls(p, vp)
+        val distinctUrls = urls.distinct()
+        val fetchedMap = distinctUrls.map { u ->
+            u to async {
+                try { fetchHome(u).let { flat(it.dataOrSelf(), p) } }
+                catch (e: CancellationException) { throw e }
+                catch (_: Throwable) { emptyList() }
+            }
+        }.associate { (u, d) -> u to d.await() }
+        var rec = dedupe(fetchedMap[urls.getOrElse(0) { "" }].orEmpty())
+        var pop = dedupe(fetchedMap[urls.getOrElse(1) { "" }].orEmpty())
+        var nw = dedupe(fetchedMap[urls.getOrElse(2) { "" }].orEmpty())
+        val all = dedupe(rec + pop + nw)
+        if (all.isEmpty() && vp == 1) error("Sumber ini sedang tidak tersedia. Coba rak lain dulu ya.")
+        if (pop.isEmpty()) pop = all
+        if (rec.isEmpty()) rec = all
+        if (nw.isEmpty()) nw = all.reversed()
+        val more = vp < 3 && all.size >= 8
+        HomeBundle(rec, pop, nw, vp, more)
     }
 
     /** StardustTV: homepage menyatukan rak utama, sehingga tidak perlu
@@ -3962,9 +3996,44 @@ private class DramakuRepository {
                 "freereels" -> freereelsSearch(q, p)
                 "anichin" -> flat(getJson("${apiBase(p)}/${AnichinCatalog.searchPath(q)}").dataOrSelf(), p)
                 "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=id_ID").dataOrSelf(), p)
+                "raptdrama" -> {
+                    val body = JSONObject().put("keyword", q).put("page", 1).put("limit", 20).put("lang", "en-US").toString()
+                    flat(getJson("${apiBase(p)}/open/search", post = true, jsonBody = body).dataOrSelf(), p)
+                }
+                "starshort" -> {
+                    val base = apiBase(p)
+                    val sr = getJson("$base/api/v1/dramas/search?q=${enc(q)}&lang=4")
+                    val homePool = runCatching { flat(getJson("$base/api/v1/dramas?lang=4").dataOrSelf(), p) }.getOrDefault(emptyList())
+                        .associateBy { it.id }
+                    val arr = sr.optJSONArray("data") ?: JSONArray()
+                    arr.objects().take(12).map { o ->
+                        async {
+                            val id = o.stringAny("id")
+                            val title = cleanText(o.stringAny("title"))
+                            homePool[id] ?: runCatching {
+                                val det = getJson("$base/api/v1/dramas/${enc(id)}?lang=4")
+                                normalize(det, p).copy(id = id, title = title.ifBlank { det.stringAny("title") })
+                            }.getOrNull() ?: Drama(id, title, platform = p)
+                        }
+                    }.awaitAll().filter { it.id.isNotBlank() && it.title.isNotBlank() }
+                }
                 else -> {
                     val extraUrl = ExtraPlatforms.searchUrl(p, q, apiBase(p))
-                    if (extraUrl != null) flat(getJson(extraUrl).dataOrSelf(), p) else flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
+                    val direct = if (extraUrl != null) {
+                        runCatching { flat(getJson(extraUrl).dataOrSelf(), p) }.getOrDefault(emptyList())
+                    } else if (!ExtraPlatforms.isExtraPlatform(p)) {
+                        runCatching { flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p) }.getOrDefault(emptyList())
+                    } else emptyList()
+                    if (direct.isNotEmpty() || !ExtraPlatforms.isExtraPlatform(p)) direct
+                    else {
+                        val urls = homeUrls(p, 1).distinct()
+                        val pool = urls.map { u -> async { runCatching { flat(fetchHome(u).dataOrSelf(), p) }.getOrDefault(emptyList()) } }.awaitAll().flatten()
+                        val tokens = normalizeKey(q).split(" ").filter { it.length >= 2 }
+                        pool.filter { d ->
+                            val hay = normalizeKey(d.title + " " + d.description + " " + d.tags.joinToString(" "))
+                            tokens.isEmpty() || tokens.any { hay.contains(it) }
+                        }
+                    }
                 }
             }
         }.getOrDefault(emptyList())
@@ -4384,12 +4453,425 @@ private class DramakuRepository {
             val drama = Drama(input.id, title, desc, poster, total, views, tags, p, input.subjectType)
             return Detail(drama, normalizedEps)
         }
+        if (ExtraPlatforms.isExtraPlatform(p)) {
+            return loadExtraPlatformDetail(input, json)
+        }
         val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
         val d = normalize(data, p).let { it.copy(id = it.id.ifBlank { input.id }, title = it.title.ifBlank { input.title }, poster = fixImg(it.poster.ifBlank { input.poster }), description = it.description.ifBlank { input.description }, episodes = max(it.episodes, input.episodes), platform = p) }
         val epsArr = data.optJSONArray("video_list") ?: data.optJSONArray("episode_list") ?: data.optJSONArray("episodes") ?: data.optJSONArray("chapterList")
         val eps = epsArr?.objects()?.mapIndexed { i, o -> EpisodeInfo(o.intAny("episode", "episode_no", "chapterIndex", i + 1), o.stringAny("streaming"), o.stringAny("episode_label", "title", "label")) }.orEmpty()
         val total = max(d.episodes, eps.size)
         return Detail(d.copy(episodes = total), if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
+    }
+
+    private suspend fun loadExtraPlatformDetail(input: Drama, json: JSONObject): Detail {
+        val p = input.platform
+        val base = apiBase(p)
+        val id = input.id
+
+        if (p == "wetv") {
+            val data = json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("title", "name").ifBlank { input.title })
+            val desc = cleanText(data.stringAny("description", "desc", "introduction").ifBlank { input.description })
+            val poster = fixImg(data.stringAny("posterVt", "posterHz", "cover", "poster").ifBlank { input.poster })
+            val epsJson = runCatching { getJson("$base/api/episodes?cid=${enc(id)}&lang=id&country=ID") }.getOrNull()
+            val epsArr = epsJson?.optJSONArray("data") ?: data.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = i + 1,
+                    streaming = o.stringAny("vid", "id"),
+                    label = o.stringAny("title", "episode")
+                )
+            }
+            val total = max(max(data.intAny("episodeCount", "totalEpisodes", input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "sodareels") {
+            val dinsur = json.optJSONObject("data")?.optJSONObject("dinsur") ?: json.optJSONObject("dinsur") ?: json.optJSONObject("data") ?: json
+            val bmini = dinsur.optJSONObject("bmini") ?: dinsur
+            val title = cleanText(bmini.stringAny("nmeasu", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(bmini.stringAny("ddet", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(bmini.stringAny("pbat", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val erefu = dinsur.optJSONArray("erefu") ?: JSONArray()
+            val eps = erefu.objects().mapIndexed { i, o ->
+                val epNo = o.intAny("estate", i + 1)
+                val ppoem = o.optJSONArray("ppoem")?.objects().orEmpty()
+                val best = ppoem.firstOrNull { it.stringAny("Dcoura").contains("720", true) }
+                    ?: ppoem.firstOrNull { it.stringAny("Mcurr", "Bdesi").startsWith("http") }
+                val url = best?.stringAny("Mcurr", "Bdesi").orEmpty()
+                EpisodeInfo(number = epNo, streaming = url, label = "EP $epNo")
+            }
+            val total = max(max(bmini.intAny("ewin", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, input.tags, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "dotdrama") {
+            val dgiv = json.optJSONObject("dgiv") ?: json.optJSONObject("data")?.optJSONObject("dgiv") ?: json.optJSONObject("data") ?: json
+            val bswitc = dgiv.optJSONObject("bswitc") ?: dgiv
+            val title = cleanText(bswitc.stringAny("nseri", "rwill", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(bswitc.stringAny("dwill", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(bswitc.stringAny("pday", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val ebeer = dgiv.optJSONArray("ebeer") ?: dgiv.optJSONArray("eallo") ?: JSONArray()
+            val eps = ebeer.objects().mapIndexed { i, o ->
+                val epNo = o.intAny("ewheel", i + 1)
+                val pphys = o.optJSONArray("pphys")?.objects().orEmpty()
+                val best = pphys.firstOrNull { it.stringAny("Dbag").contains("720", true) }
+                    ?: pphys.firstOrNull { it.stringAny("Mopp", "Bcold").startsWith("http") }
+                val url = best?.stringAny("Mopp", "Bcold").orEmpty()
+                EpisodeInfo(number = epNo, streaming = url, label = "EP $epNo")
+            }
+            val total = max(max(bswitc.intAny("ewood", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, input.tags, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "snackshort") {
+            val inner = json.optJSONObject("data")?.optJSONObject("data") ?: json.optJSONObject("data") ?: json
+            val book = inner.optJSONObject("book") ?: inner
+            val ep1PlayUrl = inner.stringAny("play_url", "sd_264_url", "hd_264_url")
+            val title = cleanText(book.stringAny("book_name", "title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(book.stringAny("introduce", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(book.stringAny("image", "horizontalImage", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val chJson = runCatching { getJson("$base/api/v1/book/${enc(id)}/chapters?lang=Indonesian") }.getOrNull()
+            val chArr = chJson?.optJSONObject("data")?.optJSONArray("data") ?: chJson?.optJSONArray("data") ?: JSONArray()
+            val eps = chArr.objects().mapIndexed { i, o ->
+                val cid = o.stringAny("chapter_id", "id")
+                val streamRef = if (i == 0 && ep1PlayUrl.startsWith("http")) "$cid|||$ep1PlayUrl" else cid
+                EpisodeInfo(
+                    number = o.intAny("chapter_order", i + 1),
+                    streaming = streamRef,
+                    label = o.stringAny("chapter_name", "title")
+                )
+            }
+            val total = max(max(book.intAny("chapters", "onlineChapter", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(book).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it, if (it == 1 && ep1PlayUrl.startsWith("http")) "1|||$ep1PlayUrl" else "") })
+        }
+
+        if (p == "shotshort") {
+            val data = json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("bookName", "title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(data.stringAny("introduction", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(data.stringAny("coverUrl", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val epsJson = runCatching { getJson("$base/api/book/${enc(id)}/episodes?lang=id") }.getOrNull()
+            val epsArr = epsJson?.optJSONObject("data")?.optJSONArray("episodes") ?: data.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = i + 1,
+                    streaming = o.stringAny("chapterId", "chapter_id", "id"),
+                    label = o.stringAny("chapterName", "title")
+                )
+            }
+            val total = max(max(data.intAny("totalChapterNum", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "shortwave") {
+            val data = json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("title", "drama_title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(data.stringAny("drama_description", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(data.stringAny("drama_cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val epsArr = data.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = o.intAny("index", "chapter_index", i + 1),
+                    streaming = o.stringAny("chapter_id", "chapterId", "id"),
+                    label = o.stringAny("chapter_name", "title")
+                )
+            }
+            val total = max(max(data.intAny("episode_count", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "shortsky") {
+            val data = json.optJSONObject("data")?.optJSONObject("jieguo") ?: json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(data.stringAny("desc", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(data.stringAny("icon", "cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val total = max(data.intAny("episode", *DRAMA_EP_KEYS, input.episodes), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "shorten") {
+            val data = json.optJSONObject("data")?.optJSONObject("data") ?: json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(data.stringAny("description", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(data.coverUrl().ifBlank { data.stringAny(*DRAMA_COVER_KEYS) }.ifBlank { input.poster })
+            val rawEps = data.optJSONArray("seasons")?.optJSONObject(0)?.optJSONArray("episodes")?.objects().orEmpty()
+            val nonTeaser = if (rawEps.size > 1 && rawEps.any { it.optInt("number", 0) > 0 }) {
+                rawEps.filter { it.optInt("number", 1) > 0 }
+            } else rawEps
+            val eps = nonTeaser.mapIndexed { i, o ->
+                val vUrl = o.stringAny("video_url", "url").replace("http://", "https://")
+                val sUrl = pickSubtitleUrl(o)
+                EpisodeInfo(
+                    number = i + 1,
+                    streaming = if (sUrl.isNotBlank()) "$vUrl##$sUrl" else vUrl,
+                    label = o.stringAny("title").ifBlank { "EP ${i + 1}" }
+                )
+            }
+            val total = max(eps.size, input.episodes).coerceAtLeast(1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "reelbuzz") {
+            val data = json.optJSONObject("rows") ?: json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(data.stringAny("intro", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(data.stringAny("cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val epsArr = data.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = o.intAny("chapterNum", "episode", i + 1),
+                    streaming = o.stringAny("chapterId", "id"),
+                    label = o.stringAny("title")
+                )
+            }
+            val total = max(max(data.intAny("totalEpisodes", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "raptdrama") {
+            val data = json.optJSONObject("data") ?: json
+            val listArr = data.optJSONArray("list") ?: JSONArray()
+            val eps = listArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = o.intAny("idx", i + 1),
+                    streaming = o.stringAny("src", "url"),
+                    label = o.stringAny("msg", "title").ifBlank { "EP ${i + 1}" }
+                )
+            }
+            val total = max(max(data.intAny("total", "count", input.episodes), eps.size), 1)
+            val drama = Drama(id, input.title, input.description, input.poster, total, input.views, input.tags, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "rapidtv" || p == "microdrama" || p == "dramabite") {
+            val dramaObj = json.optJSONObject("drama") ?: json.optJSONObject("data") ?: json
+            val title = cleanText(dramaObj.stringAny("title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(dramaObj.stringAny("description", "synopsis", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(dramaObj.stringAny("poster", "cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val epsArr = json.optJSONArray("episodes") ?: dramaObj.optJSONArray("episodes") ?: json.optJSONArray("data") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                val vids = o.optJSONArray("videos")?.objects().orEmpty()
+                val bestVid = vids.firstOrNull { it.stringAny("quality", "definition").contains("720", true) }
+                    ?: vids.firstOrNull { it.stringAny("url", "video_url").startsWith("http") }
+                val streamUrl = bestVid?.stringAny("url", "video_url").orEmpty().ifBlank { o.stringAny("video", "url", "video_url") }
+                EpisodeInfo(
+                    number = o.intAny("episode", "index", "number", i + 1),
+                    streaming = streamUrl,
+                    label = o.stringAny("title", "name")
+                )
+            }
+            val total = max(max(dramaObj.intAny("totalEpisodes", "episodes", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(dramaObj).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "radreels") {
+            val epsArr = json.optJSONArray("data") ?: JSONArray()
+            val firstEp = epsArr.optJSONObject(0)
+            val title = cleanText(firstEp?.stringAny("title").orEmpty().ifBlank { input.title })
+            val poster = fixImg(firstEp?.stringAny("coverImgUrl").orEmpty().ifBlank { input.poster })
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                val vFake = o.stringAny("videoFakeId")
+                val epId = o.stringAny("id", "episodicDramaId")
+                EpisodeInfo(
+                    number = o.intAny("seq", i + 1),
+                    streaming = if (vFake.isNotBlank() && epId.isNotBlank()) "$vFake/$epId" else "",
+                    label = "EP ${o.intAny("seq", i + 1)}"
+                )
+            }
+            val total = max(eps.size, input.episodes).coerceAtLeast(1)
+            val drama = Drama(id, title, input.description, poster, total, input.views, input.tags, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "playlet") {
+            val data = json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("name", "title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(data.stringAny("intro", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(data.stringAny("cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val chArr = data.optJSONArray("chapters") ?: data.optJSONArray("episodes") ?: JSONArray()
+            val eps = chArr.objects().mapIndexed { i, o ->
+                val cId = o.stringAny("chapterId", "id").ifBlank { (i + 1).toString() }
+                EpisodeInfo(
+                    number = o.intAny("chapterId", i + 1),
+                    streaming = cId,
+                    label = o.stringAny("title").ifBlank { "EP ${i + 1}" }
+                )
+            }
+            val total = max(eps.size, input.episodes).coerceAtLeast(1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it, it.toString()) })
+        }
+
+        if (p == "minishort") {
+            val data = json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("video_name", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(data.stringAny("video_desc", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(data.stringAny("video_img", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val groups = data.optJSONArray("episodes")?.objects().orEmpty()
+            val flatList = groups.flatMap { grp ->
+                grp.optJSONArray("list")?.objects() ?: listOf(grp)
+            }
+            val filtered = if (flatList.size > 1) {
+                flatList.filterNot { it.stringAny("episodes_title").equals("Trailer", true) }
+            } else flatList
+            val eps = filtered.mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = i + 1,
+                    streaming = o.stringAny("episodes_id", "id"),
+                    label = o.stringAny("episodes_title", "title").ifBlank { "EP ${i + 1}" }
+                )
+            }
+            val total = max(max(data.intAny("video_num", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "meloshort") {
+            val epsArr = json.optJSONArray("data") ?: json.optJSONObject("data")?.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = o.intAny("chapter_index", "index", i + 1),
+                    streaming = o.stringAny("chapter_id", "id"),
+                    label = o.stringAny("chapter_name", "title").ifBlank { "EP ${i + 1}" }
+                )
+            }
+            val total = max(eps.size, input.episodes).coerceAtLeast(1)
+            val drama = Drama(id, input.title, input.description, input.poster, total, input.views, input.tags, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "flickreels") {
+            val data = json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("title", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(
+                data.optJSONObject("playlet_detail")?.stringAny("introduce", "description").orEmpty()
+                    .ifBlank { data.stringAny(*DRAMA_DESC_KEYS) }
+                    .ifBlank { input.description }
+            )
+            val poster = fixImg(data.stringAny("cover", "process_cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val rawList = data.optJSONArray("list")?.objects().orEmpty()
+            val filtered = if (rawList.size > 1 && rawList.any { it.optInt("chapter_num", 1) > 0 }) {
+                rawList.filter { it.optInt("chapter_num", 1) > 0 }
+            } else rawList
+            val eps = filtered.mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = i + 1,
+                    streaming = o.stringAny("chapter_id", "id"),
+                    label = o.stringAny("chapter_title", "title").ifBlank { "EP ${i + 1}" }
+                )
+            }
+            val total = max(max(data.intAny("upload_num", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "flextv") {
+            val data = json.optJSONObject("data") ?: json
+            val title = cleanText(data.stringAny("series_name", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(data.stringAny("description", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(data.stringAny("cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val epsJson = runCatching { getJson("$base/api/v1/series/${enc(id)}/episodes?lang=id") }.getOrNull()
+            val epsArr = epsJson?.optJSONObject("data")?.optJSONArray("list") ?: data.optJSONArray("list") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                val epNo = o.intAny("series_no", i + 1)
+                EpisodeInfo(
+                    number = epNo,
+                    streaming = o.stringAny("id"),
+                    label = "EP $epNo"
+                )
+            }
+            val total = max(max(data.intAny("last_series_no", *DRAMA_EP_KEYS, input.episodes), eps.size), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, tagsOf(data).ifEmpty { input.tags }, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "goodshort") {
+            val data = json.optJSONObject("data") ?: json
+            val listArr = data.optJSONArray("list") ?: JSONArray()
+            val eps = listArr.objects().mapIndexed { i, o ->
+                val vPath = o.optJSONArray("cdnList")?.optJSONObject(0)?.stringAny("videoPath").orEmpty()
+                EpisodeInfo(
+                    number = i + 1,
+                    streaming = vPath,
+                    label = o.stringAny("chapterName", "title").ifBlank { "EP ${i + 1}" }
+                )
+            }
+            val total = max(eps.size, input.episodes).coerceAtLeast(1)
+            val drama = Drama(id, input.title, input.description, input.poster, total, input.views, input.tags, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "happyshort") {
+            val data = json.optJSONObject("data") ?: json
+            val infoObj = data.optJSONArray("list")?.optJSONObject(0) ?: data
+            val title = cleanText(infoObj.stringAny("video_name", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(infoObj.stringAny("introduce", *DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(infoObj.stringAny("cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val epsArr = data.optJSONArray("episodes") ?: JSONArray()
+            val eps = epsArr.objects().mapIndexed { i, o ->
+                EpisodeInfo(
+                    number = o.intAny("episodeNo", i + 1),
+                    streaming = o.stringAny("episodeId", "id"),
+                    label = o.stringAny("name").ifBlank { "EP ${i + 1}" }
+                )
+            }
+            val total = max(eps.size, input.episodes).coerceAtLeast(1)
+            val drama = Drama(id, title, desc, poster, total, input.views, input.tags, p, input.subjectType)
+            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
+        }
+
+        if (p == "cashdrama") {
+            val data = json.optJSONObject("data") ?: json
+            val infoObj = data.optJSONObject("info") ?: data
+            val title = cleanText(infoObj.stringAny("name", *DRAMA_TITLE_KEYS).ifBlank { input.title })
+            val desc = cleanText(infoObj.stringAny(*DRAMA_DESC_KEYS).ifBlank { input.description })
+            val poster = fixImg(infoObj.stringAny("cover", *DRAMA_COVER_KEYS).ifBlank { input.poster })
+            val total = max(infoObj.intAny("dramaCount", *DRAMA_EP_KEYS, input.episodes), 1)
+            val drama = Drama(id, title, desc, poster, total, input.views, input.tags, p, input.subjectType)
+            return Detail(drama, (1..total).map { EpisodeInfo(it) })
+        }
+
+        val data = json.optJSONObject("data") ?: json
+        val d = normalize(data, p).let {
+            it.copy(
+                id = id.ifBlank { it.id },
+                title = it.title.ifBlank { input.title },
+                poster = fixImg(it.poster.ifBlank { input.poster }),
+                description = it.description.ifBlank { input.description },
+                episodes = max(it.episodes, input.episodes),
+                platform = p
+            )
+        }
+        val epsArr = data.optJSONArray("video_list")
+            ?: data.optJSONArray("episode_list")
+            ?: data.optJSONArray("episodes")
+            ?: data.optJSONArray("chapterList")
+            ?: data.optJSONArray("dramaListResponseList")
+            ?: data.optJSONArray("chapters")
+            ?: data.optJSONArray("list")
+            ?: json.optJSONArray("episode_list")
+            ?: json.optJSONArray("episodes")
+        val eps = epsArr?.objects()?.mapIndexed { i, o ->
+            EpisodeInfo(
+                number = o.intAny("episode", "episode_no", "episode_num", "episodeNum", "episode_index", "chapterIndex", "chapter_index", "index", "number", i + 1),
+                streaming = o.stringAny("streaming", "video_url", "play_url", "url", "chapter_id", "chapterId", "episode_id", "id"),
+                label = o.stringAny("episode_label", "title", "label", "name", "chapter_name")
+            )
+        }.orEmpty()
+        val total = max(d.episodes, eps.size).coerceAtLeast(1)
+        return Detail(d.copy(episodes = total), if (eps.isNotEmpty()) eps else (1..total).map { EpisodeInfo(it) })
     }
 
     suspend fun resolveStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
@@ -4541,19 +5023,8 @@ private class DramakuRepository {
             // Anichin tidak punya subtitle terpisah di API, biasanya hardsub Indonesia
             return StreamResult(url)
         }
-        // Extra platforms generic stream handling via ExtraPlatforms
-        ExtraPlatforms.streamUrl(d.drama.platform, id, ep, base)?.let { url ->
-            val json = runCatching { getJson(url) }.getOrNull()
-            // Try to extract video url from generic response keys
-            val direct = json?.stringAny("video","playUrl","play_url","url","resourceLink","source","hls_url","hlsUrl","play_url","video_url","m3u8_url","main_url","backup_url").orEmpty().ifBlank { json?.optJSONObject("data")?.stringAny("video","url","play_url","playUrl","resourceLink","hls_url").orEmpty() }
-            if (direct.isNotBlank() && direct.startsWith("http")) return StreamResult(direct, pickSubtitleUrl(json))
-            if (json != null) {
-                // Try to find any http url in response
-                val found = findFirstHttpUrl(json)
-                if (found.isNotBlank()) return StreamResult(found, pickSubtitleUrl(json))
-            }
-            // Fallback to direct URL if API returns playlist directly
-            return StreamResult(url)
+        if (ExtraPlatforms.isExtraPlatform(d.drama.platform)) {
+            return resolveExtraPlatformStream(d, ep, ds)
         }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
@@ -4564,6 +5035,180 @@ private class DramakuRepository {
         val source = epObj?.stringAny("stream_url", "streaming", "url", "play_url", "video_url").orEmpty()
         if (source.isBlank()) error("Video belum tersedia")
         return StreamResult(source)
+    }
+
+    private suspend fun resolveExtraPlatformStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
+        val p = d.drama.platform
+        val base = apiBase(p)
+        val id = d.drama.id
+        val epInfo = d.episodes.firstOrNull { it.number == ep } ?: d.episodes.getOrNull(ep - 1)
+        val stored = epInfo?.streaming.orEmpty().trim()
+
+        // Jika EpisodeInfo.streaming sudah berisi URL video langsung (mis. sodareels, dotdrama, shorten, raptdrama, rapidtv, microdrama, goodshort)
+        if (stored.startsWith("http://") || stored.startsWith("https://")) {
+            if (stored.contains("##")) {
+                val parts = stored.split("##", limit = 2)
+                return StreamResult(cleanUrl(parts[0]), cleanUrl(parts.getOrElse(1) { "" }))
+            }
+            return StreamResult(cleanUrl(stored))
+        }
+
+        if (p == "playlet") {
+            val chapId = stored.ifBlank { ep.coerceAtLeast(1).toString() }
+            return StreamResult("$base/theater/${enc(id)}/open/$chapId/playlist.m3u8")
+        }
+
+        if (p == "wetv") {
+            val vid = stored.ifBlank {
+                val epsJson = runCatching { getJson("$base/api/episodes?cid=${enc(id)}&lang=id&country=ID") }.getOrNull()
+                epsJson?.optJSONArray("data")?.optJSONObject(ep - 1)?.stringAny("vid", "id").orEmpty()
+            }
+            if (vid.isBlank()) error("Episode WeTV belum tersedia")
+            val json = getJson("$base/api/play?vid=${enc(vid)}&cid=${enc(id)}&lang=id&country=ID")
+            val data = json.optJSONObject("data") ?: json
+            val stream = extractStreamUrl(json, ds)
+            if (stream.isBlank()) {
+                val msg = data.stringAny("msg", "message")
+                error(msg.ifBlank { "Video WeTV belum tersedia" })
+            }
+            return StreamResult(stream, pickSubtitleUrl(data, json))
+        }
+
+        if (p == "snackshort") {
+            val parts = stored.split("|||")
+            val chapId = parts[0].ifBlank {
+                val chJson = runCatching { getJson("$base/api/v1/book/${enc(id)}/chapters?lang=Indonesian") }.getOrNull()
+                val arr = chJson?.optJSONObject("data")?.optJSONArray("data") ?: chJson?.optJSONArray("data")
+                arr?.optJSONObject(ep - 1)?.stringAny("chapter_id", "id").orEmpty()
+            }
+            val fallbackUrl = parts.getOrNull(1).orEmpty()
+            val json = if (chapId.isNotBlank()) {
+                runCatching { getJson("$base/api/v1/book/${enc(id)}/episode/${enc(chapId)}?lang=Indonesian") }.getOrNull()
+            } else null
+            val stream = json?.let { extractStreamUrl(it, ds) }.orEmpty()
+            if (stream.isNotBlank()) return StreamResult(stream, pickSubtitleUrl(json))
+            if (fallbackUrl.startsWith("http")) return StreamResult(fallbackUrl)
+            if (ep == 1) {
+                val bookJson = runCatching { getJson("$base/api/v1/book/${enc(id)}?lang=Indonesian") }.getOrNull()
+                val bookStream = bookJson?.let { extractStreamUrl(it, ds) }.orEmpty()
+                if (bookStream.isNotBlank()) return StreamResult(bookStream, pickSubtitleUrl(bookJson))
+            }
+            error("Video belum tersedia")
+        }
+
+        if (p == "shotshort") {
+            val chapId = stored.ifBlank {
+                val epsJson = runCatching { getJson("$base/api/book/${enc(id)}/episodes?lang=id") }.getOrNull()
+                epsJson?.optJSONObject("data")?.optJSONArray("episodes")?.optJSONObject(ep - 1)?.stringAny("chapterId", "id").orEmpty()
+            }
+            val json = getJson("$base/api/book/${enc(id)}/chapter/${enc(chapId.ifBlank { ep.toString() })}?lang=id")
+            val stream = extractStreamUrl(json, ds)
+            if (stream.isBlank()) error("Video belum tersedia")
+            return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
+        }
+
+        if (p == "shortwave") {
+            val chapId = stored.ifBlank {
+                val detJson = runCatching { getJson("$base/api/drama/${enc(id)}?lang=id") }.getOrNull()
+                detJson?.optJSONObject("data")?.optJSONArray("episodes")?.optJSONObject(ep - 1)?.stringAny("chapter_id", "id").orEmpty()
+            }
+            val json = getJson("$base/api/stream/${enc(id)}/${enc(chapId.ifBlank { ep.toString() })}?lang=id")
+            val stream = extractStreamUrl(json, ds)
+            if (stream.isBlank()) error("Video belum tersedia")
+            return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
+        }
+
+        if (p == "meloshort") {
+            val chapId = stored.ifBlank {
+                val epsJson = runCatching { getJson("$base/api/v1/dramas/${enc(id)}/episodes?page=1&limit=100&lang=id") }.getOrNull()
+                epsJson?.optJSONArray("data")?.optJSONObject(ep - 1)?.stringAny("chapter_id", "id").orEmpty()
+            }
+            val json = getJson("$base/api/v1/dramas/${enc(id)}/episodes/${enc(chapId.ifBlank { ep.toString() })}?lang=id")
+            val stream = extractStreamUrl(json, ds)
+            if (stream.isBlank()) error("Video belum tersedia")
+            return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
+        }
+
+        if (p == "minishort") {
+            val epId = stored.ifBlank {
+                val infoJson = runCatching { getJson("$base/api/video_info?video_id=${enc(id)}&language=en") }.getOrNull()
+                val groups = infoJson?.optJSONObject("data")?.optJSONArray("episodes")?.objects().orEmpty()
+                val flatList = groups.flatMap { it.optJSONArray("list")?.objects() ?: listOf(it) }
+                    .filterNot { it.stringAny("episodes_title").equals("Trailer", true) }
+                flatList.getOrNull(ep - 1)?.stringAny("episodes_id", "id").orEmpty()
+            }
+            val json = getJson("$base/api/episodes_content?video_id=${enc(id)}&episodes_id=${enc(epId.ifBlank { ep.toString() })}&language=en")
+            val stream = extractStreamUrl(json, ds)
+            if (stream.isBlank()) error("Video belum tersedia")
+            return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
+        }
+
+        if (p == "radreels") {
+            val pathPart = stored.takeIf { it.contains("/") } ?: run {
+                val epsJson = runCatching { getJson("$base/api/v1/episodes/${enc(id)}?lang=id") }.getOrNull()
+                val o = epsJson?.optJSONArray("data")?.optJSONObject(ep - 1)
+                if (o != null) "${o.stringAny("videoFakeId")}/${o.stringAny("id")}" else ""
+            }
+            if (pathPart.isBlank()) error("Episode RadReels tidak ditemukan")
+            val json = getJson("$base/api/v1/video/$pathPart?lang=id")
+            val stream = extractStreamUrl(json, ds)
+            if (stream.isBlank()) error("Video belum tersedia")
+            return StreamResult(stream, pickSubtitleUrl(json))
+        }
+
+        if (p == "flickreels") {
+            val chapId = stored.ifBlank {
+                val chJson = runCatching { getJson("$base/api/v1/chapters/${enc(id)}?lang=id") }.getOrNull()
+                val list = chJson?.optJSONObject("data")?.optJSONArray("list")?.objects().orEmpty()
+                    .filter { it.optInt("chapter_num", 1) > 0 }
+                list.getOrNull(ep - 1)?.stringAny("chapter_id", "id").orEmpty()
+            }
+            val json = getJson("$base/api/v1/stream/${enc(id)}/${enc(chapId.ifBlank { ep.toString() })}?lang=id")
+            val stream = extractStreamUrl(json, ds)
+            if (stream.isBlank()) error("Video belum tersedia")
+            return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
+        }
+
+        if (p == "flextv") {
+            val secId = stored.ifBlank {
+                val epsJson = runCatching { getJson("$base/api/v1/series/${enc(id)}/episodes?lang=id") }.getOrNull()
+                epsJson?.optJSONObject("data")?.optJSONArray("list")?.optJSONObject(ep - 1)?.stringAny("id").orEmpty()
+            }
+            val json = getJson("$base/api/v1/play/${enc(id)}/${enc(secId.ifBlank { ep.toString() })}?lang=id")
+            val stream = extractStreamUrl(json, ds)
+            if (stream.isBlank()) error("Video belum tersedia")
+            return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
+        }
+
+        if (p == "goodshort") {
+            val json = getJson("$base/api/v1/unlock/${enc(id)}?q=${if (ds) "540p" else "720p"}")
+            val epObj = json.optJSONArray("episodes")?.optJSONObject(ep - 1)
+            val stream = epObj?.optJSONArray("videos")?.optJSONObject(0)?.stringAny("m3u8", "url").orEmpty()
+                .ifBlank { epObj?.stringAny("url", "m3u8").orEmpty() }
+                .ifBlank { extractStreamUrl(json, ds) }
+            if (stream.isBlank()) error("Video belum tersedia")
+            return StreamResult(stream)
+        }
+
+        if (p == "sodareels" || p == "dotdrama" || p == "shorten" || p == "raptdrama" || p == "rapidtv" || p == "microdrama") {
+            val refreshed = loadDetail(d.drama)
+            val refEp = refreshed.episodes.firstOrNull { it.number == ep } ?: refreshed.episodes.getOrNull(ep - 1)
+            val refUrl = refEp?.streaming.orEmpty()
+            if (refUrl.startsWith("http")) {
+                if (refUrl.contains("##")) {
+                    val parts = refUrl.split("##", limit = 2)
+                    return StreamResult(cleanUrl(parts[0]), cleanUrl(parts.getOrElse(1) { "" }))
+                }
+                return StreamResult(cleanUrl(refUrl))
+            }
+            error("Video belum tersedia")
+        }
+
+        val url = ExtraPlatforms.streamUrl(p, id, ep, base) ?: error("Video belum tersedia")
+        val json = getJson(url)
+        val stream = extractStreamUrl(json, ds)
+        if (stream.isBlank()) error("Video belum tersedia")
+        return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
     }
 
     // Caption MovieBox: proxy captain.sapimu.au balas extCaptions kosong, jadi
@@ -4588,7 +5233,7 @@ private class DramakuRepository {
         return ""
     }
 
-    private suspend fun getJson(url: String, post: Boolean = false): JSONObject = withContext(Dispatchers.IO) {
+    private suspend fun getJson(url: String, post: Boolean = false, jsonBody: String? = null): JSONObject = withContext(Dispatchers.IO) {
         // Origin di balik proxy kadang balas 5xx sementara.
         // Retry singkat supaya home tidak langsung error.
         var last: Throwable? = null
@@ -4598,7 +5243,11 @@ private class DramakuRepository {
                 val reqBuilder = Request.Builder().url(url)
                     .header("User-Agent", "DramakuNative/4.9.9 Android")
                     .header("Accept", "application/json, text/plain, */*")
-                if (post) reqBuilder.post(okhttp3.FormBody.Builder().build())
+                if (jsonBody != null) {
+                    reqBuilder.post(jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                } else if (post) {
+                    reqBuilder.post(okhttp3.FormBody.Builder().build())
+                }
                 if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
                 }
@@ -4609,18 +5258,33 @@ private class DramakuRepository {
                     if (host.isNotBlank()) reqBuilder.header("Referer", "https://$host/")
                 }
                 return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
-                    val body = r.body?.string().orEmpty()
-                    val json = runCatching { JSONObject(body) }.getOrNull()
+                    val body = r.body?.string().orEmpty().trim()
+                    val json = when {
+                        body.startsWith("[") -> runCatching { JSONObject().put("data", JSONArray(body)) }.getOrNull()
+                        body.startsWith("{") -> runCatching { JSONObject(body) }.getOrNull()
+                        else -> null
+                    }
                     if (!r.isSuccessful) {
-                        val msg = json?.stringAny("error_msg", "error", "message").orEmpty()
+                        val msg = json?.stringAny("error_msg", "error", "message", "msg").orEmpty()
                         error(msg.ifBlank { "HTTP ${r.code}" })
                     }
                     val parsed = json ?: JSONObject(body)
                     val code = parsed.optInt("code", 200)
-                    if (code >= 400) error(parsed.stringAny("error_msg", "error", "message").ifBlank { "HTTP $code" })
-                    val statusZero = parsed.optInt("status", 1) == 0
-                    val explicitSuccess = parsed.optBoolean("success", false) || parsed.stringAny("message").equals("success", true)
-                    if (statusZero && !explicitSuccess) error(parsed.stringAny("error_msg", "error", "message").ifBlank { "Gagal memuat data" })
+                    if (code >= 400) error(parsed.stringAny("error_msg", "error", "message", "msg").ifBlank { "HTTP $code" })
+                    val innerData = parsed.optJSONObject("data")
+                    val innerCode = innerData?.optInt("code", 200) ?: 200
+                    if (innerCode >= 400 && innerData != null && !innerData.has("list") && !innerData.has("episodes")) {
+                        error(innerData.stringAny("error_msg", "error", "message", "msg").ifBlank { "HTTP $innerCode" })
+                    }
+                    val statusZero = parsed.has("status") && parsed.optInt("status", 1) == 0
+                    val msg = parsed.stringAny("message", "msg")
+                    val explicitSuccess = parsed.optBoolean("success", false)
+                        || msg.equals("success", true)
+                        || msg.equals("ok", true)
+                        || msg.contains("成功")
+                        || parsed.has("data")
+                        || parsed.has("rows")
+                    if (statusZero && !explicitSuccess) error(parsed.stringAny("error_msg", "error", "message", "msg").ifBlank { "Gagal memuat data" })
                     parsed
                 }
             } catch (e: CancellationException) {
@@ -4778,32 +5442,93 @@ private fun detailUrl(d: Drama): String {
 }
 
 private fun dedupe(items: List<Drama>) = items.filter { it.id.isNotBlank() && it.title.isNotBlank() }.distinctBy { it.platform + "|" + it.id }.distinctBy { it.platform + "|" + normalizeKey(it.title) }
-private fun findFirstHttpUrl(json: JSONObject): String {
-    fun scan(node: Any?): String? {
-        when (node) {
-            is JSONObject -> {
-                val keys = node.keys()
-                while (keys.hasNext()) {
-                    val k = keys.next()
-                    val v = node.opt(k)
-                    if (v is String && v.startsWith("http")) return v
-                    val found = scan(v)
-                    if (found != null) return found
-                }
-            }
-            is org.json.JSONArray -> {
-                for (i in 0 until node.length()) {
-                    val v = node.opt(i)
-                    if (v is String && v.startsWith("http")) return v
-                    val found = scan(v)
-                    if (found != null) return found
-                }
-            }
+
+private fun extractStreamUrl(json: JSONObject, ds: Boolean): String {
+    val data = json.optJSONObject("data")?.optJSONObject("data") ?: json.optJSONObject("data") ?: json
+
+    // 1. Cek obj video: { video_720, video_1080, video_480 } (ShortMax, ShortWave)
+    val vidObj = data.optJSONObject("video") ?: data.optJSONObject("videoUrl") ?: json.optJSONObject("video")
+    if (vidObj != null) {
+        val u = if (ds) {
+            vidObj.stringAny("video_480", "video_540", "video_720", "video_1080", "url", "play_url")
+        } else {
+            vidObj.stringAny("video_720", "video_1080", "video_480", "url", "play_url")
         }
-        return null
+        if (u.startsWith("http")) return cleanUrl(u)
     }
-    return scan(json).orEmpty()
+
+    // 2. Cek array videoUrl / videoUrls: [{url, quality}] (StoryReel, FlareFlow, DramaRush, VibeShort)
+    val vidArr = data.optJSONArray("videoUrl") ?: data.optJSONArray("videoUrls") ?: data.optJSONArray("videos") ?: json.optJSONArray("videos")
+    if (vidArr != null) {
+        val objs = vidArr.objects()
+        val chosen = if (ds) {
+            objs.firstOrNull { it.stringAny("quality", "definition", "dpi").contains("480", true) || it.stringAny("quality", "definition").contains("540", true) }
+                ?: objs.firstOrNull { it.stringAny("url", "play_url", "video_url", "m3u8").startsWith("http") }
+        } else {
+            objs.firstOrNull { it.stringAny("quality", "definition", "dpi").contains("720", true) }
+                ?: objs.firstOrNull { it.stringAny("quality", "definition", "dpi").contains("1080", true) }
+                ?: objs.firstOrNull { it.stringAny("url", "play_url", "video_url", "m3u8").startsWith("http") }
+        }
+        val u = chosen?.stringAny("url", "play_url", "video_url", "m3u8", "PlayURL").orEmpty()
+        if (u.startsWith("http")) return cleanUrl(u)
+    }
+
+    // 3. Cek m3u8s array (ShortBox)
+    val m3u8s = data.optJSONArray("m3u8s") ?: json.optJSONArray("m3u8s")
+    if (m3u8s != null && m3u8s.length() > 0) {
+        val u = m3u8s.optString(0)
+        if (u.startsWith("http")) return cleanUrl(u)
+    }
+
+    // 4. Cek streams array (MeloShort: pilih encrypted == false)
+    val streams = data.optJSONArray("streams") ?: json.optJSONArray("streams")
+    if (streams != null) {
+        val objs = streams.objects()
+        val unenc = objs.filter { !it.optBoolean("encrypted", false) }
+        val pool = unenc.ifEmpty { objs }
+        val chosen = pool.firstOrNull { it.stringAny("quality", "definition").contains("720", true) }
+            ?: pool.firstOrNull { it.stringAny("url", "play_url").startsWith("http") }
+        val u = chosen?.stringAny("url", "play_url").orEmpty()
+        if (u.startsWith("http")) return cleanUrl(u)
+    }
+
+    // 5. Cek adaptive array (BonusTV)
+    val adaptive = data.optJSONArray("adaptive") ?: json.optJSONArray("adaptive")
+    if (adaptive != null) {
+        val u = adaptive.objects().firstOrNull()?.stringAny("url", "play_url").orEmpty()
+        if (u.startsWith("http")) return cleanUrl(u)
+    }
+
+    // 6. Cek episode.play_info_list (IDrama)
+    val playInfoList = data.optJSONObject("episode")?.optJSONArray("play_info_list") ?: data.optJSONArray("play_info_list")
+    if (playInfoList != null) {
+        val objs = playInfoList.objects()
+        val chosen = objs.firstOrNull { it.stringAny("definition", "quality").contains("720", true) }
+            ?: objs.firstOrNull { it.stringAny("play_url", "main_url", "url").startsWith("http") }
+        val u = chosen?.stringAny("play_url", "main_url", "backup_url", "url").orEmpty()
+        if (u.startsWith("http")) return cleanUrl(u)
+    }
+
+    // 7. Cek videoFiles array (DramaPops)
+    val vFiles = data.optJSONArray("videoFiles") ?: json.optJSONArray("videoFiles")
+    if (vFiles != null) {
+        val u = vFiles.objects().firstOrNull()?.stringAny("url", "play_url").orEmpty()
+        if (u.startsWith("http")) return cleanUrl(u)
+    }
+
+    // 8. Cek direct string keys pada data dan json
+    val directKeys = arrayOf(
+        "hdUrl", "sdUrl", "videoUrl", "video_url", "playUrl", "play_url", "hls_url", "hlsUrl",
+        "stream_url", "streamUrl", "m3u8_url", "m3u8", "mediaUrl", "resourceLink", "source",
+        "main_url", "backup_url", "video", "url", "sd_264_url", "hd_264_url", "sd_265_url", "hd_265_url"
+    )
+    val direct = data.stringAny(*directKeys).takeIf { it.startsWith("http") }
+        ?: json.stringAny(*directKeys).takeIf { it.startsWith("http") }
+    if (!direct.isNullOrBlank()) return cleanUrl(direct)
+
+    return ""
 }
+
 private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c.recommended + n.recommended), dedupe(c.popular + n.popular), dedupe(c.newest + n.newest), max(c.loadedPage, n.loadedPage), n.hasMore)
 
 // Feed Melolo memuat rak ("Trending"), tab genre ("Peringkat", "Time Travel"),
@@ -4814,16 +5539,16 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 // bahkan key ter-obfuscate seperti dcup/dlit), jadi semua alias dipungut di sini.
 private val DRAMA_ID_KEYS = arrayOf(
     "book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid",
-    "dramaId", "t_book_id", "slug", "playlet_id", "video_id", "videoId", "seriesId",
+    "dramaId", "t_book_id", "slug", "playlet_id", "playletId", "video_id", "videoId", "seriesId",
     "series_id", "contentId", "content_id", "shortPlayCode", "shortplay_id",
-    "shortPlayId", "theater_id", "compilationsId", "cid", "vid", "dcup", "dlit"
+    "shortPlayId", "theater_id", "compilationsFakeId", "compilationsId", "cid", "vid", "dcup", "dlit", "code"
 )
 private val DRAMA_TITLE_KEYS = arrayOf(
     "book_name", "bookName", "drama_name", "title", "book_title", "bookTitle", "name",
     "shortTitle", "anime_title", "playlet_title", "video_name", "videoName",
     "seriesName", "series_name", "contentName", "content_name", "shortPlayName",
     "short_play_name", "theater_name", "playletName", "nseri", "nmeasu", "vod_name",
-    "drama_title", "subjectName", "subject_name"
+    "drama_title", "subjectName", "subject_name", "rwill"
 )
 private val DRAMA_COVER_KEYS = arrayOf(
     "cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg",
@@ -4832,34 +5557,65 @@ private val DRAMA_COVER_KEYS = arrayOf(
     "coverId", "pday", "pbat", "poster_url", "vertical_cover", "verticalCover",
     "coverImage", "img", "img_url", "imgUrl", "imageUrl", "pic", "pic_url",
     "thumbnail", "thumbnail_url", "headImg", "head_img", "vertical_image",
-    "coverImg", "hcover", "vcover"
+    "coverImg", "hcover", "vcover", "drama_cover", "icon", "posterVt", "posterHz",
+    "horizontalImage", "process_cover"
 )
 private val DRAMA_DESC_KEYS = arrayOf(
     "introduction", "description", "meta_description", "meta_sinopsis", "shoot",
     "content", "synopsis", "abstract", "desc", "evaluate", "special_desc", "dwill",
-    "ddet", "recommendIntro", "summary", "intro", "brief", "plot", "introduce"
+    "ddet", "recommendIntro", "summary", "intro", "brief", "plot", "introduce",
+    "drama_description", "video_desc", "des"
 )
 private val DRAMA_EP_KEYS = arrayOf(
     "serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode",
     "total_episodes", "totalEpisodes", "episode_num", "episodes", "freeEpisodes",
     "chapter_num", "totalEpisode", "uploadOfEpisodes", "current_count", "total_num",
-    "eps", "ewood", "ewin"
+    "eps", "ewood", "ewin", "episodeCount", "dramaCount", "upload_num", "last_series_no",
+    "video_num", "chapters", "onlineChapter", "episode", "total"
 )
 private val DRAMA_SIGNAL_KEYS = listOf(
-    "subjectId", "key", "season_id", "ep_id", "aid", "shortPlayCode", "compilationsId",
-    "theater_id", "shortplay_id", "cid", "playlet_id", "video_id", "seriesId",
-    "contentId", "dcup", "dlit"
+    "subjectId", "key", "season_id", "ep_id", "aid", "shortPlayCode", "compilationsFakeId", "compilationsId",
+    "theater_id", "shortplay_id", "cid", "playlet_id", "playletId", "video_id", "seriesId", "series_id",
+    "contentId", "dcup", "dlit", "drama_id", "vid"
 )
 
 private fun JSONObject.hasDramaSignal(): Boolean =
     stringAny(*DRAMA_COVER_KEYS).isNotBlank() ||
         optJSONObject("cover") != null ||
+        optJSONObject("images") != null ||
         stringAny(*DRAMA_DESC_KEYS).isNotBlank() ||
         intAny(*DRAMA_EP_KEYS, 0) > 0 ||
         DRAMA_SIGNAL_KEYS.any { has(it) }
 
+private fun extractDramaId(o: JSONObject, fp: String): String {
+    return when (fp) {
+        "shortmax" -> o.stringAny("code", "id")
+        "storyreel", "flareflow" -> o.stringAny("shortPlayCode", "shortPlayId", "id")
+        "dramarush", "vibeshort" -> o.stringAny("shortPlayId", "id", "shortPlayCode")
+        "flextv" -> o.stringAny("series_id", "id")
+        "radreels" -> o.stringAny("compilationsFakeId", "compilationsId", "id")
+        "shortsky" -> o.optJSONObject("redirect_param")?.stringAny("playletId", "playlet_id").orEmpty()
+            .ifBlank { o.stringAny("playletId", "playlet_id", "id") }
+        "shortbox" -> o.stringAny("shortplay_id", "id")
+        "meloshort", "shortwave" -> o.stringAny("drama_id", "id")
+        "shorten" -> o.stringAny("slug", "id")
+        "playlet" -> o.stringAny("theater_id", "id")
+        "moboreels" -> o.stringAny("seriesId", "id")
+        "wetv" -> o.stringAny("cid", "id")
+        "cashdrama", "raptdrama" -> o.stringAny("vid", "id")
+        "sereal" -> o.stringAny("contentId", "id")
+        "dotdrama" -> o.stringAny("dcup", "id")
+        "sodareels" -> o.stringAny("dlit", "id")
+        "minishort", "happyshort" -> o.stringAny("video_id", "id")
+        "flickreels" -> o.stringAny("playlet_id", "id")
+        "goodshort", "shotshort", "snackshort", "reelbuzz" -> o.stringAny("bookId", "book_id", "id")
+        else -> o.stringAny(*DRAMA_ID_KEYS)
+    }.ifBlank { o.stringAny(*DRAMA_ID_KEYS) }
+}
+
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
+    val skipKeys = setOf("categories", "category_info", "episodes", "episode_list", "video_list", "chapterList", "chapters", "seasons", "right_float")
     fun extractBooks(node: Any?) {
         when (node) {
             is JSONArray -> {
@@ -4873,7 +5629,7 @@ private fun flat(any: Any?, fp: String): List<Drama> {
                 }
             }
             is JSONObject -> {
-                            val bookId = node.stringAny(*DRAMA_ID_KEYS)
+                val bookId = extractDramaId(node, fp)
                 val bookName = node.stringAny(*DRAMA_TITLE_KEYS)
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
                     val d = normalize(node, fp)
@@ -4884,7 +5640,7 @@ private fun flat(any: Any?, fp: String): List<Drama> {
                 val keys = node.keys()
                 while (keys.hasNext()) {
                     val k = keys.next()
-                    if (k != "categories" && k != "category_info") {
+                    if (k !in skipKeys) {
                         val v = node.opt(k)
                         if (v is JSONObject || v is JSONArray) {
                             extractBooks(v)
@@ -4901,14 +5657,21 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 private fun normalize(o: JSONObject, fp: String): Drama {
     val p = fp
     // Bstation: season_id atau aid sebagai ID; Dramanova (dramahub.be): dramaId.
-    val id = o.stringAny(*DRAMA_ID_KEYS)
+    val id = extractDramaId(o, p)
+    val epCount = o.intAny(*DRAMA_EP_KEYS, "episode_number", "chapterCnt", "totalChapterNum", 0)
+        .let {
+            if (it > 0) it
+            else o.optJSONObject("data")?.optJSONObject("id_id")?.intAny("episode", 0)
+                ?: o.optJSONObject("id_id")?.intAny("episode", 0)
+                ?: 0
+        }
     return Drama(
         id,
-        o.stringAny(*DRAMA_TITLE_KEYS),
+        cleanText(o.stringAny(*DRAMA_TITLE_KEYS)),
         cleanText(o.stringAny(*DRAMA_DESC_KEYS)),
         fixImg(o.stringAny(*DRAMA_COVER_KEYS).ifBlank { o.coverUrl() }),
         // totalChapterNum = nama field jumlah episode di balasan /search DramaBox.
-        o.intAny(*DRAMA_EP_KEYS, "episode_number", "chapterCnt", "totalChapterNum", 0),
+        epCount,
         o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers", "views").ifBlank {
             val fc = o.optLong("follow_count", 0)
             if (fc > 0) "${fc/1000}K" else o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty()
@@ -5062,7 +5825,9 @@ private fun pickSubtitleUrl(vararg roots: JSONObject?): String {
             val arr = root.optJSONArray(key) ?: return@forEach
             arr.objects().forEach { o ->
                 val url = cleanUrl(o.stringAny(*SUB_URL_KEYS))
-                if (url.startsWith("http")) found += o.stringAny(*SUB_LANG_KEYS).lowercase().trim() to url
+                if (url.startsWith("http") && !url.contains(".m3u8", true)) {
+                    found += o.stringAny(*SUB_LANG_KEYS).lowercase().trim() to url
+                }
             }
         }
     }
@@ -5080,7 +5845,19 @@ private fun pickSubtitleUrl(vararg roots: JSONObject?): String {
         ?: found.first().second
 }
 
-private fun JSONObject.coverUrl(): String { val c = opt("cover"); return if (c is JSONObject) c.stringAny("url") else "" }
+private fun JSONObject.coverUrl(): String {
+    val c = opt("cover")
+    if (c is JSONObject) {
+        val u = c.stringAny("url", "image", "cover")
+        if (u.isNotBlank()) return u
+    }
+    val imgs = optJSONObject("images")
+    if (imgs != null) {
+        val u = imgs.stringAny("image", "cover", "poster", "url")
+        if (u.isNotBlank()) return u
+    }
+    return ""
+}
 private fun fixImg(u: String): String {
         if (u.contains("fizzopic.org") && u.contains(".heic")) {
             val m = Regex("novel-images-apsoutheast/([a-f0-9]+)~").find(u)
@@ -5113,6 +5890,7 @@ private fun cleanUrl(u: String): String {
         .replace("&amp;", "&")
         .replace("\\u0026", "&")
         .replace("http://sulao.montagehub.xyz", "https://sulao.montagehub.xyz")
+        .replace("http://media.shorten.watch", "https://media.shorten.watch")
         .replace(" ", "%20")
 }
 private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
