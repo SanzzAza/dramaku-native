@@ -303,17 +303,17 @@ private sealed class Load<out T> {
 private val Platforms = listOf(
     // Melolo & NetShort: endpoint penuh dengan Bearer; DramaBox: proxy baru
     // (host lama captain.sapimu.au sudah mati, DNS-nya tidak resolve).
-    PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoRes = R.drawable.logo_melolo),
-    PlatformInfo("dramanova", "Dramanova", "https://dramahub.be/dramanova"),
-    PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1"),
-    PlatformInfo("dramabox", "DramaBox", "https://dramahub.be/dramaboxbaru/api"),
-    PlatformInfo("netshort", "NetShort", "https://dramahub.be/netshort/api/v1"),
-    PlatformInfo("reelshort", "ReelShort", "https://dramahub.be/reelshort/api/v1"),
-    PlatformInfo("anichin", "Anichin", "https://dramahub.be/anichin"),
-    PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api"),
-    PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
-    PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api"),
-    PlatformInfo("stardusttv", "Stardust TV", "https://dramahub.be/stardusttv/api/v1")
+    PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoUrl = "https://dramahub.be/logos/melolo.png", logoRes = R.drawable.logo_melolo),
+    PlatformInfo("dramanova", "Dramanova", "https://dramahub.be/dramanova", logoUrl = "https://dramahub.be/logos/dramanova.png", logoRes = R.drawable.logo_dramanova),
+    PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1", logoUrl = "https://dramahub.be/logos/freereels.png", logoRes = R.drawable.logo_freereels),
+    PlatformInfo("dramabox", "DramaBox", "https://dramahub.be/dramaboxbaru/api", logoUrl = "https://dramahub.be/logos/dramabox.png", logoRes = R.drawable.logo_dramabox),
+    PlatformInfo("netshort", "NetShort", "https://dramahub.be/netshort/api/v1", logoUrl = "https://dramahub.be/logos/netshort.png", logoRes = R.drawable.logo_netshort),
+    PlatformInfo("reelshort", "ReelShort", "https://dramahub.be/reelshort/api/v1", logoUrl = "https://dramahub.be/logos/reelshort.png", logoRes = R.drawable.logo_reelshort),
+    PlatformInfo("anichin", "Anichin", "https://dramahub.be/anichin", logoUrl = "https://dramahub.be/logos/anichin.png", logoRes = R.drawable.logo_anichin),
+    PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api", logoUrl = "https://dramahub.be/logos/bstation.png", logoRes = R.drawable.logo_bstation),
+    PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api", logoUrl = "https://dramahub.be/logos/moviebox.png", logoRes = R.drawable.logo_moviebox),
+    PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api", logoUrl = "https://dramahub.be/logos/moviebox.png", logoRes = R.drawable.logo_moviebox),
+    PlatformInfo("stardusttv", "Stardust TV", "https://dramahub.be/stardusttv/api/v1", logoUrl = "https://dramahub.be/logos/stardusttv.png", logoRes = R.drawable.logo_stardusttv)
 ) + ExtraPlatforms.platforms
 
 // Rak genre DramaBox cadangan: dipakai kalau /categories tidak terbaca, supaya
@@ -956,8 +956,8 @@ private fun PlatformCard(
                         platform.logoRes,
                         platform.label,
                         Modifier
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(4.dp)),
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp)),
                         contentScale = ContentScale.Crop
                     )
                 }
@@ -966,9 +966,9 @@ private fun PlatformCard(
                         platform.logoUrl,
                         platform.label,
                         Modifier
-                            .size(24.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        contentScale = ContentScale.Fit
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp)),
+                        contentScale = ContentScale.Crop
                     )
                 }
                 else -> {

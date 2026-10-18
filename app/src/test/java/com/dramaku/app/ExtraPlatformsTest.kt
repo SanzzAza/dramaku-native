@@ -20,6 +20,8 @@ class ExtraPlatformsTest {
             val detail = ExtraPlatforms.detailUrl(p.id, "test_id_123", base)
             assertNotNull("detailUrl missing for ${p.id}", detail)
             assertTrue("detailUrl should start with http for ${p.id}", detail!!.startsWith("http"))
+            assertTrue("logoUrl missing for ${p.id}", p.logoUrl.startsWith("https://dramahub.be/logos/"))
+            assertTrue("logoRes missing for ${p.id}", p.logoRes != 0)
         }
     }
 
