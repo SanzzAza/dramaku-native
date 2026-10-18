@@ -10,9 +10,6 @@ import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -52,6 +49,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -60,6 +58,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -81,6 +85,7 @@ import com.dramaku.app.data.RemoteConfigRepository
 import com.dramaku.app.home.Greetings
 import com.dramaku.app.home.HomeCategory
 import com.dramaku.app.storage.ProgressKeys
+import com.dramaku.app.player.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -91,8 +96,12 @@ import kotlinx.coroutines.launch
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import androidx.media3.common.C
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
@@ -102,6 +111,7 @@ import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -2272,6 +2282,8 @@ private fun LibraryScreen(store: LocalStore, dataTick: Int, onDrama: (Drama) -> 
     var localTick by remember { mutableIntStateOf(0) }
     val history = remember(dataTick, localTick) { store.history(dataTick + localTick) }
     val favs = remember(dataTick, localTick) { store.favs() }
+    val likes = remember(dataTick, localTick) { store.likes() }
+    val saved = if (selectedTab == 1) favs else likes
     val tabs = listOf("Histori", "Koleksi", "Suka")
 
     Column(Modifier.fillMaxSize().background(DS.Bg).padding(horizontal = 22.dp)) {
@@ -2318,21 +2330,22 @@ private fun LibraryScreen(store: LocalStore, dataTick: Int, onDrama: (Drama) -> 
                     }
                 }
             }
-            else -> if (favs.isEmpty()) {
+            else -> if (saved.isEmpty()) {
                 EmptyState(
                     if (selectedTab == 1) "Koleksi masih kosong" else "Belum ada yang disukai",
-                    "Simpan drama dari halaman detail agar mudah ditemukan lagi.",
+                    if (selectedTab == 1) "Simpan drama ke koleksi agar mudah ditemukan lagi." else "Ketuk Suka di pemutar untuk menambahkan drama ke sini.",
                     Icons.Rounded.FavoriteBorder
                 )
             } else {
                 LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
-                    items(if (selectedTab == 1) favs else favs.reversed(), key = { it.platform + it.id }) { d ->
+                    items(saved, key = { it.platform + it.id }) { d ->
                         LibraryRow(
                             d.title,
                             listOfNotNull(d.tags.take(2).joinToString(", ").takeIf { it.isNotBlank() }, d.episodes.takeIf { it > 0 }?.let { "$it episode" }).joinToString(" · ").ifBlank { platformLabel(d.platform) },
                             d.poster,
                             onDelete = {
-                                store.removeFav(d.id, d.platform); localTick++; Toast.makeText(ctx, "Koleksi diperbarui", Toast.LENGTH_SHORT).show()
+                                if (selectedTab == 1) store.removeFav(d.id, d.platform) else store.removeLike(d.id, d.platform)
+                                localTick++; Toast.makeText(ctx, if (selectedTab == 1) "Koleksi diperbarui" else "Daftar suka diperbarui", Toast.LENGTH_SHORT).show()
                             }
                         ) { onDrama(d) }
                     }
@@ -2474,6 +2487,8 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
             DangerRow("Hapus riwayat") { store.clearHistory(); bump(); Toast.makeText(ctx, "Riwayat dihapus", Toast.LENGTH_SHORT).show() }
             GroupDivider()
             DangerRow("Hapus favorit") { store.clearFavs(); bump(); Toast.makeText(ctx, "Favorit dihapus", Toast.LENGTH_SHORT).show() }
+            GroupDivider()
+            DangerRow("Hapus suka") { store.clearLikes(); bump(); Toast.makeText(ctx, "Daftar suka dihapus", Toast.LENGTH_SHORT).show() }
             GroupDivider()
             DangerRow("Hapus pencarian") { store.clearRecentSearches(); bump(); Toast.makeText(ctx, "Pencarian dihapus", Toast.LENGTH_SHORT).show() }
         }
@@ -2961,6 +2976,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
 }
 
 private fun episodeCount(d: Detail): Int = max(d.drama.episodes, d.episodes.size)
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private object VideoCache {
     private const val MAX_MB = 256L
     @Volatile private var inst: SimpleCache? = null
@@ -2969,6 +2985,7 @@ private object VideoCache {
     }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = emptyMap()): ExoPlayer {
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
@@ -2982,6 +2999,11 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
     http.setDefaultRequestProperties(headers)
     val cache = CacheDataSource.Factory().setCache(VideoCache.get(ctx)).setUpstreamDataSourceFactory(http).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     return ExoPlayer.Builder(ctx)
+        .setAudioAttributes(AudioAttributes.DEFAULT, true)
+        .setHandleAudioBecomingNoisy(true)
+        .setSeekBackIncrementMs(10_000L)
+        .setSeekForwardIncrementMs(10_000L)
+        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(10_000, 30_000, 800, 1_500).build())
         .setRenderersFactory(DefaultRenderersFactory(ctx).setEnableDecoderFallback(true))
         .setTrackSelector(
             DefaultTrackSelector(ctx).apply {
@@ -3014,6 +3036,7 @@ private fun playerError(e: PlaybackException): String {
 // PLAYER — feed cuplikan & swipe episode
 // ─────────────────────────────────────────────────────────────────
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: LocalStore, onClose: () -> Unit, onWatchFull: (Detail) -> Unit, onOpenDetail: (Drama) -> Unit) {
@@ -3157,525 +3180,336 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRepository, store: LocalStore, onClose: () -> Unit) {
     val ctx = LocalContext.current
-    val act = ctx as? Activity
-    val compAct = ctx as? ComponentActivity
+    val act = ctx as? ComponentActivity
+    val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val total = episodeCount(detail).coerceAtLeast(1)
+    val locked = remember(detail) { detail.episodes.filter { it.locked }.map { it.number }.toSet() }
     val pager = rememberPagerState(initialPage = (startEp - 1).coerceIn(0, total - 1), pageCount = { total })
     val player = remember { buildPlayer(ctx) }
-    val preferLandscape = remember(detail.drama.platform, detail.drama.subjectType) { prefersLandscapePlayback(detail.drama) }
-    var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    val retryBudget = remember { EpisodeRetryBudget() }
+    var loadedEpisode by remember { mutableIntStateOf(0) }
+    var requestedEpisode by remember { mutableIntStateOf(0) }
     var retryKey by remember { mutableIntStateOf(0) }
-    var autoRetriedEpisode by remember { mutableIntStateOf(0) }
-    var lastEp by remember { mutableIntStateOf(startEp.coerceIn(1, total)) }
-    var uiVis by remember { mutableStateOf(true) }
-    var epSheet by remember { mutableStateOf(false) }
-    var settingsSheet by remember { mutableStateOf(false) }
-    var fitContain by remember(detail.drama.id, detail.drama.platform) { mutableStateOf(if (preferLandscape) true else store.fitContain()) }
+    var resumeOverride by remember { mutableStateOf<Pair<Int, Long>?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var buffering by remember { mutableStateOf(false) }
+    var firstFrame by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
     var playing by remember { mutableStateOf(false) }
-    var playbackSpeed by remember { mutableFloatStateOf(1f) }
-    var isFavorite by remember(detail.drama.id, detail.drama.platform) { mutableStateOf(store.isFav(detail.drama.id, detail.drama.platform)) }
+    var wantsToPlay by remember { mutableStateOf(true) }
+    var foreground by remember { mutableStateOf(act?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) ?: true) }
+    var panel by remember { mutableStateOf<PlayerPanel?>(null) }
+    var immersive by remember { mutableStateOf(false) }
+    var fitContain by remember { mutableStateOf(store.fitContain()) }
+    var playbackSpeed by remember { mutableFloatStateOf(store.playbackSpeed()) }
+    var speedHold by remember { mutableStateOf(false) }
+    var collected by remember { mutableStateOf(store.isFav(detail.drama.id, detail.drama.platform)) }
+    var liked by remember { mutableStateOf(store.isLiked(detail.drama.id, detail.drama.platform)) }
+    var showLike by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
     var curMs by remember { mutableLongStateOf(0L) }
     var durMs by remember { mutableLongStateOf(0L) }
+    var bufferedMs by remember { mutableLongStateOf(0L) }
     var isSeeking by remember { mutableStateOf(false) }
-    var flash by remember { mutableStateOf<String?>(null) }
-    var speedHold by remember { mutableStateOf(false) }
-    var liked by remember { mutableStateOf(false) }
-    var lastSaveMs by remember { mutableLongStateOf(0L) }
+    var streamHasSub by remember { mutableStateOf(false) }
     var hasSub by remember { mutableStateOf(false) }
-    var curStreamUrl by remember { mutableStateOf("") }
+    var embedUrl by remember { mutableStateOf("") }
+    var portraitVideo by remember { mutableStateOf(detail.drama.platform != "anichin") }
     var subOn by remember { mutableStateOf(store.subtitleOn()) }
-    var dataSaver by remember(detail.drama.id) { mutableStateOf(store.dataSaver()) }
+    var dataSaver by remember { mutableStateOf(store.dataSaver()) }
+    var autoNext by remember { mutableStateOf(store.autoNext()) }
 
-    // Satu tempat untuk semua preferensi trek: teks nyala/mati dan batas kualitas
-    // saat Hemat Data. Keduanya berlaku tanpa perlu memuat ulang stream.
-    LaunchedEffect(player, subOn, dataSaver) {
-        runCatching {
-            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subOn)
-                .setPreferredTextLanguage("id")
-                .setPreferredTextLanguages("id", "in", "en")
-                .setSelectUndeterminedTextLanguage(true)
-                .apply {
-                    if (dataSaver) {
-                        setMaxVideoSize(854, 480)
-                        setMaxVideoBitrate(1_200_000)
-                    } else {
-                        clearVideoSizeConstraints()
-                        setMaxVideoBitrate(Int.MAX_VALUE)
-                    }
-                }
-                .build()
-        }
+    fun mediaId(ep: Int) = ProgressKeys.episodePrefix(detail.drama.platform, detail.drama.id, ep)
+    fun saveProgress() {
+        // The media item, not the pager's transient currentPage, owns progress.
+        // Never replace saved progress with 0 while a resolver is still loading.
+        val ep = loadedEpisode
+        if (ep <= 0 || player.currentMediaItem?.mediaId != mediaId(ep) || player.duration <= 0L) return
+        store.updateProgress(detail.drama.id, detail.drama.platform, ep, player.currentPosition.coerceAtLeast(0L), player.duration)
+    }
+    fun closePlayer() { saveProgress(); player.pause(); onClose() }
+    fun reload(manual: Boolean) {
+        val ep = pager.settledPage + 1
+        saveProgress()
+        if (loadedEpisode == ep) resumeOverride = ep to player.currentPosition.coerceAtLeast(0L)
+        if (manual) retryBudget.reset(ep)
+        repo.invalidateStream(detail.drama, ep)
+        error = null; loading = true; retryKey++
+    }
+    fun togglePlayback() {
+        if (loadedEpisode <= 0 || error != null) return
+        if (player.playbackState == Player.STATE_ENDED) { player.seekTo(0L); wantsToPlay = true }
+        else wantsToPlay = !wantsToPlay
+    }
+    fun likeVideo(toggle: Boolean) {
+        if (toggle || !liked) { store.toggleLike(detail.drama); liked = !liked }
+        showLike = liked
+    }
+    fun seekBy(delta: Long) {
+        if (loadedEpisode <= 0 || durMs <= 0L) return
+        curMs = PlaybackPolicy.seekPosition(player.currentPosition, delta, durMs)
+        player.seekTo(curMs); saveProgress()
+        notice = if (delta > 0L) "+10 detik" else "−10 detik"
     }
 
-    fun saveProgress(ep: Int) { runCatching { store.updateProgress(detail.drama.id, detail.drama.platform, ep, player.currentPosition.coerceAtLeast(0L), player.duration.takeIf { it > 0 } ?: 0L) } }
-    fun closePlayer() { saveProgress(pager.currentPage + 1); runCatching { player.pause() }; onClose() }
     BackHandler {
         when {
-            settingsSheet -> settingsSheet = false
-            epSheet -> epSheet = false
+            panel != null -> panel = null
+            immersive -> immersive = false
             else -> closePlayer()
         }
     }
 
-    DisposableEffect(act, preferLandscape) {
-        act?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val prevOrientation = act?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        if (preferLandscape) {
-            act?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        } else {
-            act?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
-        val l = object : Player.Listener {
-            override fun onIsPlayingChanged(p: Boolean) {
-                playing = p
-                if (p) autoRetriedEpisode = 0
+    DisposableEffect(act) {
+        val window = act?.window
+        val previousOrientation = act?.requestedOrientation
+        val keepScreenOn = window?.attributes?.flags?.and(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) != 0
+        val insets = window?.decorView?.let { ViewCompat.getRootWindowInsets(it) }
+        val visibleBars = (if (insets?.isVisible(WindowInsetsCompat.Type.statusBars()) != false) WindowInsetsCompat.Type.statusBars() else 0) or
+            (if (insets?.isVisible(WindowInsetsCompat.Type.navigationBars()) != false) WindowInsetsCompat.Type.navigationBars() else 0)
+        act?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        window?.let {
+            it.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            WindowCompat.setDecorFitsSystemWindows(it, false)
+            WindowCompat.getInsetsController(it, it.decorView).apply {
+                systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                hide(WindowInsetsCompat.Type.systemBars())
             }
-            override fun onPlayerError(e: PlaybackException) {
-                val failedEp = pager.currentPage + 1
-                if (autoRetriedEpisode != failedEp) {
-                    autoRetriedEpisode = failedEp
-                    repo.invalidateStream(detail.drama, failedEp)
-                    error = null
-                    loading = true
-                    retryKey++
-                } else {
-                    loading = false
-                    error = playerError(e)
-                }
-            }
-            override fun onPlaybackStateChanged(s: Int) { if (s == Player.STATE_ENDED && store.autoNext() && pager.currentPage < total - 1) { saveProgress(pager.currentPage + 1); scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } } }
         }
-        player.addListener(l)
         onDispose {
-            act?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            act?.requestedOrientation = prevOrientation
-            player.removeListener(l)
-            saveProgress(pager.currentPage + 1)
-            runCatching { player.stop() }
-            player.release()
+            window?.let {
+                if (!keepScreenOn) it.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                WindowCompat.setDecorFitsSystemWindows(it, true)
+                WindowCompat.getInsetsController(it, it.decorView).show(visibleBars)
+            }
+            previousOrientation?.let { act?.requestedOrientation = it }
         }
     }
 
-    DisposableEffect(compAct) {
-        val lc = compAct?.lifecycle ?: return@DisposableEffect onDispose { }
-        val obs = LifecycleEventObserver { _, ev -> if (ev == Lifecycle.Event.ON_PAUSE || ev == Lifecycle.Event.ON_STOP) { saveProgress(pager.currentPage + 1); runCatching { player.pause() } } }
-        lc.addObserver(obs); onDispose { lc.removeObserver(obs) }
-    }
-
-    LaunchedEffect(uiVis, loading, error, pager.currentPage, epSheet, settingsSheet) {
-        if (uiVis && !loading && error == null && !epSheet && !settingsSheet) { delay(2800); uiVis = false }
-    }
-
-    LaunchedEffect(player, pager.currentPage, loading) {
-        while (true) {
-            val d = player.duration.takeIf { it > 0 } ?: 0L; durMs = d
-            if (!isSeeking) curMs = player.currentPosition.coerceAtLeast(0L)
-            if (d > 0 && System.currentTimeMillis() - lastSaveMs > 2500) { lastSaveMs = System.currentTimeMillis(); saveProgress(pager.currentPage + 1) }
-            delay(500)
-        }
-    }
-
-    LaunchedEffect(flash) { if (flash != null) { delay(700); flash = null; liked = false } }
-
-    LaunchedEffect(pager.currentPage, retryKey) {
-        val ep = pager.currentPage + 1
-        if (lastEp != ep) saveProgress(lastEp); lastEp = ep
-        uiVis = true; epSheet = false; settingsSheet = false; liked = false; curMs = 0; durMs = 0; lastSaveMs = 0; loading = true; error = null
-        val savedPos = store.progressMs(detail.drama.id, detail.drama.platform, ep)
-        val savedDur = store.progressDurationMs(detail.drama.id, detail.drama.platform, ep)
-        val start = if (savedDur > 0 && savedPos >= savedDur - 4000) 0L else savedPos
-        store.saveHistory(detail.drama, ep)
-        val stream = try { repo.resolveStreamCached(detail, ep, store.dataSaver()).also { curStreamUrl = it.url } }
-        catch (e: CancellationException) { throw e }
-        catch (t: Throwable) { loading = false; error = t.message ?: "Video belum tersedia"; player.stop(); return@LaunchedEffect }
-        if (stream.url.isBlank()) { loading = false; error = "Video belum tersedia"; player.stop(); return@LaunchedEffect }
-        hasSub = stream.subtitle.isNotBlank()
-        // Anichin: embed URL (ok.ru, etc) tidak bisa di ExoPlayer, pakai WebView
-        if (detail.drama.platform == "anichin" && (stream.url.contains("ok.ru") || stream.url.contains("dailymotion") || stream.url.contains("rumble.com") || stream.url.contains("anichin-player") || stream.url.contains("abyssplayer") || stream.url.contains("vidhide") || stream.url.contains("turbovid") || stream.url.contains("embed"))) {
-            // Untuk anichin, jangan pakai ExoPlayer, biarkan WebView yang handle
-            runCatching { player.stop(); player.clearMediaItems() }
-            loading = false
-            // Simpan URL untuk WebView via state? Kita pakai stream.url langsung di UI nanti
-        } else {
-            runCatching { player.stop(); player.clearMediaItems() }
-            player.setMediaItem(buildMediaItem(stream)); player.prepare(); player.setPlaybackSpeed(playbackSpeed)
-            if (start > 0) player.seekTo(start); player.playWhenReady = true; loading = false
-            if (ep < total) launch { try { repo.resolveStreamCached(detail, ep + 1, store.dataSaver()) } catch (_: Throwable) {} }
-        }
-    }
-
-    Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(player, pager.currentPage, isFavorite) {
-        detectTapGestures(
-            onTap = { uiVis = !uiVis; if (!uiVis) { epSheet = false; settingsSheet = false } },
-            onDoubleTap = { o -> uiVis = true; val w = size.width.coerceAtLeast(1); when {
-                o.x < w * 0.42f -> { val n = (player.currentPosition - 10000).coerceAtLeast(0); player.seekTo(n); curMs = n; flash = "-10s" }
-                o.x > w * 0.58f -> { val n = (player.currentPosition + 10000).coerceAtMost(player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE); player.seekTo(n); curMs = n; flash = "+10s" }
-                else -> {
-                    if (!isFavorite) { store.toggleFav(detail.drama); isFavorite = true }
-                    liked = true; flash = "♥"
+    DisposableEffect(player, act) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+            override fun onRenderedFirstFrame() { if (loadedEpisode > 0) firstFrame = true }
+            override fun onVideoSizeChanged(size: VideoSize) { if (size.width > 0 && size.height > 0) portraitVideo = size.height >= size.width }
+            override fun onTracksChanged(tracks: Tracks) { hasSub = streamHasSub || tracks.groups.any { it.type == C.TRACK_TYPE_TEXT } }
+            override fun onPlayWhenReadyChanged(ready: Boolean, reason: Int) {
+                if (!ready && (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY || reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)) wantsToPlay = false
+            }
+            override fun onPlayerError(exception: PlaybackException) {
+                buffering = false
+                if (loadedEpisode > 0 && loadedEpisode == pager.settledPage + 1 && retryBudget.tryConsume(loadedEpisode)) reload(manual = false)
+                else { loading = false; error = playerError(exception) }
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                buffering = state == Player.STATE_BUFFERING
+                if (state == Player.STATE_ENDED && loadedEpisode == pager.settledPage + 1) {
+                    saveProgress()
+                    val next = if (autoNext) PlaybackPolicy.nextEpisode(loadedEpisode, total, locked) else null
+                    if (next != null) scope.launch { pager.animateScrollToPage(next - 1) }
+                    else wantsToPlay = false
                 }
-            }},
-            onPress = { val q = withTimeoutOrNull(520) { tryAwaitRelease() }; if (q == null) { speedHold = true; flash = "2x"; runCatching { player.setPlaybackSpeed(2f) }; tryAwaitRelease(); runCatching { player.setPlaybackSpeed(playbackSpeed) }; speedHold = false } }
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> foreground = true
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> { saveProgress(); foreground = false; speedHold = false; player.pause() }
+                else -> Unit
+            }
+        }
+        player.addListener(listener)
+        act?.lifecycle?.addObserver(observer)
+        onDispose {
+            saveProgress()
+            act?.lifecycle?.removeObserver(observer)
+            player.removeListener(listener)
+            player.stop(); player.clearMediaItems(); player.release()
+        }
+    }
+
+    LaunchedEffect(wantsToPlay, foreground, panel, loadedEpisode, isSeeking) {
+        player.playWhenReady = wantsToPlay && foreground && panel == null && loadedEpisode > 0 && !isSeeking
+    }
+    LaunchedEffect(speedHold, playbackSpeed, foreground, panel) {
+        player.setPlaybackSpeed(if (speedHold && foreground && panel == null) 2f else playbackSpeed)
+    }
+    LaunchedEffect(subOn, dataSaver, portraitVideo) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subOn)
+            .setPreferredTextLanguages("id", "in", "en")
+            .setSelectUndeterminedTextLanguage(true)
+            .apply {
+                if (dataSaver) {
+                    // Short dramas are portrait: 854x480 would unnecessarily reject 480x854.
+                    if (portraitVideo) setMaxVideoSize(480, 854) else setMaxVideoSize(854, 480)
+                    setMaxVideoBitrate(1_200_000)
+                } else { clearVideoSizeConstraints(); setMaxVideoBitrate(Int.MAX_VALUE) }
+            }.build()
+    }
+    LaunchedEffect(notice) { if (notice != null) { delay(1_400); notice = null } }
+    LaunchedEffect(showLike) { if (showLike) { delay(650); showLike = false } }
+
+    LaunchedEffect(pager.settledPage, retryKey) {
+        val ep = pager.settledPage + 1
+        saveProgress()
+        // Stop BEFORE resolving the next URL. Fast swipes cancel this effect;
+        // neither an old request nor old audio can take over the new episode.
+        loadedEpisode = 0
+        player.stop(); player.clearMediaItems()
+        if (requestedEpisode != ep) wantsToPlay = true
+        requestedEpisode = ep; retryBudget.beginEpisode(ep)
+        firstFrame = false; embedUrl = ""; streamHasSub = false; hasSub = false
+        speedHold = false; isSeeking = false; curMs = 0L; durMs = 0L; bufferedMs = 0L
+        loading = true; buffering = false; error = null
+        if (ep in locked) { loading = false; error = "Episode ini masih terkunci di sumber. Pilih episode lain."; return@LaunchedEffect }
+        val start = resumeOverride?.takeIf { it.first == ep }?.second ?: PlaybackPolicy.resumePosition(
+            store.progressMs(detail.drama.id, detail.drama.platform, ep), store.progressDurationMs(detail.drama.id, detail.drama.platform, ep)
         )
-    }) {
-        VerticalPager(pager, Modifier.fillMaxSize()) { page ->
+        resumeOverride = null
+        try {
+            val stream = repo.resolveStreamCached(detail, ep, dataSaver)
+            currentCoroutineContext().ensureActive()
+            if (stream.url.isBlank()) throw IllegalStateException("Video belum tersedia")
+            if (PlaybackPolicy.isEmbeddedStream(detail.drama.platform, stream.url)) {
+                embedUrl = stream.url
+                store.saveHistory(detail.drama, ep)
+            } else {
+                streamHasSub = stream.subtitle.isNotBlank(); hasSub = streamHasSub
+                player.setMediaItem(buildMediaItem(stream).buildUpon().setMediaId(mediaId(ep)).build(), start)
+                loadedEpisode = ep; curMs = start
+                store.saveHistory(detail.drama, ep)
+                player.setPlaybackSpeed(playbackSpeed)
+                player.prepare()
+                player.playWhenReady = wantsToPlay && foreground && panel == null
+            }
+            loading = false
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) { loading = false; buffering = false; error = failure.message ?: "Video belum tersedia" }
+    }
+
+    LaunchedEffect(loadedEpisode, dataSaver) {
+        val next = PlaybackPolicy.nextEpisode(loadedEpisode, total, locked) ?: return@LaunchedEffect
+        try { repo.resolveStreamCached(detail, next, dataSaver) }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* URL-only prefetch is optional; never fail current playback. */ }
+    }
+    LaunchedEffect(player) {
+        var lastSave = 0L
+        while (true) {
+            if (loadedEpisode > 0) {
+                durMs = player.duration.takeIf { it > 0L } ?: 0L
+                bufferedMs = player.bufferedPosition.coerceAtLeast(0L)
+                if (!isSeeking) curMs = player.currentPosition.coerceAtLeast(0L)
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (now - lastSave >= 5_000L) { saveProgress(); lastSave = now }
+            }
+            delay(250L)
+        }
+    }
+
+    val ui = EpisodePlayerUiState(
+        title = detail.drama.title, poster = detail.drama.poster, platform = platformLabel(detail.drama.platform),
+        episode = pager.settledPage + 1, total = total, description = detail.drama.description,
+        playing = playing, loading = loading, buffering = buffering, failed = error != null, embedded = embedUrl.isNotBlank(),
+        liked = liked, collected = collected, positionMs = curMs, durationMs = durMs, bufferedMs = bufferedMs,
+        seeking = isSeeking, speed = playbackSpeed, speedHeld = speedHold, immersive = immersive,
+        dataSaver = dataSaver, subtitleEnabled = subOn, hasSubtitles = hasSub, fitContain = fitContain,
+        autoNext = autoNext, notice = notice, showLike = showLike
+    )
+    val action: (PlayerAction) -> Unit = { selected ->
+        when (selected) {
+            PlayerAction.Back -> closePlayer()
+            PlayerAction.PlayPause -> togglePlayback()
+            PlayerAction.Like -> likeVideo(toggle = true)
+            PlayerAction.Collect -> { store.toggleFav(detail.drama); collected = !collected; notice = if (collected) "Ditambahkan ke koleksi" else "Dihapus dari koleksi" }
+            PlayerAction.Share -> shareDrama(ctx, detail.drama)
+            PlayerAction.Episodes -> panel = PlayerPanel.Episodes
+            PlayerAction.More -> panel = PlayerPanel.More
+            PlayerAction.Immersive -> immersive = !immersive
+            PlayerAction.Speed -> panel = PlayerPanel.Speed
+            PlayerAction.Quality -> panel = PlayerPanel.Quality
+            PlayerAction.Subtitles -> panel = PlayerPanel.Subtitles
+            PlayerAction.Details -> panel = PlayerPanel.Details
+            PlayerAction.Fit -> { fitContain = !fitContain; store.setFitContain(fitContain) }
+            PlayerAction.AutoNext -> { autoNext = !autoNext; store.setAutoNext(autoNext) }
+            PlayerAction.Reload -> { panel = null; reload(manual = true) }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        VerticalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !isSeeking && !speedHold && panel == null) { page ->
             Box(Modifier.fillMaxSize().background(Color.Black)) {
-                if (page == pager.currentPage) {
-                    if (detail.drama.platform == "anichin" && curStreamUrl.isNotBlank() && (curStreamUrl.contains("ok.ru") || curStreamUrl.contains("dailymotion") || curStreamUrl.contains("rumble.com") || curStreamUrl.contains("anichin-player") || curStreamUrl.contains("embed") || curStreamUrl.contains("abyssplayer") || curStreamUrl.contains("vidhide") || curStreamUrl.contains("turbovid"))) {
-                        AndroidView(
-                            factory = { ctx ->
-                                // Enable cookies untuk ok.ru & anichin-player
-                                try {
-                                    android.webkit.CookieManager.getInstance().setAcceptCookie(true)
-                                    android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(null, true)
-                                } catch (_: Throwable) {}
-                                WebView(ctx).apply {
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.mediaPlaybackRequiresUserGesture = false
-                                    settings.allowFileAccess = true
-                                    settings.allowContentAccess = true
-                                    settings.allowFileAccessFromFileURLs = true
-                                    settings.allowUniversalAccessFromFileURLs = true
-                                    settings.javaScriptCanOpenWindowsAutomatically = true
-                                    settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                    settings.userAgentString = "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                                    settings.loadWithOverviewMode = true
-                                    settings.useWideViewPort = true
-                                    webChromeClient = WebChromeClient()
-                                    webViewClient = object : WebViewClient() {
-                                        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                                            return false
-                                        }
-                                    }
-                                    tag = curStreamUrl
-                                    val html = """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}iframe{border:0;width:100%;height:100vh}</style></head><body><iframe src="$curStreamUrl" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture" style="width:100%;height:100vh;border:0"></iframe></body></html>"""
-                                    loadDataWithBaseURL("https://anichin.moe/", html, "text/html", "UTF-8", null)
-                                }
-                            },
-                            update = { webView ->
-                                val last = webView.tag as? String ?: ""
-                                if (last != curStreamUrl && curStreamUrl.isNotBlank()) {
-                                    webView.tag = curStreamUrl
-                                    try {
-                                        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
-                                    } catch (_: Throwable) {}
-                                    val html = """<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden}iframe{border:0;width:100%;height:100vh}</style></head><body><iframe src="$curStreamUrl" allowfullscreen allow="autoplay; fullscreen; encrypted-media; picture-in-picture" style="width:100%;height:100vh;border:0"></iframe></body></html>"""
-                                    webView.loadDataWithBaseURL("https://anichin.moe/", html, "text/html", "UTF-8", null)
-                                }
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+                if (page == pager.settledPage) {
+                    if (embedUrl.isNotBlank()) {
+                        EmbeddedEpisodeVideo(embedUrl, foreground, Modifier.fillMaxSize()) { error = it }
                     } else {
-                        AndroidView(factory = { PlayerView(it).apply { useController = false; this.player = player; resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM } }, update = { view -> view.player = player; view.resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM }, modifier = Modifier.fillMaxSize())
+                        if (loadedEpisode == page + 1) EpisodeVideoSurface(player, fitContain, immersive, Modifier.fillMaxSize())
+                        if (!firstFrame || loadedEpisode != page + 1) AsyncImage(detail.drama.poster, null, Modifier.fillMaxSize().alpha(0.55f), contentScale = ContentScale.Crop)
+                        Box(Modifier.fillMaxSize().episodePlayerGestures(
+                            episode = page,
+                            onTap = { togglePlayback() },
+                            onDoubleTap = { offset, width ->
+                                when {
+                                    offset.x < width * 0.35f -> seekBy(-10_000L)
+                                    offset.x > width * 0.65f -> seekBy(10_000L)
+                                    else -> likeVideo(toggle = false)
+                                }
+                            },
+                            onHold = { held ->
+                                speedHold = held && loadedEpisode > 0 && error == null
+                                if (speedHold) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                        ))
                     }
-                }
-                Box(
-                    Modifier.fillMaxSize().background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.88f)),
-                            startY = 520f
-                        )
-                    )
-                )
+                } else AsyncImage(detail.drama.poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             }
         }
-
-        AnimatedVisibility(uiVis || loading || error != null, Modifier.align(Alignment.TopStart)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                PlayerGlassButton(Icons.Rounded.ArrowBack, "Tutup", onClick = ::closePlayer)
-                Spacer(Modifier.width(11.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(detail.drama.title, color = DS.Hi, fontSize = 14.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("Episode ${pager.currentPage + 1} dari $total", color = DS.Body, fontSize = 11.sp, fontFamily = Type.Sans)
-                }
-                PlayerGlassButton(Icons.Rounded.MoreVert, "Pengaturan") { settingsSheet = true; uiVis = true }
+        EpisodePlayerChrome(
+            ui, action,
+            onSeekStart = { isSeeking = true },
+            onSeekChange = { curMs = it },
+            onSeekEnd = { player.seekTo(curMs); isSeeking = false; saveProgress() },
+            onSeekCancel = { curMs = player.currentPosition.coerceAtLeast(0L); isSeeking = false }
+        )
+        error?.let { message ->
+            PlayerErrorCard(message, Modifier.align(Alignment.Center), actionLabel = if (ui.episode in locked) "Pilih episode" else "Coba lagi") {
+                if (ui.episode in locked) panel = PlayerPanel.Episodes else reload(manual = true)
             }
         }
-
-        AnimatedVisibility(uiVis && !loading && error == null, Modifier.align(Alignment.Center)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                PlayerGlassButton(Icons.Rounded.Replay10, "Mundur 10 detik", size = 48.dp) {
-                    val next = (player.currentPosition - 10_000L).coerceAtLeast(0L)
-                    player.seekTo(next); curMs = next
-                }
-                Box(
-                    Modifier.size(68.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.58f))
-                        .border(1.dp, Color.White.copy(alpha = 0.24f), CircleShape)
-                        .clickable { if (player.isPlaying) player.pause() else player.play() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Jeda" else "Putar", tint = Color.White, modifier = Modifier.size(35.dp))
-                }
-                PlayerGlassButton(Icons.Rounded.Forward10, "Maju 10 detik", size = 48.dp) {
-                    val next = (player.currentPosition + 10_000L).coerceAtMost(player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE)
-                    player.seekTo(next); curMs = next
+        if (panel == PlayerPanel.Episodes) {
+            val choices = remember(panel, ui.episode) {
+                (1..total).map { ep ->
+                    val duration = store.progressDurationMs(detail.drama.id, detail.drama.platform, ep)
+                    val position = store.progressMs(detail.drama.id, detail.drama.platform, ep)
+                    EpisodeChoice(ep, ep in locked, if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f)
                 }
             }
-        }
-
-        Column(
-            Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 88.dp, bottom = 44.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                PlatformLogo(detail.drama.platform, Modifier.size(20.dp))
-                Spacer(Modifier.width(7.dp))
-                Text(platformLabel(detail.drama.platform), color = DS.Hi, fontSize = 12.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.width(8.dp))
-                Text("• Episode ${pager.currentPage + 1}", color = DS.Body, fontSize = 11.5.sp, fontFamily = Type.Sans)
+            EpisodeSelectionSheet(ui, choices, onDismiss = { panel = null }) { ep ->
+                panel = null; wantsToPlay = true
+                if (ep != pager.settledPage + 1) scope.launch { pager.scrollToPage(ep - 1) }
             }
-            Spacer(Modifier.height(8.dp))
-            Text(detail.drama.title, color = Color.White, fontSize = 18.sp, lineHeight = 22.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            if (detail.drama.description.isNotBlank()) {
-                Spacer(Modifier.height(5.dp))
-                Text(detail.drama.description, color = Color.White.copy(alpha = 0.82f), fontSize = 11.5.sp, lineHeight = 16.sp, fontFamily = Type.Sans, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            if (total > 1) {
-                Spacer(Modifier.height(9.dp))
-                Row(
-                    Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.14f))
-                        .clickable { epSheet = true; uiVis = true }.padding(horizontal = 11.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Rounded.PlaylistPlay, null, tint = Color.White, modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Pilih episode", color = Color.White, fontSize = 11.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.width(3.dp))
-                    Icon(Icons.Rounded.ChevronRight, null, tint = Color.White, modifier = Modifier.size(15.dp))
-                }
-            }
-        }
-
-        Column(
-            Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 62.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            PlayerSideAction(
-                icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                label = if (isFavorite) "Tersimpan" else "Simpan",
-                active = isFavorite
-            ) {
-                store.toggleFav(detail.drama)
-                isFavorite = !isFavorite
-                liked = isFavorite
-                flash = if (isFavorite) "♥" else "Dihapus"
-            }
-            PlayerSideAction(Icons.Rounded.GridView, "Episode") { epSheet = true; uiVis = true }
-            PlayerSideAction(Icons.Rounded.Share, "Bagikan") { shareDrama(ctx, detail.drama) }
-            PlayerSideAction(Icons.Rounded.MoreHoriz, "Lainnya") { settingsSheet = true; uiVis = true }
-        }
-
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-            AnimatedVisibility(uiVis) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(formatMs(curMs), color = Color.White, fontSize = 10.sp, fontFamily = Type.Sans)
-                    Spacer(Modifier.weight(1f))
-                    Text(if (durMs > 0) formatMs(durMs) else "", color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp, fontFamily = Type.Sans)
-                }
-            }
-            Slider(
-                value = if (durMs > 0) (curMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f) else 0f,
-                onValueChange = { isSeeking = true; curMs = (it * durMs).toLong().coerceAtLeast(0) },
-                onValueChangeFinished = { player.seekTo(curMs); saveProgress(pager.currentPage + 1); isSeeking = false },
-                enabled = durMs > 0,
-                colors = SliderDefaults.colors(thumbColor = DS.Green, activeTrackColor = DS.Green, inactiveTrackColor = Color.White.copy(alpha = 0.34f)),
-                modifier = Modifier.fillMaxWidth().height(22.dp)
+        } else panel?.let { openPanel ->
+            PlayerSettingsSheet(
+                openPanel, ui, onDismiss = { panel = null }, onAction = action,
+                onSpeed = { playbackSpeed = it; store.setPlaybackSpeed(it); panel = null },
+                onDataSaver = { selected ->
+                    panel = null
+                    if (selected != dataSaver) { dataSaver = selected; store.setDataSaver(selected); reload(manual = true) }
+                },
+                onSubtitles = { subOn = it; store.setSubtitleOn(it); panel = null }
             )
         }
-
-        AnimatedVisibility(flash != null || speedHold || liked, Modifier.align(Alignment.Center)) {
-            Surface(color = DS.SheetBg, shape = RoundedCornerShape(50)) {
-                Text(flash ?: if (speedHold) "2x" else "♥", color = if (liked) DS.Green else DS.Hi, fontFamily = Type.Sans, fontWeight = FontWeight.Bold, fontSize = if (liked) 26.sp else 16.sp, modifier = Modifier.padding(horizontal = 22.dp, vertical = 10.dp))
-            }
-        }
-
-        if (loading) {
-            Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = DS.Green, strokeWidth = 2.5.dp)
-                Spacer(Modifier.height(12.dp))
-                Text("Memuat Ep ${pager.currentPage + 1}…", color = DS.Hi, fontSize = 13.sp, fontFamily = Type.Sans)
-            }
-        }
-
-        error?.let { e ->
-            PlayerErrorCard(e, Modifier.align(Alignment.Center)) { repo.invalidateStream(detail.drama, pager.currentPage + 1); retryKey++ }
-        }
-
-        if (epSheet) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.70f)).clickable { epSheet = false })
-            Surface(
-                color = Color(0xFF111111),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.68f)
-            ) {
-                Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
-                    Box(Modifier.width(38.dp).height(4.dp).clip(RoundedCornerShape(50)).background(DS.Faint).align(Alignment.CenterHorizontally))
-                    Spacer(Modifier.height(16.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Pilih Episode", color = DS.Hi, fontSize = 21.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.height(3.dp))
-                            Text("${detail.drama.title} · $total episode", color = DS.Muted, fontSize = 11.5.sp, fontFamily = Type.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                        IconButton(onClick = { epSheet = false }) { Icon(Icons.Rounded.Close, "Tutup", tint = DS.Body) }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(5),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(bottom = 20.dp)
-                    ) {
-                        items((1..total).toList()) { ep ->
-                            val active = ep == pager.currentPage + 1
-                            Column(
-                                Modifier.height(58.dp).clip(RoundedCornerShape(12.dp))
-                                    .background(if (active) DS.Green else DS.Card)
-                                    .border(1.dp, if (active) DS.Green else DS.Line, RoundedCornerShape(12.dp))
-                                    .clickable { epSheet = false; uiVis = true; scope.launch { pager.animateScrollToPage(ep - 1) } },
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(ep.toString(), color = if (active) DS.Ink else DS.Hi, fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFamily = Type.Sans)
-                                if (active) Text("Diputar", color = DS.Ink.copy(alpha = 0.72f), fontSize = 8.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (settingsSheet) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.70f)).clickable { settingsSheet = false })
-            Surface(
-                color = Color(0xFF151515),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-            ) {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-                    Box(Modifier.width(38.dp).height(4.dp).clip(RoundedCornerShape(50)).background(DS.Faint).align(Alignment.CenterHorizontally))
-                    Spacer(Modifier.height(16.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Pengaturan Pemutar", color = DS.Hi, fontSize = 19.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { settingsSheet = false }) { Icon(Icons.Rounded.Close, "Tutup", tint = DS.Body) }
-                    }
-                    Spacer(Modifier.height(15.dp))
-                    Text("Kecepatan", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(9.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
-                            val active = playbackSpeed == speed
-                            val speedText = if (speed == speed.toInt().toFloat()) "${speed.toInt()}x" else "${speed}x"
-                            Box(
-                                Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(10.dp))
-                                    .background(if (active) DS.Green else DS.Card2)
-                                    .clickable {
-                                        playbackSpeed = speed
-                                        player.setPlaybackSpeed(speed)
-                                        flash = if (speed == 1f) "Normal" else speedText
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(speedText, color = if (active) DS.Ink else DS.Hi, fontSize = 11.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    PlayerSettingRow(Icons.Rounded.HighQuality, "Kualitas video", if (dataSaver) "Hemat · maks. 480p" else "Otomatis · kualitas terbaik") {
-                        dataSaver = !dataSaver
-                        store.setDataSaver(dataSaver)
-                        settingsSheet = false
-                        repo.invalidateStream(detail.drama, pager.currentPage + 1)
-                        retryKey++
-                    }
-                    PlayerSettingRow(Icons.Rounded.ClosedCaption, "Subtitle", if (!hasSub) "Tidak tersedia" else if (subOn) "Aktif" else "Nonaktif", enabled = hasSub) {
-                        subOn = !subOn; store.setSubtitleOn(subOn); flash = if (subOn) "Subtitle aktif" else "Subtitle nonaktif"
-                    }
-                    PlayerSettingRow(Icons.Rounded.AspectRatio, "Ukuran video", if (fitContain) "Rasio asli" else "Penuhi layar") {
-                        fitContain = !fitContain; if (!preferLandscape) store.setFitContain(fitContain)
-                    }
-                    PlayerSettingRow(Icons.Rounded.Refresh, "Muat ulang video", "Ambil link streaming terbaru") {
-                        settingsSheet = false; repo.invalidateStream(detail.drama, pager.currentPage + 1); retryKey++
-                    }
-                    Spacer(Modifier.height(12.dp))
-                }
-            }
-        }
     }
 }
 
 @Composable
-private fun PlayerGlassButton(
-    icon: ImageVector,
-    label: String,
-    size: Dp = 40.dp,
-    onClick: () -> Unit
-) {
-    Box(
-        Modifier.size(size).clip(CircleShape).background(Color.Black.copy(alpha = 0.48f))
-            .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, label, tint = Color.White, modifier = Modifier.size(size * 0.50f))
-    }
-}
-
-@Composable
-private fun PlayerSideAction(
-    icon: ImageVector,
-    label: String,
-    active: Boolean = false,
-    onClick: () -> Unit
-) {
-    Column(
-        Modifier.width(66.dp).clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            Modifier.size(45.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.34f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, label, tint = if (active) DS.Green else Color.White, modifier = Modifier.size(28.dp))
-        }
-        Spacer(Modifier.height(3.dp))
-        Text(label, color = Color.White, fontSize = 9.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 1)
-    }
-}
-
-@Composable
-private fun PlayerSettingRow(
-    icon: ImageVector,
-    title: String,
-    value: String,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
-    Row(
-        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(Modifier.size(36.dp).clip(CircleShape).background(DS.Card2), contentAlignment = Alignment.Center) {
-            Icon(icon, null, tint = if (enabled) DS.Hi else DS.Faint, modifier = Modifier.size(19.dp))
-        }
-        Spacer(Modifier.width(12.dp))
-        Text(title, color = if (enabled) DS.Hi else DS.Faint, fontSize = 13.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        Text(value, color = if (enabled) DS.Muted else DS.Faint, fontSize = 11.5.sp, fontFamily = Type.Sans)
-        Spacer(Modifier.width(5.dp))
-        Icon(Icons.Rounded.ChevronRight, null, tint = DS.Faint, modifier = Modifier.size(17.dp))
-    }
-}
-
-@Composable
-private fun PlayerErrorCard(message: String, modifier: Modifier = Modifier, onRetry: () -> Unit) {
+private fun PlayerErrorCard(message: String, modifier: Modifier = Modifier, actionLabel: String = "Coba lagi", onRetry: () -> Unit) {
     Column(
         modifier
             .padding(28.dp)
@@ -3714,7 +3548,7 @@ private fun PlayerErrorCard(message: String, modifier: Modifier = Modifier, onRe
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Refresh, null, tint = DS.Ink, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Coba lagi", color = DS.Ink, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, fontFamily = Type.Sans)
+                Text(actionLabel, color = DS.Ink, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, fontFamily = Type.Sans)
             }
         }
     }
@@ -3723,9 +3557,6 @@ private fun PlayerErrorCard(message: String, modifier: Modifier = Modifier, onRe
 // ─────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────
-
-// Semua sumber aktif saat ini menggunakan orientasi portrait di player episode.
-private fun prefersLandscapePlayback(@Suppress("UNUSED_PARAMETER") drama: Drama): Boolean = false
 
 private fun buildMediaItem(s: StreamResult): MediaItem {
     val url = cleanUrl(s.url)
@@ -5618,12 +5449,14 @@ private class LocalStore(ctx: Context) {
     fun setCategoryPlatform(cat: String, platformId: String) = p.edit().putString("cat_platform_$cat", platformId).apply()
     fun dataSaver() = p.getBoolean("dataSaver", false)
     fun setDataSaver(v: Boolean) = p.edit().putBoolean("dataSaver", v).apply()
-    fun autoNext() = p.getBoolean("autoNext", false)
+    fun autoNext() = p.getBoolean("autoNext", true)
     fun setAutoNext(v: Boolean) = p.edit().putBoolean("autoNext", v).apply()
-    fun fitContain() = p.getBoolean("fitContain", false)
+    fun fitContain() = p.getBoolean("fitContain", true)
     fun setFitContain(v: Boolean) = p.edit().putBoolean("fitContain", v).apply()
     fun subtitleOn() = p.getBoolean("subtitleOn", true)
     fun setSubtitleOn(v: Boolean) = p.edit().putBoolean("subtitleOn", v).apply()
+    fun playbackSpeed() = p.getFloat("playbackSpeed", 1f).takeIf { it in listOf(0.75f, 1f, 1.25f, 1.5f, 2f) } ?: 1f
+    fun setPlaybackSpeed(v: Float) = p.edit().putFloat("playbackSpeed", v).apply()
 
     fun history(tick: Int = 0): List<HistoryItem> = runCatching {
         val a = JSONArray(p.getString("history", "[]") ?: "[]")
@@ -5686,7 +5519,29 @@ private class LocalStore(ctx: Context) {
         p.edit().putString("favs", a.toString()).apply()
     }
 
-    fun favs(): List<Drama> = runCatching { val a = JSONArray(p.getString("favs", "[]")); (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { o -> Drama(o.stringAny("id"), o.stringAny("title"), o.stringAny("description"), o.stringAny("poster"), o.intAny("episodes", 0), o.stringAny("views"), o.optJSONArray("tags")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } } }.orEmpty(), o.stringAny("platform").ifBlank { "melolo" }, o.intAny("subjectType", 1)) } } }.getOrDefault(emptyList())
+    private fun savedDramas(key: String): List<Drama> = runCatching { val a = JSONArray(p.getString(key, "[]")); (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { o -> Drama(o.stringAny("id"), o.stringAny("title"), o.stringAny("description"), o.stringAny("poster"), o.intAny("episodes", 0), o.stringAny("views"), o.optJSONArray("tags")?.let { arr -> (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } } }.orEmpty(), o.stringAny("platform").ifBlank { "melolo" }, o.intAny("subjectType", 1)) } } }.getOrDefault(emptyList())
+    fun favs(): List<Drama> = savedDramas("favs")
+    fun likes(): List<Drama> = savedDramas("likes")
+    fun isLiked(id: String, platform: String) = likes().any { it.id == id && it.platform == platform }
+    fun toggleLike(drama: Drama) {
+        val list = likes().toMutableList()
+        val index = list.indexOfFirst { it.id == drama.id && it.platform == drama.platform }
+        if (index >= 0) list.removeAt(index) else list.add(0, drama)
+        saveLikes(list)
+    }
+    fun removeLike(id: String, platform: String) = saveLikes(likes().filterNot { it.id == id && it.platform == platform })
+    fun clearLikes() = p.edit().remove("likes").apply()
+    private fun saveLikes(values: List<Drama>) {
+        val array = JSONArray()
+        values.take(120).forEach { drama ->
+            array.put(JSONObject().apply {
+                put("id", drama.id); put("title", drama.title); put("description", drama.description)
+                put("poster", drama.poster); put("episodes", drama.episodes); put("views", drama.views)
+                put("platform", drama.platform); put("subjectType", drama.subjectType); put("tags", JSONArray(drama.tags))
+            })
+        }
+        p.edit().putString("likes", array.toString()).apply()
+    }
     fun isFav(id: String, platform: String) = favs().any { it.id == id && it.platform == platform }
     fun toggleFav(d: Drama) { val list = favs().toMutableList(); val idx = list.indexOfFirst { it.id == d.id && it.platform == d.platform }; if (idx >= 0) list.removeAt(idx) else list.add(0, d); val a = JSONArray(); list.take(120).forEach { a.put(JSONObject().apply { put("id", it.id); put("title", it.title); put("description", it.description); put("poster", it.poster); put("episodes", it.episodes); put("views", it.views); put("platform", it.platform); put("subjectType", it.subjectType); put("tags", JSONArray(it.tags)) }) }; p.edit().putString("favs", a.toString()).apply() }
     fun clearFavs() = p.edit().remove("favs").apply()

@@ -4,7 +4,7 @@ Dramaku versi **full native Android** berbasis **Kotlin + Jetpack Compose**.
 
 Nonton drama & film dari berbagai platform dalam satu aplikasi native Android.
 
-**Versi saat ini: 4.9.9**
+**Versi saat ini: 4.9.10**
 
 ## Platform Aktif
 
@@ -38,8 +38,13 @@ Antarmuka memakai latar **hitam pekat**, kartu abu gelap, teks putih, dan aksen 
 - Riwayat tontonan + progress lokal
 - Settings native
 - Share sheet Android native
-- Native player vertikal ala aplikasi short-drama: swipe episode, info cerita minimal, toolbar kanan, kontrol tengah, dan progress tipis
-- Episode sheet 5 kolom, menu kualitas/subtitle/rasio/kecepatan, double tap like/seek, long press 2x, serta auto-hide kontrol
+- Player vertikal mengikuti susunan Melolo 5.3.6: fullscreen immersive, header Ep., judul ringkas, ikon kanan tanpa panel besar, dan seekbar putih 2dp
+- Ketuk untuk jeda/putar, double tap sisi ±10 detik / tengah untuk Suka, tahan 2x, serta mode Layar bersih
+- Panel episode 5 kolom dengan rentang 30 episode, poster, progres, episode aktif, dan status terkunci
+- Menu kecepatan persisten 0,75x–2x, kualitas sumber/hemat data, subtitle terpisah, rasio, dan putar otomatis
+- Suka terpisah dari Koleksi dan masing-masing tersimpan lokal di tab perpustakaan
+- Pergantian episode menggunakan halaman settled, satu player aktif, pembatalan resolver lama, dan TextureView agar overlay/pager tidak bertabrakan
+- Resume/progres terikat media episode, pause/resume lifecycle & audio focus, serta satu auto-retry per episode tanpa loop
 - Search filter platform, progress per episode, episode range, Auto Next, dan default mode video
 - Library hapus item satuan, settings final, dialog privasi/disclaimer, dan report episode native
 - Remote config native, announcement/status platform, home premium, detail info tiles, search trending/filter
@@ -76,12 +81,13 @@ Antarmuka memakai latar **hitam pekat**, kartu abu gelap, teks putih, dan aksen 
 app/src/main/java/com/dramaku/app/MainActivity.kt     # UI native Compose + data repository MVP
 app/src/main/java/com/dramaku/app/home/HomeCategory.kt # Kategori layar awal + greeting waktu
 app/src/main/java/com/dramaku/app/SplashActivity.java # Native splash
+app/src/main/java/com/dramaku/app/player/              # Chrome, sheet, video surface, playback policies
 app/src/main/java/com/dramaku/app/storage/             # Storage key helpers
 app/src/test/java/                                     # Unit tests
 app/build.gradle                                      # Android/Kotlin/Compose dependencies
 ```
 
-Repo ini **tidak memakai WebView, HTML, CSS, atau JS web shell** untuk aplikasi Android native.
+UI utama dan video langsung memakai **Kotlin/Compose + ExoPlayer**, bukan web shell. WebView terbatas pada fallback video embed Anichin yang belum menyediakan URL video langsung.
 
 ## Versioning
 
@@ -92,8 +98,8 @@ version.properties
 ```
 
 ```properties
-VERSION_NAME=4.8.1
-VERSION_CODE=69
+VERSION_NAME=4.9.10
+VERSION_CODE=85
 ```
 
 ## Build APK
@@ -109,6 +115,8 @@ Build dan validasi lokal memakai Gradle Wrapper yang sudah disimpan di repo:
 ```bash
 ./gradlew testDebugUnitTest lintDebug assembleDebug
 ```
+
+Catatan implementasi dan checklist pengujian player: [`docs/PLAYER.md`](docs/PLAYER.md).
 
 ## Signed release APK
 

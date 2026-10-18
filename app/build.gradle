@@ -8,8 +8,8 @@ def versionProps = new Properties()
 if (versionPropsFile.exists()) {
     versionPropsFile.withInputStream { versionProps.load(it) }
 }
-def appVersionName = versionProps.getProperty('VERSION_NAME', '4.9.9')
-def appVersionCode = (versionProps.getProperty('VERSION_CODE', '84') as Integer)
+def appVersionName = versionProps.getProperty('VERSION_NAME', '4.9.10')
+def appVersionCode = (versionProps.getProperty('VERSION_CODE', '85') as Integer)
 
 // Prefer VERSION_CODE from CI (tag/build number) when provided.
 def ciVersionCode = System.getenv('DRAMAKU_VERSION_CODE')
@@ -89,6 +89,11 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.8'
     }
+
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all { maxHeapSize = '1g' }
+    }
 }
 
 
@@ -113,6 +118,8 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
 
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'androidx.compose.ui:ui-test-junit4'
+    testImplementation 'org.robolectric:robolectric:4.12.2'
     testImplementation 'org.json:json:20240303'
 }
 

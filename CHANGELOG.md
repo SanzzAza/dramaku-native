@@ -2,7 +2,27 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
-## Belum dirilis
+## 4.9.10 (2026-10-18)
+
+- Player mengikuti susunan resource Melolo 5.3.6, tetap dengan identitas Dramaku:
+  header Ep., ikon kanan tanpa bubble besar, judul satu kali, panel episode
+  bawah, seekbar putih 2dp, dan layar bersih. Kontrol tengah hanya muncul saat jeda.
+- Sheet native dengan drag-to-dismiss, poster, grid 5 kolom, rentang 30 episode,
+  indikator progres, serta status episode aktif/terkunci.
+- Ketuk jeda/putar, double tap sisi ±10 detik atau tengah untuk Suka, tahan 2x
+  dengan kecepatan dipulihkan saat gestur selesai/dibatalkan. Preferensi speed tersimpan.
+- Suka kini dipisahkan dari Koleksi; tab Suka tidak lagi sekadar membalik daftar favorit.
+- Episode di-resolve setelah pager settled; media lama dihentikan sebelum request,
+  respons yang dibatalkan tidak boleh mengikat player, dan TextureView mengikuti swipe.
+- Progres disimpan memakai identitas media yang benar, tidak tertimpa nol saat loading,
+  serta dipertahankan saat refresh/kualitas berubah. Auto-retry dibatasi satu kali
+  per episode/percobaan manual, bukan di-reset setiap frame berhasil diputar.
+- Audio focus/headset unplug ditangani, video dijeda saat aplikasi di background,
+  mode fullscreen dipulihkan saat keluar, dan embed dibersihkan saat dispose/background.
+- Hemat data memperhitungkan orientasi video; subtitle dideteksi dari trek native
+  maupun file eksternal. Rasio asli menjadi default agar gambar tidak terpotong.
+- Tambahkan unit test kebijakan resume, seek, rentang, episode terkunci, embed,
+  serta retry budget. APK referensi hanya dianalisis, tidak disalin ke aplikasi.
 
 - Desain ulang seluruh antarmuka dengan latar hitam pekat, kartu abu gelap,
   tipografi sans-serif, dan aksen kuning terang.
