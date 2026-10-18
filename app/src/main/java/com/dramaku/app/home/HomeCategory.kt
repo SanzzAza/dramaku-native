@@ -7,10 +7,8 @@ import com.dramaku.app.ExtraPlatforms
  *
  * Short Drama → platform short drama vertikal (Melolo, DramaNova, FreeReels,
  *               DramaBox, NetShort).
- * Movie Box   → endpoint MovieBox (film/serial global + Shorts vertikal).
- * Bstation    → Anime & drama dari Bilibili.
  * Drama Asia  → serial Korea & China (segera hadir).
- * Anime       → slot anime sedang disiapkan (segera hadir).
+ * Anime       → donghua & anime subtitle Indonesia dari Anichin.
  */
 enum class HomeCategory(
     val id: String,
@@ -32,24 +30,12 @@ enum class HomeCategory(
         platforms = emptyList(),
         comingSoon = true
     ),
-    MovieBox(
-        id = "movie_box",
-        title = "Movie Box",
-        subtitle = "Film layar lebar & shorts buat santai",
-        platforms = listOf("moviebox", "mbshorts")
-    ),
     Anime(
         id = "anime",
         title = "Anime",
         subtitle = "Donghua & anime subtitle Indonesia",
         platforms = listOf("anichin"),
         comingSoon = false
-    ),
-    Bstation(
-        id = "bstation",
-        title = "Bstation",
-        subtitle = "Anime & drama dari Bilibili",
-        platforms = listOf("bstation")
     );
 
     fun defaultPlatform(): String = platforms.firstOrNull() ?: "melolo"

@@ -10,16 +10,16 @@ class ProgressKeysTest {
     @Test
     fun `same drama ID on different platforms has different key`() {
         val melolo = ProgressKeys.episodePrefix("melolo", "123", 4)
-        val movieBox = ProgressKeys.episodePrefix("moviebox", "123", 4)
+        val netshort = ProgressKeys.episodePrefix("netshort", "123", 4)
 
-        assertNotEquals(melolo, movieBox)
+        assertNotEquals(melolo, netshort)
     }
 
     @Test
     fun `episode and drama prefixes remain scoped to one drama`() {
-        val dramaPrefix = ProgressKeys.dramaPrefix("moviebox", "id|with spaces")
-        val episodePrefix = ProgressKeys.episodePrefix("moviebox", "id|with spaces", 7)
-        val otherDrama = ProgressKeys.episodePrefix("moviebox", "id", 7)
+        val dramaPrefix = ProgressKeys.dramaPrefix("netshort", "id|with spaces")
+        val episodePrefix = ProgressKeys.episodePrefix("netshort", "id|with spaces", 7)
+        val otherDrama = ProgressKeys.episodePrefix("netshort", "id", 7)
 
         assertTrue(episodePrefix.startsWith(dramaPrefix))
         assertFalse(otherDrama.startsWith(dramaPrefix))

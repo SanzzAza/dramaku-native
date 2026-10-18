@@ -2,6 +2,20 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## Belum dirilis
+
+- Desain ulang seluruh antarmuka dengan latar hitam pekat, kartu abu gelap,
+  tipografi sans-serif, dan aksen kuning terang.
+- Navigasi bawah kini hanya Cuplikan, Temukan, Perpustakaan, dan Profil;
+  menu Hadiah dihapus.
+- Aplikasi langsung membuka Temukan, tetap menyediakan feed Cuplikan, dan tidak
+  menambahkan onboarding akun, form login, maupun sistem autentikasi.
+- Hapus kartu Movie Box dan Bstation dari layar awal.
+- Hapus integrasi MovieBox, Shorts MovieBox, dan Bstation beserta endpoint,
+  resolver, katalog, test, dan aset logo terkait.
+- Preferensi platform lama yang sudah tidak tersedia kini otomatis kembali ke
+  platform aktif, tanpa menembak endpoint yang telah dihapus.
+
 ## 4.9.9 (2026-09-14)
 
 - Platform baru **NetShort** lewat proxy `dramahub.be/netshort/api/v1` (Bearer):

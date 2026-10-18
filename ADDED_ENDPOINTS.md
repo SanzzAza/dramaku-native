@@ -5,10 +5,10 @@ Token: `15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e`
 
 ## Ringkasan
 - Total API di dramahub.be/docs: **44**
-- Sudah ada di dramaku-native (skip): **9** -> melolo, dramanova, freereels, netshort, reelshort, anichin, moviebox, stardusttv, dramaboxv2
+- Sudah ada di dramaku-native (skip): **8** -> melolo, dramanova, freereels, netshort, reelshort, anichin, stardusttv, dramaboxv2
 - Baru ditambahkan: **35** platform
 - Total endpoint baru: **272** endpoint
-- Total catalog files: 5 lama + 35 baru = **40**
+- Total catalog files: 4 lama + 35 baru = **39**
 
 ## Platform Baru (35)
 
@@ -58,7 +58,6 @@ Token: `15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e`
 - **netshort** (`/netshort`) - 15 EP - SKIP
 - **reelshort** (`/reelshort`) - 12 EP - SKIP
 - **anichin** (`/anichin`) - 9 EP - SKIP
-- **moviebox** (`/moviebox`) - 11 EP - SKIP
 - **stardusttv** (`/stardusttv`) - 7 EP - SKIP
 - **dramaboxv2** (`/dramaboxv2`) - 7 EP - SKIP
 
@@ -584,7 +583,7 @@ Semua request ke `dramahub.be` otomatis kirim header:
 ```
 Authorization: Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e
 ```
-Sudah di-handle di `getJson()` dan `getString()` dan `buildPlayer()` di MainActivity.kt:
+Sudah di-handle di `getJson()` dan `buildPlayer()` di MainActivity.kt:
 ```kotlin
 if (url.contains("dramahub.be")) reqBuilder.header("Authorization", "Bearer $TOKEN")
 ```
@@ -602,6 +601,6 @@ Verified: semua endpoint balas 200 dengan token valid.
 
 ## Catatan
 - Semua catalog file auto-generated dari docs dramahub.be/docs dengan token, jadi path & param 100% sesuai docs.
-- Platform lama (melolo, dramanova, freereels, dramabox, netshort, reelshort, anichin, moviebox, stardusttv) tidak ditimpa, cuma ditambah yang baru.
+- Platform lama (melolo, dramanova, freereels, dramabox, netshort, reelshort, anichin, stardusttv) tidak ditimpa, cuma ditambah yang baru.
 - Flat parser di MainActivity sudah generic, jadi semua response JSON apapun formatnya tetap bisa di-parse jadi Drama list tanpa perubahan besar.
 - HomeCategory.ShortDrama sekarang include 35 platform baru, jadi muncul di picker dan beranda.

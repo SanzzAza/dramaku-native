@@ -15,8 +15,7 @@ data class DramaboxCategory(val id: Int, val name: String)
 /**
  * Helper DramaBox untuk endpoint `dramahub.be/dramaboxbaru/api`.
  *
- * Semua logika di sini murni (tanpa jaringan) supaya bisa diuji unit, sama
- * seperti [MovieboxCatalog].
+ * Semua logika di sini murni (tanpa jaringan) supaya bisa diuji unit.
  */
 object DramaboxCatalog {
 

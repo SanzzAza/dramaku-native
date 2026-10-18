@@ -13,19 +13,18 @@ Nonton drama & film dari berbagai platform dalam satu aplikasi native Android.
 - **FreeReels** (Short drama vertikal)
 - **DramaBox** (Short drama vertikal)
 - **NetShort** (Short drama vertikal)
-- **MovieBox** (Film layar lebar & serial)
-- **Shorts** (Shorts vertikal MovieBox)
-- **Bstation** (Anime & drama)
+- **ReelShort** (Short drama vertikal)
+- **Anichin** (Donghua & anime subtitle Indonesia)
 
-*Slot segera hadir: Drama Asia & Anime khusus.*
+*Slot segera hadir: Drama Asia.*
 
 ## Tampilan 4.9
 
-Antarmuka memakai arah **editorial cinema**: charcoal netral, teks off-white, dan aksen dusty rose yang sangat terbatas. Tidak memakai kuning atau neon; poster dan judul tetap menjadi fokus. Tipografi **Fraunces** dipakai untuk judul dan **Plus Jakarta Sans** untuk antarmuka. Font tertanam di `app/src/main/res/font/`, jadi tidak bergantung ke font sistem.
+Antarmuka memakai latar **hitam pekat**, kartu abu gelap, teks putih, dan aksen **kuning terang**. Halaman Temukan menggunakan grid poster dua kolom, Perpustakaan memakai tab Histori/Koleksi/Suka, dan seluruh antarmuka menggunakan **Plus Jakarta Sans**. Font tertanam di `app/src/main/res/font/`, jadi tidak bergantung ke font sistem.
 
 ## Fitur Native MVP
 
-- Layar awal kategori (pintu masuk): sapaan waktu, grid Short Drama / Movie Drama / Movie Box, badge "Segera hadir" untuk Anime & Manga, tombol traktir kopi
+- Langsung masuk ke layar Temukan tanpa onboarding akun atau login
 - Chips platform difilter per kategori + preferensi platform tersimpan per kategori
 - Beranda native Compose
 - Spotlight / rekomendasi / populer / terbaru
@@ -45,7 +44,7 @@ Antarmuka memakai arah **editorial cinema**: charcoal netral, teks off-white, da
 - Remote config native, announcement/status platform, home premium, detail info tiles, search trending/filter
 - Home infinite/progressive scroll dengan prefetch multi-page
 - Cuplikan feed TikTok-style: swipe antar drama, autoplay Episode 1, tombol Tonton Semua Episode
-- Bottom navigation premium: Cuplikan, Temukan, Hadiah, Daftar Saya, Profil tanpa emoji
+- Bottom navigation: Cuplikan, Temukan, Perpustakaan, dan Profil; tanpa menu Hadiah
 - Cuplikan overlay compact: poster kecil, judul samping, label Ep.1 | Judul
 - Bugfix cuplikan audio: preview stop total sebelum masuk full player/detail
 - Bugfix cuplikan overlay: compact mini card agar tidak menutupi video
@@ -54,13 +53,13 @@ Antarmuka memakai arah **editorial cinema**: charcoal netral, teks off-white, da
 - Platform logo/brand mark di dropdown dan status platform
 - Copywriting Home dibuat lebih premium, bukan teks developer/native
 - Melolo stream hardening: streamv2-only, player error listener, browser-like HLS headers
-- MovieBox/FlickReels source error fix: safer CDN headers, HLS fallback, multi-resolution fallback
+- FlickReels source error fix: safer CDN headers, HLS fallback, multi-resolution fallback
 - Progress v2 dipisahkan berdasarkan platform agar ID drama lintas sumber tidak bentrok
 - Unit test dasar untuk key progress dan parser remote config
 - Target Android API 35 dan Gradle Wrapper 8.4 tersedia di repo
 - Home lebih bersih tanpa section quick action yang tidak perlu
-- Badge "Segera hadir" pada kartu Anime & Manga di layar awal
-- Retry otomatis + deteksi error JSON untuk endpoint MovieBox & Drakor
+- Badge "Segera hadir" pada kartu Drama Asia di layar awal
+- Retry otomatis + deteksi error JSON untuk endpoint platform aktif
 - Stream resolver 10 platform di Kotlin
 - DramaBox pindah ke proxy `dramahub.be/dramaboxbaru/api`; `/stream` kini JSON
   (`video` mp4 ber-token) dan rak genre diambil dari `/categories`

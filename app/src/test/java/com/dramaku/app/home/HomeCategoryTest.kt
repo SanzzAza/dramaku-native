@@ -27,20 +27,18 @@ class HomeCategoryTest {
     }
 
     @Test
-    fun shortDramaExcludesMovieEndpoints() {
+    fun shortDramaContainsOnlyShortFormSources() {
         assertTrue(HomeCategory.ShortDrama.containsPlatform("melolo"))
         assertTrue(HomeCategory.ShortDrama.containsPlatform("dramabox"))
         assertTrue(HomeCategory.ShortDrama.containsPlatform("netshort"))
         assertTrue(HomeCategory.ShortDrama.containsPlatform("reelshort"))
-        assertFalse(HomeCategory.ShortDrama.containsPlatform("moviebox"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("drakor"))
         assertFalse(HomeCategory.ShortDrama.containsPlatform("anichin"))
     }
 
     @Test
-    fun singlePlatformCategoriesResolveDefaults() {
-        assertEquals("moviebox", HomeCategory.MovieBox.defaultPlatform())
-        assertEquals("bstation", HomeCategory.Bstation.defaultPlatform())
+    fun animeResolvesItsDefaultPlatform() {
+        assertEquals("anichin", HomeCategory.Anime.defaultPlatform())
     }
 
     @Test
@@ -55,16 +53,13 @@ class HomeCategoryTest {
         assertTrue(HomeCategory.Anime.platforms.contains("anichin"))
         assertTrue(HomeCategory.MovieDrama.comingSoon)
         assertFalse(HomeCategory.ShortDrama.comingSoon)
-        assertFalse(HomeCategory.MovieBox.comingSoon)
-        assertFalse(HomeCategory.Bstation.comingSoon)
     }
 
     @Test
     fun idsAreStableForStorageKeys() {
-        assertEquals("short_drama", HomeCategory.ShortDrama.id)
-        assertEquals("movie_drama", HomeCategory.MovieDrama.id)
-        assertEquals("movie_box", HomeCategory.MovieBox.id)
-        assertEquals("anime", HomeCategory.Anime.id)
-        assertEquals("bstation", HomeCategory.Bstation.id)
+        assertEquals(
+            listOf("short_drama", "movie_drama", "anime"),
+            HomeCategory.values().map { it.id }
+        )
     }
 }

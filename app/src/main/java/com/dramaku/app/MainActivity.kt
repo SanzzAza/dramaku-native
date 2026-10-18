@@ -103,13 +103,10 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.exoplayer.source.MediaSource
-import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 import com.dramaku.app.catalog.DramaboxCatalog
 import com.dramaku.app.catalog.DramaboxCategory
-import com.dramaku.app.catalog.MovieboxCatalog
 import com.dramaku.app.catalog.NetshortCatalog
 import com.dramaku.app.catalog.NetshortTab
 import com.dramaku.app.catalog.ReelshortCatalog
@@ -133,63 +130,53 @@ import kotlin.math.max
 import kotlin.math.min
 
 // ─────────────────────────────────────────────────────────────────
-// TAMPILAN — "editorial cinema": charcoal netral, kontras lembut,
-// aksen dusty rose yang sangat terbatas. Tipografi: Fraunces (display)
-// + Jakarta Sans. Fokus utama tetap poster dan cerita, bukan dekorasi.
+// TAMPILAN — hitam pekat, kartu abu gelap, dan aksen kuning terang.
+// Seluruh layar memakai Plus Jakarta Sans agar konsisten dan mudah dibaca.
 // ─────────────────────────────────────────────────────────────────
 
 private object DS {
-    // Editorial cinema — charcoal netral, kontras lembut, tanpa warna neon/kuning.
-    val Bg = Color(0xFF111214)
-    val Raise = Color(0xFF18191C)
-    val Card = Color(0xFF202125)
-    val Card2 = Color(0xFF292A2F)
-    val Line = Color(0xFF34353A)
-    val LineStrong = Color(0xFF47484E)
+    val Bg = Color(0xFF000000)
+    val Raise = Color(0xFF090909)
+    val Card = Color(0xFF161616)
+    val Card2 = Color(0xFF252525)
+    val Line = Color(0xFF242424)
+    val LineStrong = Color(0xFF3A3A3A)
 
-    // Nama token lama dipertahankan agar refactor benar-benar hanya visual.
-    // Aksen utama dibuat dusty rose yang tenang, bukan warna menyala.
-    val Green = Color(0xFFAA808A)
-    val GreenDeep = Color(0xFF704950)
-    val GreenWash = Green.copy(alpha = 0.16f)
-    val Cream = Color(0xFFF2F2F0)
-    val Ink = Color(0xFF151517)
-    val Cyan = Color(0xFFADB0B6)
-    val CyanWash = Cyan.copy(alpha = 0.13f)
-    val Violet = Color(0xFFA79EA7)
-    val VioletWash = Violet.copy(alpha = 0.14f)
+    // Nama token dipertahankan supaya komponen lama ikut tema baru.
+    val Green = Color(0xFFFFE500)
+    val GreenDeep = Color(0xFF8C7E00)
+    val GreenWash = Green.copy(alpha = 0.14f)
+    val Cream = Color(0xFFFFFFFF)
+    val Ink = Color(0xFF050505)
+    val Cyan = Color(0xFF45A8FF)
+    val CyanWash = Cyan.copy(alpha = 0.16f)
+    val Violet = Color(0xFFC66BFF)
+    val VioletWash = Violet.copy(alpha = 0.16f)
 
-    // Teks netral agar poster tetap menjadi fokus utama.
-    val Hi = Color(0xFFF4F4F2)
-    val Body = Color(0xFFCAC9C6)
-    val Muted = Color(0xFF9C9B9C)
-    val Faint = Color(0xFF6E6D70)
+    val Hi = Color(0xFFF5F5F5)
+    val Body = Color(0xFFD6D6D6)
+    val Muted = Color(0xFF929292)
+    val Faint = Color(0xFF626262)
 
-    // Semantik
-    val Red = Color(0xFFCD6B70)
-    val RedWash = Red.copy(alpha = 0.14f)
-    val Gold = Cyan
+    val Red = Color(0xFFFF626B)
+    val RedWash = Red.copy(alpha = 0.15f)
+    val Gold = Green
     val Rating = Violet
 
-    // Layer gelap transparan untuk poster, hero, dan player.
-    val PosterFade = listOf(Color(0x00111214), Color(0xA8111214))
-    val HeroFade = listOf(Color(0x12111214), Color(0x5C111214), Color(0xFF111214))
-    val SheetBg = Color(0xF218191C)
+    val PosterFade = listOf(Color(0x00000000), Color(0xC9000000))
+    val HeroFade = listOf(Color(0x10000000), Color(0x70000000), Color(0xFF000000))
+    val SheetBg = Color(0xF5090909)
     val CardGradient = listOf(Card, Card)
 }
 
 private object Type {
-    val Display = FontFamily(
-        Font(R.font.fraunces_medium, FontWeight.Medium),
-        Font(R.font.fraunces_semibold, FontWeight.SemiBold),
-        Font(R.font.fraunces_bold, FontWeight.Bold)
-    )
     val Sans = FontFamily(
         Font(R.font.jakarta_regular, FontWeight.Normal),
         Font(R.font.jakarta_medium, FontWeight.Medium),
         Font(R.font.jakarta_semibold, FontWeight.SemiBold),
         Font(R.font.jakarta_bold, FontWeight.Bold)
     )
+    val Display = Sans
 }
 
 private val Days = listOf("Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu")
@@ -234,8 +221,8 @@ class MainActivity : ComponentActivity() {
                 }
                 .build()
         )
-        window.statusBarColor = AndroidColor.rgb(17, 18, 20)
-        window.navigationBarColor = AndroidColor.rgb(17, 18, 20)
+        window.statusBarColor = AndroidColor.BLACK
+        window.navigationBarColor = AndroidColor.BLACK
         setContent { DramakuApp() }
     }
 }
@@ -261,12 +248,11 @@ private fun DramakuApp() {
 // ─────────────────────────────────────────────────────────────────
 
 private enum class Tab(val label: String, val icon: ImageVector, val showNav: Boolean = true) {
-    Clips("Cuplikan", Icons.Rounded.PlayCircle, false),
-    Home("Beranda", Icons.Rounded.Home),
-    Rewards("Hadiah", Icons.Rounded.CardGiftcard, false),
-    Library("Koleksi", Icons.Rounded.Bookmark),
+    Clips("Cuplikan", Icons.Rounded.SmartDisplay),
+    Home("Temukan", Icons.Rounded.Explore),
+    Library("Perpustakaan", Icons.Rounded.VideoLibrary),
     Profile("Profil", Icons.Rounded.Person),
-    Search("Cari", Icons.Rounded.Search)
+    Search("Cari", Icons.Rounded.Search, false)
 }
 
 data class PlatformInfo(val id: String, val label: String, val base: String, val logoUrl: String = "", val logoRes: Int = 0)
@@ -275,7 +261,7 @@ private data class Drama(
     val episodes: Int = 0, val views: String = "", val tags: List<String> = emptyList(),
     val platform: String = "melolo", val subjectType: Int = 1
 )
-private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false, val se: Int = 1, val subtitle: String = "")
+private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false)
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
 private data class StreamResult(val url: String, val subtitle: String = "", val subtitleMime: String = "")
@@ -301,8 +287,7 @@ private sealed class Load<out T> {
 // ─────────────────────────────────────────────────────────────────
 
 private val Platforms = listOf(
-    // Melolo & NetShort: endpoint penuh dengan Bearer; DramaBox: proxy baru
-    // (host lama captain.sapimu.au sudah mati, DNS-nya tidak resolve).
+    // Melolo & NetShort: endpoint penuh dengan Bearer; DramaBox memakai proxy baru.
     PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoUrl = "https://dramahub.be/logos/melolo.png", logoRes = R.drawable.logo_melolo),
     PlatformInfo("dramanova", "Dramanova", "https://dramahub.be/dramanova", logoUrl = "https://dramahub.be/logos/dramanova.png", logoRes = R.drawable.logo_dramanova),
     PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1", logoUrl = "https://dramahub.be/logos/freereels.png", logoRes = R.drawable.logo_freereels),
@@ -310,9 +295,6 @@ private val Platforms = listOf(
     PlatformInfo("netshort", "NetShort", "https://dramahub.be/netshort/api/v1", logoUrl = "https://dramahub.be/logos/netshort.png", logoRes = R.drawable.logo_netshort),
     PlatformInfo("reelshort", "ReelShort", "https://dramahub.be/reelshort/api/v1", logoUrl = "https://dramahub.be/logos/reelshort.png", logoRes = R.drawable.logo_reelshort),
     PlatformInfo("anichin", "Anichin", "https://dramahub.be/anichin", logoUrl = "https://dramahub.be/logos/anichin.png", logoRes = R.drawable.logo_anichin),
-    PlatformInfo("bstation", "Bstation", "https://captain.sapimu.au/bstation/api", logoUrl = "https://dramahub.be/logos/bstation.png", logoRes = R.drawable.logo_bstation),
-    PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api", logoUrl = "https://dramahub.be/logos/moviebox.png", logoRes = R.drawable.logo_moviebox),
-    PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api", logoUrl = "https://dramahub.be/logos/moviebox.png", logoRes = R.drawable.logo_moviebox),
     PlatformInfo("stardusttv", "Stardust TV", "https://dramahub.be/stardusttv/api/v1", logoUrl = "https://dramahub.be/logos/stardusttv.png", logoRes = R.drawable.logo_stardusttv)
 ) + ExtraPlatforms.platforms
 
@@ -359,9 +341,10 @@ private val ANICHIN_FALLBACK_GENRES = listOf(
     "Martial Arts" to "martial-arts"
 )
 
-private fun platform(id: String) = Platforms.firstOrNull { it.id == id } ?: Platforms.first()
+private fun platform(id: String) = Platforms.firstOrNull { it.id == id }
+    ?: PlatformInfo(id, id, "")
 private fun platformLabel(id: String) = platform(id).label
-private fun apiBase(id: String) = platform(id).base
+private fun apiBase(id: String) = platform(id).base.ifBlank { error("Platform tidak tersedia") }
 
 // ─────────────────────────────────────────────────────────────────
 // MAIN APP COMPOSABLE
@@ -384,7 +367,9 @@ private fun App() {
     }
 
     var tab by remember { mutableStateOf(Tab.Home) }
-    var selPlatform by remember { mutableStateOf(store.platform()) }
+    var selPlatform by remember {
+        mutableStateOf(store.platform().takeIf { saved -> Platforms.any { it.id == saved } } ?: Platforms.first().id)
+    }
     var refreshKey by remember { mutableIntStateOf(0) }
     var homeScrollToTop by remember { mutableIntStateOf(0) }
     var homeState by remember { mutableStateOf<Load<HomeBundle>>(Load.Idle) }
@@ -399,7 +384,8 @@ private fun App() {
     var playerSession by remember { mutableStateOf<PlayerSession?>(null) }
     var clipFeedItems by remember { mutableStateOf<List<Drama>>(emptyList()) }
     var pendingResume by remember { mutableStateOf<HistoryItem?>(null) }
-    var category by remember { mutableStateOf<HomeCategory?>(null) }
+    // Langsung masuk ke Temukan; tidak ada onboarding akun atau layar login.
+    var category by remember { mutableStateOf<HomeCategory?>(HomeCategory.ShortDrama) }
     var showSettings by remember { mutableStateOf(false) }
     var genreRows by remember { mutableStateOf<List<Pair<String, List<Drama>>>>(emptyList()) }
     var showPlatformPicker by remember { mutableStateOf(false) }
@@ -460,14 +446,6 @@ private fun App() {
                 }
                 listOf(gems) + rows
             }
-            selPlatform == "moviebox" -> listOf(
-                "K-Drama" to { repo.browsePath(selPlatform, "tabs/category-content?type=4380734070238626200&lang=id") },
-                "C-Drama" to { repo.browsePath(selPlatform, "tabs/category-content?type=173752404280836544&lang=id") },
-                "Anime" to { repo.browsePath(selPlatform, "tabs/category-content?type=62133389738001440&lang=id") },
-                "Action" to { repo.browsePath(selPlatform, "tabs/category-content?type=6978603205429526968&lang=id") },
-                "Romance" to { repo.browsePath(selPlatform, "tabs/category-content?type=2389813900859556536&lang=id") },
-                "Comedy" to { repo.browsePath(selPlatform, "tabs/category-content?type=8785384881686725944&lang=id") }
-            )
             // NetShort (dramahub.be): rak dirakit dari dua endpoint katalog —
             // /tabs untuk tab konten (Anime, Pelukan Jakarta, …) dan /categories
             // untuk tag. Keduanya di-cache, dan kalau kosong pemanggil pakai
@@ -496,8 +474,6 @@ private fun App() {
                 }
                 tabRows + fixedRows + tagGenreRows
             }
-            // Shorts: feed sudah dua rak dari reel/trending, tanpa kategori tambahan.
-            selPlatform == "mbshorts" -> emptyList()
             // dramanova_more & dramanova_baxi upstream kosong / shortTitle-nya
             // semua null, jadi tidak dipakai.
             selPlatform == "dramanova" -> listOf(
@@ -512,14 +488,6 @@ private fun App() {
                 "Anime" to { repo.browseFreereels("anime") },
                 "Dubbing" to { repo.browseFreereels("dubbing") },
                 "Segera Tayang" to { repo.browseFreereels("coming-soon") }
-            )
-            selPlatform == "bstation" -> listOf(
-                "Terpopuler" to { repo.browseBstation() },
-                "Hot-Blooded" to { repo.browseBstationGenre("20006") },
-                "Romance" to { repo.browseBstationGenre("20019") },
-                "Isekai" to { repo.browseBstationGenre("20007") },
-                "Action" to { repo.browseBstationGenre("20011") },
-                "Fantasy" to { repo.browseBstationGenre("20010") }
             )
             // ReelShort (dramahub.be): tabs dari /foryou + endpoint khusus romance/drama/completed
             selPlatform == "reelshort" -> {
@@ -621,8 +589,6 @@ private fun App() {
 
     BackHandler(enabled = selectedDrama != null) { selectedDrama = null; pendingResume = null }
     BackHandler(enabled = showSettings) { showSettings = false }
-    // Back dari halaman kategori kembali ke layar awal kategori (pintu masuk)
-    BackHandler(enabled = category != null && !showSettings && selectedDrama == null && playerSession == null && clipFeedItems.isEmpty()) { category = null }
 
     Box(Modifier.fillMaxSize().background(DS.Bg)) {
         Column {
@@ -649,7 +615,7 @@ private fun App() {
                 Scaffold(
                     containerColor = DS.Bg,
                     bottomBar = {
-                        BottomNavBar(tab) { target ->
+                        BottomNavBar(if (tab == Tab.Search) Tab.Home else tab) { target ->
                             if (target == Tab.Home && tab == Tab.Home) homeScrollToTop++ else tab = target
                         }
                     }
@@ -658,7 +624,7 @@ private fun App() {
                         when (tab) {
                             Tab.Home -> HomeScreen(
                                 platformId = selPlatform, scrollToTopSignal = homeScrollToTop, state = homeState,
-                                category = activeCat, onExitCategory = { category = null },
+                                category = activeCat, onExitCategory = {},
                                 history = store.history(dataTick), remoteConfig = remoteConfig,
                                 remoteError = remoteError, loadingMore = homeLoadingMore,
                                 loadMoreError = homeAppendError, onLoadMore = ::loadMore,
@@ -687,7 +653,6 @@ private fun App() {
                             )
                             Tab.Search -> SearchScreen(repo, store, selPlatform, onDrama = { selectedDrama = it }, onBack = { tab = Tab.Home }, dataTick = dataTick, bump = { dataTick++ })
                             Tab.Clips -> ClipsScreen(homeState, repo, store, onBack = { tab = Tab.Home }, onWatchFull = { playerSession = PlayerSession(it, 1) }, onOpenDetail = { selectedDrama = it })
-                            Tab.Rewards -> PlaceholderScreen("Hadiah", "Halaman ini masih kami siapkan, sabar sebentar ya.", Icons.Rounded.CardGiftcard)
                             Tab.Library -> LibraryScreen(store, dataTick, onDrama = { selectedDrama = it })
                             Tab.Profile -> ProfileScreen(store, dataTick, bump = { dataTick++ })
                         }
@@ -709,10 +674,7 @@ private fun App() {
         }
 
         if (showPlatformPicker) {
-            // Filter platform sesuai kategori aktif
-            val pickerPlatforms = category?.let { cat ->
-                Platforms.filter { cat.platforms.contains(it.id) }
-            } ?: Platforms.filter { it.id in listOf("melolo", "dramanova", "freereels", "dramabox", "netshort", "reelshort", "anichin") }
+            val pickerPlatforms = Platforms
 
             PlatformPickerModal(
                 platforms = pickerPlatforms,
@@ -760,25 +722,17 @@ private fun App() {
 
 @Composable
 private fun BottomNavBar(selected: Tab, onSelect: (Tab) -> Unit) {
-    Box(
+    Row(
         Modifier
             .fillMaxWidth()
             .background(DS.Bg)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .border(width = 0.5.dp, color = DS.Line, shape = RoundedCornerShape(0.dp))
+            .padding(horizontal = 4.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(DS.Raise)
-                .border(1.dp, DS.Line, RoundedCornerShape(20.dp))
-                .padding(horizontal = 5.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Tab.values().filter { it.showNav }.forEach { tab ->
-                NavItem(tab, tab == selected, onSelect, Modifier.weight(1f))
-            }
+        Tab.values().filter { it.showNav }.forEach { tab ->
+            NavItem(tab, tab == selected, onSelect, Modifier.weight(1f))
         }
     }
 }
@@ -788,32 +742,22 @@ private fun NavItem(tab: Tab, active: Boolean, onSelect: (Tab) -> Unit, modifier
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(if (active) DS.GreenWash else Color.Transparent)
             .clickable { onSelect(tab) }
-            .padding(vertical = 4.dp)
+            .padding(vertical = 3.dp)
     ) {
-        Box(
-            Modifier
-                .size(width = 42.dp, height = 30.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(if (active) DS.Green else Color.Transparent),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                tab.icon,
-                tab.label,
-                tint = if (active) DS.Ink else DS.Muted,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        Spacer(Modifier.height(3.dp))
+        Icon(
+            tab.icon,
+            tab.label,
+            tint = if (active) DS.Green else DS.Body,
+            modifier = Modifier.size(27.dp)
+        )
+        Spacer(Modifier.height(4.dp))
         Text(
             tab.label,
-            color = if (active) DS.Hi else DS.Muted,
-            fontSize = 10.sp,
+            color = if (active) DS.Green else DS.Muted,
+            fontSize = 10.5.sp,
             fontFamily = Type.Sans,
-            fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1
         )
     }
@@ -831,19 +775,7 @@ private fun PlatformPickerModal(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    // Warna pembeda sumber dibuat desaturasi agar tidak mengalahkan artwork.
-    val platformColors = mapOf(
-        "melolo" to Color(0xFF9B8F96),
-        "dramanova" to Color(0xFF9FA1A6),
-        "freereels" to Color(0xFF958E99),
-        "dramabox" to Color(0xFFB0838D),
-        "netshort" to Color(0xFF929AA3),
-        "reelshort" to Color(0xFFB07782),
-        "anichin" to Color(0xFF988F9E),
-        "moviebox" to Color(0xFF969DA6),
-        "mbshorts" to Color(0xFFAD818A),
-        "stardusttv" to Color(0xFFA0A1A4)
-    )
+    val platformColors = emptyMap<String, Color>()
 
     BackHandler { onDismiss() }
 
@@ -1099,50 +1031,12 @@ private fun HomeScreen(
                 if (all.isEmpty()) {
                     item { EmptyState("Rak masih kosong", "Coba muat ulang, atau pindah sumber dulu.", Icons.Rounded.Movie) }
                 } else {
-                    item { HeroCard(all.first(), onDrama) }
-                    if (history.isNotEmpty()) item {
-                        Section("Lanjutkan menonton", "Persis di tempat kamu berhenti.") {
-                            LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                items(history.take(8), key = { it.platform + it.id }) { watched -> ContinueCard(watched, onResume) }
-                            }
-                        }
-                    }
-
-                    genreRows.forEach { (label, shelfItems) ->
-                        item(key = "shelf_$label") {
-                            Section(label) {
-                                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(shelfItems, key = { it.platform + it.id }) { d ->
-                                        DiscoverDramaCard(drama = d, isNew = false, onClick = onDrama, modifier = Modifier.width(124.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    item {
-                        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 30.dp, bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
-                            Column(Modifier.weight(1f)) {
-                                Text("Jelajahi ${platformLabel(platformId)}", color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
-                                Spacer(Modifier.height(3.dp))
-                                Text("${all.size} judul siap diputar", color = DS.Muted, fontSize = 12.sp, fontFamily = Type.Sans)
-                            }
-                            Row(
-                                Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onRandom).padding(horizontal = 8.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Rounded.Shuffle, "Acak", tint = DS.Green, modifier = Modifier.size(15.dp))
-                                Spacer(Modifier.width(5.dp))
-                                Text("Acak", color = DS.Green, fontSize = 12.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                    }
-
-                    all.drop(1).chunked(2).forEachIndexed { index, row ->
+                    all.chunked(2).forEachIndexed { index, row ->
                         item(key = "grid_${platformId}_${data.loadedPage}_$index") {
                             Row(
-                                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.Top
                             ) {
                                 row.forEach { d ->
                                     DiscoverDramaCard(
@@ -1154,7 +1048,7 @@ private fun HomeScreen(
                                 }
                                 repeat(2 - row.size) { Spacer(Modifier.weight(1f)) }
                             }
-                            Spacer(Modifier.height(18.dp))
+                            Spacer(Modifier.height(10.dp))
                         }
                     }
                 }
@@ -1219,7 +1113,7 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Masuk ke ruang tontonan yang paling cocok dengan mood kamu.",
+                "Pilih ruang tontonan yang paling cocok dengan mood kamu.",
                 color = DS.Body,
                 fontSize = 14.sp,
                 lineHeight = 21.sp,
@@ -1244,13 +1138,6 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
                     accentColor = DS.Cyan,
                     onClick = { onSelect(HomeCategory.MovieDrama) }
                 )
-                CategoryCard(
-                    icon = Icons.Rounded.Theaters,
-                    title = HomeCategory.MovieBox.title,
-                    subtitle = HomeCategory.MovieBox.subtitle,
-                    accentColor = DS.Violet,
-                    onClick = { onSelect(HomeCategory.MovieBox) }
-                )
             }
 
             Spacer(Modifier.height(30.dp))
@@ -1263,13 +1150,6 @@ private fun CategoryHomeScreen(onSelect: (HomeCategory) -> Unit, onSettings: () 
                     subtitle = HomeCategory.Anime.subtitle,
                     accentColor = DS.Violet,
                     onClick = { onSelect(HomeCategory.Anime) }
-                )
-                CategoryCard(
-                    icon = Icons.Rounded.LiveTv,
-                    title = HomeCategory.Bstation.title,
-                    subtitle = HomeCategory.Bstation.subtitle,
-                    accentColor = DS.Cyan,
-                    onClick = { onSelect(HomeCategory.Bstation) }
                 )
             }
 
@@ -1412,7 +1292,7 @@ private fun BrandMark(modifier: Modifier = Modifier) {
     Box(
         modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(DS.Cream),
+            .background(DS.Green),
         contentAlignment = Alignment.Center
     ) {
         Icon(Icons.Rounded.PlayArrow, "Dramaku", tint = DS.Ink, modifier = Modifier.size(23.dp))
@@ -1463,9 +1343,9 @@ private fun HomeHeader(
     onPlatform: (String) -> Unit,
     onPickPlatform: () -> Unit = {}
 ) {
-    val selectedState = remoteConfig?.platform(platformId)
-    val online = selectedState?.enabled ?: true
-    val alert = remoteConfig?.message?.takeIf { it.enabled }?.let { listOf(it.title, it.text).filter { it.isNotBlank() }.joinToString(" · ") }
+    val online = remoteConfig?.platform(platformId)?.enabled ?: true
+    val alert = remoteConfig?.message?.takeIf { it.enabled }
+        ?.let { listOf(it.title, it.text).filter { value -> value.isNotBlank() }.joinToString(" · ") }
         ?: remoteError?.let { "Status server: $it" }
         ?: if (!online) "${platformLabel(platformId)} sedang gangguan" else ""
 
@@ -1473,103 +1353,90 @@ private fun HomeHeader(
         Modifier
             .fillMaxWidth()
             .background(DS.Bg)
-            .padding(top = 12.dp, bottom = 8.dp)
+            .padding(horizontal = 14.dp, vertical = 14.dp)
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+                .height(54.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(DS.Card2)
+                .clickable(onClick = onSearch)
+                .padding(start = 15.dp, end = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (category != null) {
-                Box(
-                    Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(13.dp))
-                        .background(DS.Card)
-                        .border(1.dp, DS.LineStrong, RoundedCornerShape(13.dp))
-                        .clickable(onClick = onExitCategory),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.ArrowBack, "Kembali", tint = DS.Hi, modifier = Modifier.size(18.dp))
-                }
-                Spacer(Modifier.width(12.dp))
-            }
-
-            Column(Modifier.weight(1f)) {
-                Text(
-                    category?.title ?: "Dramaku",
-                    color = DS.Hi,
-                    fontSize = 24.sp,
-                    fontFamily = Type.Display,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = (-0.45).sp
-                )
-                Spacer(Modifier.height(2.dp))
-                Text("Pilih cerita untuk malam ini", color = DS.Muted, fontSize = 11.5.sp, fontFamily = Type.Sans)
-            }
-            GhostIconButton(Icons.Rounded.Search, "Cari", onSearch)
-            Spacer(Modifier.width(8.dp))
-            GhostIconButton(Icons.Rounded.Refresh, "Muat ulang", onRefresh)
+            Icon(Icons.Rounded.Search, "Cari", tint = DS.Body, modifier = Modifier.size(25.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Cari judul drama",
+                color = DS.Muted,
+                fontSize = 15.sp,
+                fontFamily = Type.Sans,
+                modifier = Modifier.weight(1f)
+            )
+            Box(Modifier.width(1.dp).height(30.dp).background(DS.Faint))
+            Text(
+                "Cari",
+                color = DS.Hi,
+                fontSize = 14.sp,
+                fontFamily = Type.Sans,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(start = 15.dp)
+            )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(15.dp))
         Row(
-            Modifier
-                .padding(horizontal = 20.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(DS.Card)
-                .border(1.dp, DS.Line, RoundedCornerShape(20.dp))
-                .clickable { onPickPlatform() }
-                .padding(horizontal = 13.dp, vertical = 11.dp),
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(DS.Green.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                PlatformLogo(platformId, Modifier.size(22.dp))
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("SUMBER AKTIF", color = DS.Muted, fontSize = 9.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Spacer(Modifier.height(2.dp))
-                Text(platformLabel(platformId), color = DS.Hi, fontSize = 13.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
-            }
-            Text("Ganti", color = DS.Green, fontSize = 11.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.width(4.dp))
-            Icon(Icons.Rounded.KeyboardArrowDown, null, tint = DS.Green, modifier = Modifier.size(18.dp))
+            DiscoverShortcut(Icons.Rounded.GridView, "Kategori", DS.Cyan, onPickPlatform, Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(22.dp).background(DS.LineStrong))
+            DiscoverShortcut(Icons.Rounded.EmojiEvents, "Peringkat", Color(0xFFFF68B2), onRefresh, Modifier.weight(1f))
+            Box(Modifier.width(1.dp).height(22.dp).background(DS.LineStrong))
+            DiscoverShortcut(Icons.Rounded.AutoAwesome, "Baru Tayang", DS.Violet, onRefresh, Modifier.weight(1f))
         }
 
         if (alert.isNotBlank()) {
             Spacer(Modifier.height(12.dp))
             Row(
                 Modifier
-                    .padding(horizontal = 20.dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (online) DS.CyanWash else DS.RedWash)
-                    .border(1.dp, if (online) DS.Cyan.copy(alpha = 0.20f) else DS.Red.copy(alpha = 0.20f), RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (online) DS.GreenWash else DS.RedWash)
                     .padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(Modifier.size(7.dp).clip(CircleShape).background(if (online) DS.Cyan else DS.Red))
+                Box(Modifier.size(7.dp).clip(CircleShape).background(if (online) DS.Green else DS.Red))
                 Spacer(Modifier.width(9.dp))
-                Text(
-                    alert,
-                    color = DS.Body,
-                    fontSize = 11.5.sp,
-                    fontFamily = Type.Sans,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                Text(alert, color = DS.Body, fontSize = 11.5.sp, fontFamily = Type.Sans, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
+}
+
+@Composable
+private fun DiscoverShortcut(
+    icon: ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier.clickable(onClick = onClick).padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(28.dp).clip(RoundedCornerShape(9.dp)).background(tint),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = DS.Hi, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = DS.Hi, fontSize = 13.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
@@ -1609,67 +1476,44 @@ private fun PlatformBadge(platformId: String, compact: Boolean = false) {
 
 @Composable
 private fun SearchDramaCard(drama: Drama, onClick: (Drama) -> Unit, rank: Int? = null) {
-    val shape = RoundedCornerShape(14.dp)
-    Column(Modifier.clickable { onClick(drama) }) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.68f)
-                .clip(shape)
-                .background(DS.Card)
-                .border(1.dp, DS.Line, shape)
-        ) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        Modifier
+            .clip(shape)
+            .background(DS.Card)
+            .clickable { onClick(drama) }
+    ) {
+        Box(Modifier.fillMaxWidth().aspectRatio(0.70f).background(DS.Card2)) {
             AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, DS.Bg.copy(alpha = 0.68f)), startY = 200f)))
-
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.72f)))))
             rank?.let {
                 Text(
                     "#$it",
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .padding(7.dp)
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(DS.Green)
-                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                    Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(6.dp)).background(DS.Green).padding(horizontal = 7.dp, vertical = 4.dp),
                     color = DS.Ink,
-                    fontSize = 9.5.sp,
+                    fontSize = 10.sp,
                     fontFamily = Type.Sans,
                     fontWeight = FontWeight.Bold
                 )
             }
-
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(7.dp)
-                    .size(22.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .background(DS.Bg.copy(alpha = 0.60f)),
-                contentAlignment = Alignment.Center
-            ) {
-                PlatformLogo(drama.platform, Modifier.size(15.dp))
-            }
-
-            if (drama.episodes > 0) {
-                Text(
-                    "${drama.episodes} Ep",
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(7.dp)
-                        .clip(RoundedCornerShape(7.dp))
-                        .background(DS.Bg.copy(alpha = 0.72f))
-                        .padding(horizontal = 6.dp, vertical = 3.dp),
-                    color = DS.Hi,
-                    fontSize = 9.5.sp,
-                    fontFamily = Type.Sans,
-                    fontWeight = FontWeight.SemiBold
-                )
+            Row(Modifier.align(Alignment.BottomStart).padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.LocalFireDepartment, null, tint = DS.Hi, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(drama.views.ifBlank { "${drama.episodes.coerceAtLeast(1)} Ep" }, color = DS.Hi, fontSize = 10.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(drama.title.ifBlank { "Tanpa judul" }, color = DS.Hi, fontSize = 12.sp, lineHeight = 15.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(3.dp))
-        Text(drama.description.ifBlank { platformLabel(drama.platform) }, color = DS.Muted, fontSize = 10.5.sp, lineHeight = 13.sp, fontFamily = Type.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.padding(11.dp)) {
+            Text(drama.title.ifBlank { "Tanpa judul" }, color = DS.Hi, fontSize = 13.5.sp, lineHeight = 18.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(5.dp))
+            Text(
+                listOfNotNull(drama.tags.firstOrNull(), drama.episodes.takeIf { it > 0 }?.let { "$it episode" }).ifEmpty { listOf(platformLabel(drama.platform)) }.joinToString(" | "),
+                color = DS.Muted,
+                fontSize = 10.5.sp,
+                fontFamily = Type.Sans,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -1904,66 +1748,71 @@ private fun ContinueCard(h: HistoryItem, onClick: (HistoryItem) -> Unit) {
 private fun DiscoverDramaCard(
     drama: Drama, isNew: Boolean, onClick: (Drama) -> Unit, modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(16.dp)
-    Column(modifier.clickable { onClick(drama) }) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier
+            .clip(shape)
+            .background(DS.Card)
+            .clickable { onClick(drama) }
+    ) {
         Box(
             Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.68f)
-                .clip(shape)
-                .background(DS.Card)
-                .border(1.dp, DS.Line, shape)
+                .aspectRatio(0.70f)
+                .background(DS.Card2)
         ) {
             AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, DS.Bg.copy(alpha = 0.72f)))))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.70f)))))
             if (isNew) {
                 Text(
                     "BARU",
                     Modifier
                         .align(Alignment.TopStart)
-                        .padding(7.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .padding(8.dp)
+                        .clip(RoundedCornerShape(6.dp))
                         .background(DS.Green)
                         .padding(horizontal = 7.dp, vertical = 4.dp),
                     color = DS.Ink,
                     fontSize = 9.sp,
                     fontFamily = Type.Sans,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
+                    fontWeight = FontWeight.Bold
                 )
             }
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(7.dp)
-                    .size(22.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(DS.Bg.copy(alpha = 0.50f)),
-                contentAlignment = Alignment.Center
+            Row(
+                Modifier.align(Alignment.BottomStart).padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                PlatformLogo(drama.platform, Modifier.size(15.dp))
-            }
-            if (drama.episodes > 0) {
+                Icon(Icons.Rounded.LocalFireDepartment, null, tint = DS.Hi, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(4.dp))
                 Text(
-                    "${drama.episodes} Ep",
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(8.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(DS.Bg.copy(alpha = 0.68f))
-                        .padding(horizontal = 7.dp, vertical = 4.dp),
+                    drama.views.ifBlank { "${drama.episodes.coerceAtLeast(1)} episode" },
                     color = DS.Hi,
-                    fontSize = 9.5.sp,
+                    fontSize = 11.5.sp,
                     fontFamily = Type.Sans,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
                 )
             }
         }
-        Spacer(Modifier.height(9.dp))
-        Text(drama.title.ifBlank { "Tanpa judul" }, color = DS.Hi, fontSize = 12.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(3.dp))
-        val meta = listOfNotNull(platformLabel(drama.platform).takeIf { it.isNotBlank() }, drama.episodes.takeIf { it > 0 }?.let { "$it episode" }).joinToString(" · ")
-        Text(meta, color = DS.Muted, fontSize = 10.5.sp, fontFamily = Type.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+            Text(
+                drama.title.ifBlank { "Tanpa judul" },
+                color = DS.Hi,
+                fontSize = 15.sp,
+                fontFamily = Type.Sans,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 20.sp,
+                minLines = 2,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(6.dp))
+            val meta = listOfNotNull(
+                drama.tags.firstOrNull()?.takeIf { it.isNotBlank() },
+                drama.episodes.takeIf { it > 0 }?.let { "$it episode" }
+            ).ifEmpty { listOf(platformLabel(drama.platform)) }.joinToString(" | ")
+            Text(meta, color = DS.Muted, fontSize = 11.5.sp, fontFamily = Type.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 
@@ -1996,46 +1845,21 @@ private fun ShimmerLoader() {
         end = Offset(offset, offset)
     )
 
-    Column(Modifier.padding(vertical = 0.dp)) {
-        // Hero skeleton
-        Box(Modifier.fillMaxWidth().height(380.dp).background(brush))
-        Spacer(Modifier.height(24.dp))
-
-        // Section title skeleton
-        Box(Modifier.padding(horizontal = 20.dp).width(140.dp).height(20.dp).clip(RoundedCornerShape(4.dp)).background(brush))
-        Spacer(Modifier.height(14.dp))
-
-        // Row of cards
-        Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            repeat(3) {
-                Column {
-                    Box(Modifier.width(115.dp).height(164.dp).clip(RoundedCornerShape(12.dp)).background(brush))
-                    Spacer(Modifier.height(8.dp))
-                    Box(Modifier.width(80.dp).height(12.dp).clip(RoundedCornerShape(3.dp)).background(brush))
-                }
-            }
-        }
-        Spacer(Modifier.height(28.dp))
-
-        // Grid pairs
+    Column(Modifier.padding(horizontal = 14.dp)) {
         repeat(2) {
-            Row(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Column(Modifier.weight(1f)) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(0.68f).clip(RoundedCornerShape(12.dp)).background(brush))
-                    Spacer(Modifier.height(8.dp))
-                    Box(Modifier.width(100.dp).height(14.dp).clip(RoundedCornerShape(3.dp)).background(brush))
-                    Spacer(Modifier.height(5.dp))
-                    Box(Modifier.width(60.dp).height(10.dp).clip(RoundedCornerShape(3.dp)).background(brush))
-                }
-                Column(Modifier.weight(1f)) {
-                    Box(Modifier.fillMaxWidth().aspectRatio(0.68f).clip(RoundedCornerShape(12.dp)).background(brush))
-                    Spacer(Modifier.height(8.dp))
-                    Box(Modifier.width(100.dp).height(14.dp).clip(RoundedCornerShape(3.dp)).background(brush))
-                    Spacer(Modifier.height(5.dp))
-                    Box(Modifier.width(60.dp).height(10.dp).clip(RoundedCornerShape(3.dp)).background(brush))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                repeat(2) {
+                    Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(DS.Card)) {
+                        Box(Modifier.fillMaxWidth().aspectRatio(0.70f).background(brush))
+                        Column(Modifier.padding(12.dp)) {
+                            Box(Modifier.fillMaxWidth(0.88f).height(15.dp).clip(RoundedCornerShape(3.dp)).background(brush))
+                            Spacer(Modifier.height(7.dp))
+                            Box(Modifier.fillMaxWidth(0.58f).height(11.dp).clip(RoundedCornerShape(3.dp)).background(brush))
+                        }
+                    }
                 }
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(10.dp))
         }
     }
 }
@@ -2260,10 +2084,10 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
         Row(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(50))
-                .background(DS.Card)
-                .border(1.dp, DS.Line, RoundedCornerShape(50))
-                .padding(horizontal = 16.dp, vertical = 13.dp),
+                .height(54.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(DS.Card2)
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(Icons.Rounded.Search, null, tint = DS.Muted, modifier = Modifier.size(20.dp))
@@ -2331,7 +2155,7 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
                                 }
                                 Spacer(Modifier.height(12.dp))
                                 LazyVerticalGrid(
-                                    columns = GridCells.Fixed(3),
+                                    columns = GridCells.Fixed(2),
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     modifier = Modifier.fillMaxSize()
@@ -2395,11 +2219,11 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
                         Spacer(Modifier.height(14.dp))
                         if (popular.isNotEmpty()) {
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Fixed(2),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 userScrollEnabled = false,
-                                modifier = Modifier.height((((popular.size + 2) / 3) * 238).dp)
+                                modifier = Modifier.height((((popular.size + 1) / 2) * 320).dp)
                             ) {
                                 items(popular.size) { index -> SearchDramaCard(popular[index], onDrama, index + 1) }
                             }
@@ -2416,11 +2240,11 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
                         Spacer(Modifier.height(14.dp))
                         if (trend.isNotEmpty()) {
                             LazyVerticalGrid(
-                                columns = GridCells.Fixed(3),
+                                columns = GridCells.Fixed(2),
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 userScrollEnabled = false,
-                                modifier = Modifier.height((((trend.size + 2) / 3) * 238).dp)
+                                modifier = Modifier.height((((trend.size + 1) / 2) * 320).dp)
                             ) {
                                 items(trend.size) { index -> SearchDramaCard(trend[index], onDrama, index + 1) }
                             }
@@ -2440,63 +2264,73 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
 @Composable
 private fun LibraryScreen(store: LocalStore, dataTick: Int, onDrama: (Drama) -> Unit) {
     val ctx = LocalContext.current
-    var showFav by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableIntStateOf(0) }
     var localTick by remember { mutableIntStateOf(0) }
     val history = remember(dataTick, localTick) { store.history(dataTick + localTick) }
     val favs = remember(dataTick, localTick) { store.favs() }
+    val tabs = listOf("Histori", "Koleksi", "Suka")
 
-    Column(Modifier.fillMaxSize().background(DS.Bg).padding(horizontal = 20.dp)) {
-        Spacer(Modifier.height(16.dp))
-        Text("Koleksi", color = DS.Hi, fontSize = 27.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(4.dp))
-        Text("Riwayat dan favorit tersimpan di perangkatmu.", color = DS.Muted, fontSize = 12.5.sp, fontFamily = Type.Sans)
+    Column(Modifier.fillMaxSize().background(DS.Bg).padding(horizontal = 22.dp)) {
         Spacer(Modifier.height(18.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile("${history.size}", "Riwayat", Modifier.weight(1f))
-            StatTile("${favs.size}", "Favorit", Modifier.weight(1f))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            tabs.forEachIndexed { index, label ->
+                Text(
+                    label,
+                    color = if (selectedTab == index) DS.Green else DS.Muted,
+                    fontSize = 21.sp,
+                    fontFamily = Type.Sans,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { selectedTab = index }.padding(end = 28.dp, top = 8.dp, bottom = 8.dp)
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Rounded.MoreHoriz, "Menu", tint = DS.Body, modifier = Modifier.size(27.dp))
         }
-        Spacer(Modifier.height(16.dp))
-        // Tab switcher
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(DS.Raise)
-                .border(1.dp, DS.Line, RoundedCornerShape(16.dp))
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            SegOption("Lanjutkan", !showFav, Modifier.weight(1f)) { showFav = false }
-            SegOption("Favorit", showFav, Modifier.weight(1f)) { showFav = true }
-        }
+
+        Spacer(Modifier.height(22.dp))
+        Text(
+            when (selectedTab) { 0 -> "Hari Ini"; 1 -> "Tersimpan"; else -> "Disukai" },
+            color = DS.Muted,
+            fontSize = 15.sp,
+            fontFamily = Type.Sans,
+            fontWeight = FontWeight.SemiBold
+        )
         Spacer(Modifier.height(16.dp))
 
-        if (showFav) {
-            if (favs.isEmpty()) {
-                EmptyState("Belum ada favorit", "Simpan drama dari halaman detail biar gampang dibuka lagi.", Icons.Rounded.FavoriteBorder)
+        when (selectedTab) {
+            0 -> if (history.isEmpty()) {
+                EmptyState("Belum ada histori", "Mulai nonton, nanti progres kamu muncul di sini.", Icons.Rounded.History)
             } else {
-                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 22.dp)) {
-                    items(favs, key = { it.platform + it.id }) { d ->
-                        LibraryRow(d.title, platformLabel(d.platform), d.poster, onDelete = {
-                            store.removeFav(d.id, d.platform); localTick++; Toast.makeText(ctx, "Favorit dihapus", Toast.LENGTH_SHORT).show()
-                        }) { onDrama(d) }
-                    }
-                }
-            }
-        } else {
-            if (history.isEmpty()) {
-                EmptyState("Belum ada riwayat", "Mulai nonton, nanti progress kamu muncul di sini.", Icons.Rounded.History)
-            } else {
-                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 22.dp)) {
+                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
                     items(history, key = { it.id + it.platform }) { h ->
                         LibraryRow(
                             h.title,
-                            "${platformLabel(h.platform)} • Ep ${h.episode}${if (h.pct > 0) " • ${h.pct}%" else ""}",
+                            "${platformLabel(h.platform)} · Ep.${h.episode}${if (h.pct > 0) " · ${h.pct}% ditonton" else ""}",
                             h.poster,
                             onDelete = {
-                                store.removeHistory(h.id, h.platform); localTick++; Toast.makeText(ctx, "Riwayat dihapus", Toast.LENGTH_SHORT).show()
+                                store.removeHistory(h.id, h.platform); localTick++; Toast.makeText(ctx, "Histori dihapus", Toast.LENGTH_SHORT).show()
                             }
                         ) { onDrama(Drama(h.id, h.title, poster = h.poster, platform = h.platform)) }
+                    }
+                }
+            }
+            else -> if (favs.isEmpty()) {
+                EmptyState(
+                    if (selectedTab == 1) "Koleksi masih kosong" else "Belum ada yang disukai",
+                    "Simpan drama dari halaman detail agar mudah ditemukan lagi.",
+                    Icons.Rounded.FavoriteBorder
+                )
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
+                    items(if (selectedTab == 1) favs else favs.reversed(), key = { it.platform + it.id }) { d ->
+                        LibraryRow(
+                            d.title,
+                            listOfNotNull(d.tags.take(2).joinToString(", ").takeIf { it.isNotBlank() }, d.episodes.takeIf { it > 0 }?.let { "$it episode" }).joinToString(" · ").ifBlank { platformLabel(d.platform) },
+                            d.poster,
+                            onDelete = {
+                                store.removeFav(d.id, d.platform); localTick++; Toast.makeText(ctx, "Koleksi diperbarui", Toast.LENGTH_SHORT).show()
+                            }
+                        ) { onDrama(d) }
                     }
                 }
             }
@@ -2507,25 +2341,19 @@ private fun LibraryScreen(store: LocalStore, dataTick: Int, onDrama: (Drama) -> 
 @Composable
 private fun LibraryRow(title: String, subtitle: String, poster: String, onDelete: (() -> Unit)? = null, onClick: () -> Unit) {
     Row(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(DS.Card)
-            .border(1.dp, DS.Line, RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        PosterImage(poster, title, Modifier.width(52.dp).height(74.dp))
-        Spacer(Modifier.width(12.dp))
+        PosterImage(poster, title, Modifier.width(98.dp).height(138.dp))
+        Spacer(Modifier.width(18.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, color = DS.Hi, fontSize = 13.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(4.dp))
-            Text(subtitle, color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, color = DS.Hi, fontSize = 17.sp, lineHeight = 22.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(9.dp))
+            Text(subtitle, color = DS.Muted, fontSize = 13.sp, lineHeight = 18.sp, fontFamily = Type.Sans, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (onDelete != null) {
-            IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Rounded.DeleteOutline, "Hapus", tint = DS.Faint, modifier = Modifier.size(18.dp))
+            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Rounded.MoreVert, "Opsi", tint = DS.Muted, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -2584,34 +2412,38 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
     val rCount = remember(dataTick) { store.recentSearches().size }
     val version = remember { try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName } catch (_: Exception) { "4.9" } }
 
-    Column(Modifier.fillMaxSize().background(DS.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
-        Spacer(Modifier.height(16.dp))
+    Column(Modifier.fillMaxSize().background(DS.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp)) {
+        Spacer(Modifier.height(20.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
+            BrandMark(Modifier.size(66.dp).clip(CircleShape))
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text("Profil", color = DS.Hi, fontSize = 26.sp, fontFamily = Type.Display, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(3.dp))
-                Text("Semua data tersimpan di perangkatmu.", color = DS.Muted, fontSize = 12.5.sp, fontFamily = Type.Sans)
+                Text("Dramaku", color = DS.Hi, fontSize = 27.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("Tanpa akun · semua data tersimpan lokal", color = DS.Muted, fontSize = 12.sp, fontFamily = Type.Sans)
             }
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(DS.Card)
-                    .border(1.dp, DS.Line, RoundedCornerShape(50))
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Text("v$version", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
-            }
+            Text("v$version", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(24.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+            ProfileQuickAction(Icons.Rounded.History, "Histori") { Toast.makeText(ctx, "$hCount tontonan tersimpan", Toast.LENGTH_SHORT).show() }
+            ProfileQuickAction(Icons.Rounded.Translate, "Bahasa") { dialog = "language" }
+            ProfileQuickAction(Icons.Rounded.Tune, "Preferensi") { Toast.makeText(ctx, "Preferensi ada di bawah", Toast.LENGTH_SHORT).show() }
+            ProfileQuickAction(Icons.Rounded.HeadsetMic, "Umpan Balik") { dialog = "feedback" }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        GateHairline()
+        Spacer(Modifier.height(24.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatTile("$hCount", "Riwayat", Modifier.weight(1f))
-            StatTile("$fCount", "Favorit", Modifier.weight(1f))
+            StatTile("$hCount", "Histori", Modifier.weight(1f))
+            StatTile("$fCount", "Koleksi", Modifier.weight(1f))
             StatTile("$rCount", "Pencarian", Modifier.weight(1f))
         }
 
         Spacer(Modifier.height(26.dp))
-        GroupTitle("PEMUTARAN")
+        GroupTitle("PREFERENSI PEMUTARAN")
         SettingsGroup {
             SettingsSwitch("Hemat data", "Batasi video ke 480p supaya kuota lebih awet.", dataSaver) { dataSaver = it; store.setDataSaver(it); bump() }
             GroupDivider()
@@ -2650,8 +2482,10 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
         val (title, body) = when (type) {
             "privacy" -> "Privasi" to "Riwayat, favorit, pencarian, dan progress nonton disimpan lokal di perangkat kamu. Dramaku tidak meng-host video dan tidak membuat akun pengguna."
             "disclaimer" -> "Disclaimer" to "Konten tetap milik platform masing-masing. Dramaku hanya menampilkan data dari sumber pihak ketiga sebagai client/aggregator. Gunakan dengan bijak."
+            "language" -> "Bahasa" to "Antarmuka Dramaku saat ini menggunakan Bahasa Indonesia. Subtitle mengikuti ketersediaan dari tiap sumber."
+            "feedback" -> "Umpan Balik" to "Fitur umpan balik tidak meminta akun atau data login. Gunakan kanal dukungan proyek untuk mengirim saran dan laporan."
             else -> {
-                "Tentang Dramaku" to "Versi: $version\n\nDramaku Native dibuat untuk nonton drama pendek, serial Asia, dan film dalam satu aplikasi.\n\n• Player native berbasis ExoPlayer\n• Swipe episode vertikal\n• Favorit, riwayat, dan progress lokal\n• Mode hemat data\n\nDibangun dengan Kotlin + Jetpack Compose, ditata dengan Fraunces & Plus Jakarta Sans."
+                "Tentang Dramaku" to "Versi: $version\n\nDramaku Native dibuat untuk nonton drama pendek, serial Asia, dan film dalam satu aplikasi.\n\n• Player native berbasis ExoPlayer\n• Swipe episode vertikal\n• Favorit, riwayat, dan progress lokal\n• Mode hemat data\n\nDibangun dengan Kotlin + Jetpack Compose dan Plus Jakarta Sans."
             }
         }
         AlertDialog(
@@ -2666,10 +2500,22 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
 }
 
 @Composable
+private fun ProfileQuickAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Column(
+        Modifier.width(76.dp).clickable(onClick = onClick).padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, label, tint = DS.Body, modifier = Modifier.size(27.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(label, color = DS.Muted, fontSize = 11.5.sp, fontFamily = Type.Sans, textAlign = TextAlign.Center, maxLines = 1)
+    }
+}
+
+@Composable
 private fun GroupTitle(title: String, danger: Boolean = false) {
     Text(
         title,
-        color = if (danger) DS.Red else DS.Faint,
+        color = if (danger) DS.Red else DS.Green,
         fontSize = 10.5.sp,
         fontFamily = Type.Sans,
         fontWeight = FontWeight.SemiBold,
@@ -2680,14 +2526,7 @@ private fun GroupTitle(title: String, danger: Boolean = false) {
 
 @Composable
 private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(DS.Card)
-            .border(1.dp, DS.Line, RoundedCornerShape(18.dp)),
-        content = content
-    )
+    Column(Modifier.fillMaxWidth(), content = content)
 }
 
 @Composable
@@ -2766,10 +2605,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
     val hist = store.history().firstOrNull { it.id == drama.id && it.platform == drama.platform }
     val resumeEp = hist?.episode?.coerceAtLeast(1) ?: 1
     val total = episodeCount(detail).coerceAtLeast(1)
-    // Film = satu tayangan utuh (MovieBox subject/get balas episode 0). Jangan
-    // ditampilkan sebagai daftar episode.
-    val isMovie = total <= 1 && drama.platform == "moviebox"
-    val preferLandscape = prefersLandscapePlayback(drama)
+    val isSingleVideo = total <= 1
     var detailRange by remember(drama.id, total) { mutableIntStateOf(((resumeEp - 1) / 30).coerceAtLeast(0)) }
 
     Box(Modifier.fillMaxSize().background(DS.Bg)) {
@@ -2935,8 +2771,8 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 when {
-                                    isMovie && hist != null -> "Lanjutkan Film"
-                                    isMovie -> "Putar Film"
+                                    isSingleVideo && hist != null -> "Lanjutkan Video"
+                                    isSingleVideo -> "Putar Video"
                                     hist != null -> "Lanjut Ep $resumeEp"
                                     else -> "Mulai Nonton"
                                 },
@@ -2992,7 +2828,7 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                                 Icon(Icons.Rounded.History, null, tint = DS.Green, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text("Lanjutkan menonton", color = DS.Hi, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, fontFamily = Type.Sans, modifier = Modifier.weight(1f))
-                                if (!isMovie) Text("Ep $resumeEp", color = DS.Green, fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = Type.Sans)
+                                if (!isSingleVideo) Text("Ep $resumeEp", color = DS.Green, fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = Type.Sans)
                             }
                             if (hist.pct > 0) {
                                 Spacer(Modifier.height(10.dp))
@@ -3022,8 +2858,8 @@ private fun DetailScreen(state: Load<Detail>, fallback: Drama, store: LocalStore
                         )
                     }
 
-                    // Episode list — film tidak punya daftar episode.
-                    if (!isMovie) {
+                    // Konten satu video tidak memerlukan daftar episode.
+                    if (!isSingleVideo) {
                     Spacer(Modifier.height(24.dp))
                     Row(verticalAlignment = Alignment.Bottom) {
                         Column(Modifier.weight(1f)) {
@@ -3227,13 +3063,7 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
         }
         if (stream.url.isBlank()) { loading = false; error = "Cuplikan belum tersedia"; player.stop(); return@LaunchedEffect }
         runCatching { player.stop(); player.clearMediaItems() }
-        // Bstation: gunakan MergingMediaSource untuk gabung video+audio
-        if (curDetail?.drama?.platform == "bstation" && stream.url.contains("|||")) {
-            val mediaSource = buildBstationMediaSources(stream)
-            player.setMediaSource(mediaSource); player.prepare(); player.seekTo(0); player.playWhenReady = true; loading = false
-        } else {
-            player.setMediaItem(buildMediaItem(stream)); player.prepare(); player.seekTo(0); player.playWhenReady = true; loading = false
-        }
+        player.setMediaItem(buildMediaItem(stream)); player.prepare(); player.seekTo(0); player.playWhenReady = true; loading = false
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(player, pager.currentPage) {
@@ -3426,13 +3256,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             // Simpan URL untuk WebView via state? Kita pakai stream.url langsung di UI nanti
         } else {
             runCatching { player.stop(); player.clearMediaItems() }
-            // Bstation: gunakan MergingMediaSource untuk gabung video+audio
-            if (detail.drama.platform == "bstation" && stream.url.contains("|||")) {
-                val mediaSource = buildBstationMediaSources(stream)
-                player.setMediaSource(mediaSource); player.prepare()
-            } else {
-                player.setMediaItem(buildMediaItem(stream)); player.prepare()
-            }
+            player.setMediaItem(buildMediaItem(stream)); player.prepare()
             if (start > 0) player.seekTo(start); player.playWhenReady = true; loading = false
             if (ep < total) launch { try { repo.resolveStreamCached(detail, ep + 1, store.dataSaver()) } catch (_: Throwable) {} }
         }
@@ -3708,9 +3532,8 @@ private fun PlayerErrorCard(message: String, modifier: Modifier = Modifier, onRe
 // HELPERS
 // ─────────────────────────────────────────────────────────────────
 
-// MovieBox = katalog film/series 16:9, jadi diputar landscape.
-// Shorts (mbshorts) tetap portrait karena videonya memang vertikal.
-private fun prefersLandscapePlayback(drama: Drama): Boolean = drama.platform == "moviebox"
+// Semua sumber aktif saat ini menggunakan orientasi portrait di player episode.
+private fun prefersLandscapePlayback(@Suppress("UNUSED_PARAMETER") drama: Drama): Boolean = false
 
 private fun buildMediaItem(s: StreamResult): MediaItem {
     val url = cleanUrl(s.url)
@@ -3724,7 +3547,6 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
         // NetShort (video.netshort.com) jalur URL-nya tanpa ekstensi, tapi query
         // auth_key-nya membawa mime_type=video_mp4.
         lower.contains(".mp4") || lower.contains("mime_type=video_mp4") -> b.setMimeType(MimeTypes.APPLICATION_MP4)
-        // DASH MPD dari Bstation
         lower.contains(".mpd") || lower.contains("/stream/mpd") -> b.setMimeType(MimeTypes.APPLICATION_MPD)
     }
     val subtitle = cleanUrl(s.subtitle)
@@ -3751,31 +3573,6 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
         )
     }
     return b.build()
-}
-
-// Bstation: MPD punya video + audio terpisah. Extract dan merge via MergingMediaSource.
-private fun buildBstationMediaSources(stream: StreamResult): MediaSource {
-    val parts = stream.url.split("|||")
-    val videoUrl = cleanUrl(parts[0])
-    val audioUrl = if (parts.size > 1) cleanUrl(parts[1]) else null
-    
-    val http = DefaultHttpDataSource.Factory()
-        .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
-        .setAllowCrossProtocolRedirects(true)
-        .setConnectTimeoutMs(15_000)
-        .setReadTimeoutMs(30_000)
-        .setDefaultRequestProperties(mapOf("Authorization" to "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"))
-    
-    val videoSource = DefaultMediaSourceFactory(http)
-        .createMediaSource(MediaItem.fromUri(Uri.parse(videoUrl)).buildUpon().setMimeType(MimeTypes.VIDEO_MP4).build())
-    
-    return if (audioUrl != null) {
-        val audioSource = DefaultMediaSourceFactory(http)
-            .createMediaSource(MediaItem.fromUri(Uri.parse(audioUrl)).buildUpon().setMimeType(MimeTypes.AUDIO_MP4).build())
-        MergingMediaSource(videoSource, audioSource)
-    } else {
-        videoSource
-    }
 }
 
 private fun formatMs(ms: Long): String {
@@ -3833,9 +3630,7 @@ private class DramakuRepository {
 
     suspend fun loadHome(p: String) = loadHomePage(p, 1)
 
-    // URL berawalan "POST " di-fetch pakai POST (endpoint shorts menolak GET).
-    private suspend fun fetchHome(url: String): JSONObject =
-        if (url.startsWith("POST ")) getJson(url.removePrefix("POST ").trim(), post = true) else getJson(url)
+    private suspend fun fetchHome(url: String): JSONObject = getJson(url)
 
     suspend fun loadHomePage(p: String, page: Int): HomeBundle = coroutineScope {
         if (p == "stardusttv") return@coroutineScope loadStardustHome(page)
@@ -3980,8 +3775,6 @@ private class DramakuRepository {
     }
 
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
-        // Shorts belum punya endpoint pencarian — balikin kosong saja.
-        if (p == "mbshorts") return@coroutineScope emptyList()
         val items = runCatching {
             when (p) {
                 "stardusttv" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&page=1&page_size=20").dataOrSelf(), p)
@@ -3990,15 +3783,12 @@ private class DramakuRepository {
                 "netshort" -> flat(getJson("${apiBase(p)}/${NetshortCatalog.searchPath(q)}").dataOrSelf(), p)
                 // ReelShort: /search?q=&page=&lang=in
                 "reelshort" -> flat(getJson("${apiBase(p)}/${ReelshortCatalog.searchPath(q, 1)}").dataOrSelf(), p)
-                // perPage di-radius upstream: 10–20 aman, 24 ke atas dibalas data kosong.
-                "moviebox" -> flat(getJson("${apiBase(p)}/subject/search?keyword=${enc(q)}&page=1&perPage=20", post = true).dataOrSelf(), p)
                 "dramanova" -> flat(getJson("${apiBase(p)}/drama/search?q=${enc(q)}&pageNum=1&pageSize=50&languages=in").dataOrSelf(), p)
                 "freereels" -> freereelsSearch(q, p)
                 "anichin" -> flat(getJson("${apiBase(p)}/${AnichinCatalog.searchPath(q)}").dataOrSelf(), p)
-                "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=id_ID").dataOrSelf(), p)
                 "raptdrama" -> {
                     val body = JSONObject().put("keyword", q).put("page", 1).put("limit", 20).put("lang", "en-US").toString()
-                    flat(getJson("${apiBase(p)}/open/search", post = true, jsonBody = body).dataOrSelf(), p)
+                    flat(getJson("${apiBase(p)}/open/search", jsonBody = body).dataOrSelf(), p)
                 }
                 "starshort" -> {
                     val base = apiBase(p)
@@ -4201,14 +3991,6 @@ private class DramakuRepository {
     suspend fun browseFreereels(categoryPath: String): List<Drama> =
         runCatching { flat(getJson("${apiBase("freereels")}/$categoryPath?page=0&lang=id-ID").dataOrSelf(), "freereels") }.getOrDefault(emptyList())
 
-    // Bstation: ambil from ogv home
-    suspend fun browseBstation(): List<Drama> =
-        runCatching { flat(getJson("${apiBase("bstation")}/ogv/home?lang=id_ID").dataOrSelf(), "bstation") }.getOrDefault(emptyList())
-
-    // Bstation: ambil by genre style_id
-    suspend fun browseBstationGenre(styleId: String): List<Drama> =
-        runCatching { flat(getJson("${apiBase("bstation")}/ogv/season/result?style_id=${enc(styleId)}&page=1&lang=id_ID").dataOrSelf(), "bstation") }.getOrDefault(emptyList())
-
     suspend fun loadDetail(input: Drama): Detail {
         val p = input.platform
         val url = detailUrl(input); val json = getJson(url)
@@ -4281,45 +4063,6 @@ private class DramakuRepository {
             val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data), p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
-        if (p == "moviebox" || p == "mbshorts") {
-            // subject/get: { ..., description, cover:{url}, genre, episodes:[{episode,se,title,duration}] }
-            // shorts/info: { ..., totalEpisode, episodes:[...] } — cover juga objek {url}.
-            val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
-            val title = data.stringAny("title", "bookName", "name").ifBlank { input.title }
-            val desc = cleanText(data.stringAny("description", "introduction", "synopsis")).ifBlank { input.description }
-            val poster = fixImg(data.coverUrl().ifBlank { data.stringAny("cover_url", "image", "poster") }.ifBlank { input.poster })
-            val epsArr = data.optJSONArray("episodes") ?: JSONArray()
-            // Penting: optInt, bukan intAny — untuk film API membalas episode 0 / se 0,
-            // sedangkan intAny menganggap nilai 0 sebagai "tidak ada" lalu memaksanya jadi 1.
-            val raw = epsArr.objects().mapIndexed { i, o ->
-                val epNo = if (o.has("episode")) o.optInt("episode", i + 1) else o.intAny("index", i + 1)
-                val seNo = if (o.has("se")) o.optInt("se", 1) else o.intAny("season", 1)
-                Triple(epNo, seNo, o.stringAny("episode_label", "label").ifBlank { o.stringAny("title") })
-            }
-            // Film (episode/se = 0) maupun serial multi-season direncanakan di
-            // MovieboxCatalog supaya logikanya bisa diuji tanpa jaringan.
-            val plan = MovieboxCatalog.plan(raw)
-            val listed = plan.episodes.map { e ->
-                EpisodeInfo(
-                    number = e.display,
-                    streaming = e.upstream.toString(),   // nomor asli untuk permintaan stream
-                    label = if (plan.isMovie) e.label.ifBlank { title } else e.label,
-                    se = e.season
-                )
-            }.ifEmpty { listOf(EpisodeInfo(1, "0", title, se = 0)) }
-            // Sebagian sumber (mis. Shorts) menyebut jumlah episode lebih banyak
-            // daripada isi array-nya. Selama cuma ada satu season, sisanya
-            // ditambahkan berurutan supaya tidak ada episode yang hilang.
-            val declared = data.intAny("totalEpisode", "chapterCount", "episode_count", 0)
-            val eps = if (!plan.isMovie && !plan.hasHiddenSeasons && declared > listed.size) {
-                val se = listed.firstOrNull()?.se ?: 1
-                listed + ((listed.size + 1)..declared).map { EpisodeInfo(it, it.toString(), "", se = se) }
-            } else listed
-            val total = eps.size.coerceAtLeast(1)
-            val extraTags = if (plan.hasHiddenSeasons) listOf("Season ${plan.seasons.first()} dari ${plan.seasons.size}") else emptyList()
-            val drama = Drama(input.id, title, desc, poster, total, input.views, tagsOf(data) + extraTags, p, input.subjectType)
-            return Detail(drama, eps)
-        }
         if (p == "dramanova") {
             // Dramanova (dramahub.be): { drama: { dramaId, title, synopsis, poster (relatif!),
             // totalEpisodes, tags, score }, episodes: [{ episodeNo, episodeId, title, wasLocked }] }.
@@ -4361,27 +4104,6 @@ private class DramakuRepository {
             val total = max(json.intAny("episode_count", input.episodes), eps.size)
             val viewCount = json.optLong("follow_count", 0).takeIf { it > 0 }?.let { "${it/1000}K" } ?: json.stringAny("view_count")
             val drama = Drama(input.id, title, desc, poster, total, viewCount, tagsOf(json), p, input.subjectType)
-            return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
-        }
-        if (p == "bstation") {
-            // Bstation: { code, message, data: { season_id, title, cover, evaluate, episodes: [{ id, title, long_title }] } }
-            val data = json.optJSONObject("data") ?: json
-            val title = data.stringAny("title").ifBlank { input.title }
-            val desc = cleanText(data.stringAny("evaluate", "description")).ifBlank { input.description }
-            val poster = fixImg(data.stringAny("cover").ifBlank { input.poster })
-            val epsArr = data.optJSONArray("episodes") ?: JSONArray()
-            val eps = epsArr.objects().map { o ->
-                val epNum = o.stringAny("title").toIntOrNull() ?: o.intAny("index", "number", 0)
-                EpisodeInfo(
-                    number = epNum,
-                    streaming = o.stringAny("id"), // ep_id untuk resolve stream
-                    label = o.stringAny("long_title", "title")
-                )
-            }
-            val total = max(eps.size, input.episodes)
-            val typeName = data.stringAny("type_name")
-            val tags = if (typeName.isNotBlank()) listOf(typeName) else emptyList()
-            val drama = Drama(input.id, title, desc, poster, total, "", tags, p, input.subjectType)
             return Detail(drama, if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
         }
         if (p == "reelshort") {
@@ -4913,28 +4635,6 @@ private class DramakuRepository {
             } else ""
             return StreamResult(link, subUrl, subMime)
         }
-        if (d.drama.platform == "moviebox") {
-            // Nomor yang tampil di UI berurutan 1..N; nomor asli upstream (dan season-nya)
-            // disimpan di EpisodeInfo supaya serial multi-season & film tetap tepat sasaran.
-            val info = d.episodes.firstOrNull { it.number == ep }
-            val se = info?.se ?: 1
-            val realEp = info?.streaming?.toIntOrNull() ?: ep.coerceAtLeast(1)
-            val json = getJson("$base/stream/${enc(id)}?ep=$realEp&se=$se&subjectId=${enc(id)}&lang=id")
-            val data = json.optJSONObject("data")
-            val link = data?.stringAny("resourceLink", "url", "link").orEmpty()
-            if (link.isBlank()) error("Video belum tersedia")
-            // Proxy membalas field extCaptions, tapi sejauh ini selalu kosong.
-            // Kalau kosong, caption diambil langsung dari BFF web MovieBox.
-            val sub = pickSubtitleUrl(data, json).ifBlank { movieboxCaption(id, realEp, se) }
-            return StreamResult(link, sub)
-        }
-        if (d.drama.platform == "mbshorts") {
-            val json = getJson("$base/shorts/mini-list?subjectId=${enc(id)}&ep=${ep.coerceAtLeast(1)}&lang=id")
-            val data = json.optJSONObject("data")
-            val link = data?.stringAny("url", "resourceLink").orEmpty()
-            if (link.isBlank()) error("Video belum tersedia")
-            return StreamResult(link, pickSubtitleUrl(data, json))
-        }
         if (d.drama.platform == "dramanova") {
             // Dramanova (dramahub.be): unlock/{dramaId}/{ep}?languages=in&subtitles=true
             // membalas videos (per definisi) + subtitles (srt) dalam satu balasan.
@@ -4974,20 +4674,6 @@ private class DramakuRepository {
                 if (lang.startsWith("id") || lang == "in") s.stringAny("subtitle") else null
             }.firstOrNull().orEmpty()
             return StreamResult(link, subtitle)
-        }
-        if (d.drama.platform == "bstation") {
-            // Bstation: /stream/mpd?id={ep_id}&qn=64 → DASH MPD XML (video+audio terpisah)
-            val epId = d.episodes.firstOrNull { it.number == ep }?.streaming ?: error("Episode ID tidak ditemukan")
-            val mpdXml = getString("$base/stream/mpd?id=${enc(epId)}&qn=64&lang=id_ID")
-            // Parse MPD: extract video + audio BaseURL, merge di player
-            val videoUrl = Regex("<AdaptationSet[^>]*contentType=\"video\"[^>]*>.*?<BaseURL>(.*?)</BaseURL>", RegexOption.DOT_MATCHES_ALL)
-                .find(mpdXml)?.groupValues?.getOrNull(1)?.trim() ?: ""
-            val audioUrl = Regex("<AdaptationSet[^>]*contentType=\"audio\"[^>]*>.*?<BaseURL>(.*?)</BaseURL>", RegexOption.DOT_MATCHES_ALL)
-                .find(mpdXml)?.groupValues?.getOrNull(1)?.trim() ?: ""
-            if (videoUrl.isBlank()) error("Video belum tersedia")
-            // Format: videoURL|||audioURL (dipisah special delimiter, di-parse di buildMediaItem)
-            val streamUrl = if (audioUrl.isNotBlank()) "$videoUrl|||$audioUrl" else videoUrl
-            return StreamResult(streamUrl, "")
         }
         if (d.drama.platform == "reelshort") {
             // ReelShort: /book/{id}/chapter/{chapterId}/video -> {data: {videos: [{PlayURL, Dpi, Encode}]}}
@@ -5211,29 +4897,7 @@ private class DramakuRepository {
         return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
     }
 
-    // Caption MovieBox: proxy captain.sapimu.au balas extCaptions kosong, jadi
-    // teksnya diambil dari BFF web MovieBox. Mirror-nya kadang region-locked,
-    // makanya dicoba beberapa host, hasilnya di-cache, dan kalau semuanya tolak
-    // fitur ini dimatikan untuk sesi ini supaya tidak memperlambat tiap episode.
-    private val captionCache = ConcurrentHashMap<String, String>()
-    @Volatile private var captionSourceDead = false
-    private suspend fun movieboxCaption(subjectId: String, ep: Int, se: Int): String {
-        if (captionSourceDead) return ""
-        val key = "$subjectId|$se|$ep"
-        captionCache[key]?.let { return it }
-        var anyReachable = false
-        MOVIEBOX_CAPTION_HOSTS.forEach { host ->
-            val url = "$host/wefeed-h5-bff/web/subject/play?subjectId=${enc(subjectId)}&se=$se&ep=$ep"
-            val json = runCatching { getJson(url) }.getOrNull() ?: return@forEach
-            anyReachable = true
-            val sub = pickSubtitleUrl(json.optJSONObject("data"), json)
-            if (sub.isNotBlank()) { captionCache[key] = sub; return sub }
-        }
-        if (!anyReachable) captionSourceDead = true else captionCache[key] = ""
-        return ""
-    }
-
-    private suspend fun getJson(url: String, post: Boolean = false, jsonBody: String? = null): JSONObject = withContext(Dispatchers.IO) {
+    private suspend fun getJson(url: String, jsonBody: String? = null): JSONObject = withContext(Dispatchers.IO) {
         // Origin di balik proxy kadang balas 5xx sementara.
         // Retry singkat supaya home tidak langsung error.
         var last: Throwable? = null
@@ -5245,17 +4909,9 @@ private class DramakuRepository {
                     .header("Accept", "application/json, text/plain, */*")
                 if (jsonBody != null) {
                     reqBuilder.post(jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType()))
-                } else if (post) {
-                    reqBuilder.post(okhttp3.FormBody.Builder().build())
                 }
-                if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
+                if (url.contains("dramahub.be")) {
                     reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
-                }
-                if (url.contains("wefeed-h5-bff")) {
-                    // BFF web MovieBox menolak UA non-browser.
-                    val host = runCatching { java.net.URL(url).host }.getOrNull().orEmpty()
-                    reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                    if (host.isNotBlank()) reqBuilder.header("Referer", "https://$host/")
                 }
                 return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
                     val body = r.body?.string().orEmpty().trim()
@@ -5286,36 +4942,6 @@ private class DramakuRepository {
                         || parsed.has("rows")
                     if (statusZero && !explicitSuccess) error(parsed.stringAny("error_msg", "error", "message", "msg").ifBlank { "Gagal memuat data" })
                     parsed
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (t: Throwable) {
-                last = t
-            }
-        }
-        throw (last ?: IllegalStateException("Gagal memuat data"))
-    }
-
-    private suspend fun getString(url: String): String = withContext(Dispatchers.IO) {
-        var last: Throwable? = null
-        repeat(3) { attempt ->
-            if (attempt > 0) delay(450L * attempt)
-            try {
-                val reqBuilder = Request.Builder().url(url)
-                    .header("User-Agent", "DramakuNative/4.9.9 Android")
-                    .header("Accept", "*/*")
-                if (url.contains("captain.sapimu.au") || url.contains("dramahub.be")) {
-                    reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
-                }
-                if (url.contains("wefeed-h5-bff")) {
-                    // BFF web MovieBox menolak UA non-browser.
-                    val host = runCatching { java.net.URL(url).host }.getOrNull().orEmpty()
-                    reqBuilder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
-                    if (host.isNotBlank()) reqBuilder.header("Referer", "https://$host/")
-                }
-                return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
-                    if (!r.isSuccessful) error("HTTP ${r.code}")
-                    r.body?.string().orEmpty()
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -5360,24 +4986,6 @@ private fun homeUrls(p: String, page: Int): List<String> {
             "$base/${NetshortCatalog.NEW_PATH}"
         )
     }
-    // MovieBox: list-nya kaya (home-content 237 judul), taruh di slot Popular
-    // supaya catatan pertama layar langsung penuh. Sisanya rak kategori asli.
-    if (p == "moviebox") {
-        return listOf(
-            "$base/tabs/category-content?type=6159907949583500480&lang=id",
-            "$base/tabs/home-content?lang=id",
-            "$base/tabs/category-content?type=2529702013798074864&lang=id"
-        )
-    }
-    if (p == "mbshorts") {
-        // Endpoint shorts cuma terima POST (GET dibalas 500 "cf eror") —
-        // penanda "POST " diproses saat fetch.
-        return listOf(
-            "POST $base/shorts/reel?page=1&perPage=24",
-            "POST $base/shorts/most-trending?page=1&perPage=24",
-            "POST $base/shorts/reel?page=2&perPage=24"
-        )
-    }
     if (p == "dramanova") {
         // Dramanova (dramahub.be): discover feed + modul home (hot & new).
         // Katalog lengkap (drama/list) dipakai rak genre "Katalog".
@@ -5393,14 +5001,6 @@ private fun homeUrls(p: String, page: Int): List<String> {
             "$base/foryou?page=1&lang=id-ID",
             "$base/popular?page=0&lang=id-ID",
             "$base/new?page=0&lang=id-ID"
-        )
-    }
-    if (p == "bstation") {
-        // Bstation: semua endpoint return items dengan season_id
-        return listOf(
-            "$base/ogv/home?lang=id_ID",
-            "$base/ogv/season/result?style_id=-1&page=1&lang=id_ID",
-            "$base/ogv/season/result?style_id=20006&page=1&lang=id_ID"
         )
     }
     if (p == "reelshort") {
@@ -5432,11 +5032,8 @@ private fun detailUrl(d: Drama): String {
     "netshort" -> "${apiBase(d.platform)}/${NetshortCatalog.detailPath(d.id)}"
     "reelshort" -> "${apiBase(d.platform)}/${ReelshortCatalog.detailPath(d.id)}"
     "anichin" -> "${apiBase(d.platform)}/${AnichinCatalog.detailPath(d.id)}"
-    "moviebox" -> "${apiBase(d.platform)}/subject/get?subjectId=${enc(d.id)}&lang=id"
-    "mbshorts" -> "${apiBase(d.platform)}/shorts/info?subjectId=${enc(d.id)}&lang=id"
     "dramanova" -> "${apiBase(d.platform)}/detail/${enc(d.id)}?languages=in"
     "freereels" -> "${apiBase(d.platform)}/dramas/${enc(d.id)}?lang=id-ID"
-    "bstation" -> "${apiBase(d.platform)}/view/info?id=${enc(d.id)}&lang=id_ID"
     else -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
     }
 }
@@ -5656,7 +5253,6 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 
 private fun normalize(o: JSONObject, fp: String): Drama {
     val p = fp
-    // Bstation: season_id atau aid sebagai ID; Dramanova (dramahub.be): dramaId.
     val id = extractDramaId(o, p)
     val epCount = o.intAny(*DRAMA_EP_KEYS, "episode_number", "chapterCnt", "totalChapterNum", 0)
         .let {
@@ -5809,7 +5405,6 @@ private fun JSONObject.intAny(vararg keys: Any): Int { var fb = 0; keys.forEach 
 // Subtitle: tiap sumber menamai listnya beda-beda (captions/subtitles/subs/...),
 // isinya pun bisa {lan,url} atau {language,link}. Dipungut semua lalu diurut:
 // Indonesia dulu, lalu Inggris, terakhir entri apa pun yang ada.
-private val MOVIEBOX_CAPTION_HOSTS = listOf("https://fmoviesunblocked.net", "https://movieboxhd.net", "https://themoviebox.org")
 private val SUB_LIST_KEYS = arrayOf("extCaptions", "captions", "caption_list", "captionList", "subtitles", "subtitle_list", "subtitleList", "subs")
 private val SUB_URL_KEYS = arrayOf("url", "link", "subtitle", "src", "file", "resourceLink")
 private val SUB_LANG_KEYS = arrayOf("lan", "lang", "language", "lanName", "languageName", "langName", "name", "label")

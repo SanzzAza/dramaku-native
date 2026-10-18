@@ -17,7 +17,7 @@ data class NetshortSubtitle(val url: String, val language: String, val format: S
  * Helper NetShort untuk endpoint `dramahub.be/netshort/api/v1`.
  *
  * Semua fungsi di sini murni (tanpa jaringan) supaya bisa diuji unit, mengikuti
- * pola [MovieboxCatalog] dan [DramaboxCatalog].
+ * pola [DramaboxCatalog].
  */
 object NetshortCatalog {
 

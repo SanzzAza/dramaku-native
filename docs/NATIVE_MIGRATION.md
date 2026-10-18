@@ -28,7 +28,7 @@ Project ini adalah Android full native berbasis **Kotlin + Jetpack Compose**.
   - NetShort
   - DramaBox
   - GoodShort
-  - MovieBox
+  - Anichin
   - Drakor
 
 ## File penting
