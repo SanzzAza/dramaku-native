@@ -305,7 +305,7 @@ private val Platforms = listOf(
     PlatformInfo("moviebox", "MovieBox", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("mbshorts", "Shorts", "https://captain.sapimu.au/moviebox/api"),
     PlatformInfo("stardusttv", "Stardust TV", "https://dramahub.be/stardusttv/api/v1")
-)
+) + ExtraPlatforms.platforms
 
 // Rak genre DramaBox cadangan: dipakai kalau /categories tidak terbaca, supaya
 // beranda tetap punya rak. Type id-nya sama dengan yang dipakai versi sebelumnya.
@@ -3959,7 +3959,10 @@ private class DramakuRepository {
                 "freereels" -> freereelsSearch(q, p)
                 "anichin" -> flat(getJson("${apiBase(p)}/${AnichinCatalog.searchPath(q)}").dataOrSelf(), p)
                 "bstation" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&pn=1&lang=id_ID").dataOrSelf(), p)
-                else -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
+                else -> {
+                    val extraUrl = ExtraPlatforms.searchUrl(p, q, apiBase(p))
+                    if (extraUrl != null) flat(getJson(extraUrl).dataOrSelf(), p) else flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&limit=50&offset=0").dataOrSelf(), p)
+                }
             }
         }.getOrDefault(emptyList())
         dedupeAndRank(items, q).take(80)
@@ -4535,6 +4538,20 @@ private class DramakuRepository {
             // Anichin tidak punya subtitle terpisah di API, biasanya hardsub Indonesia
             return StreamResult(url)
         }
+        // Extra platforms generic stream handling via ExtraPlatforms
+        ExtraPlatforms.streamUrl(d.drama.platform, id, ep, base)?.let { url ->
+            val json = runCatching { getJson(url) }.getOrNull()
+            // Try to extract video url from generic response keys
+            val direct = json?.stringAny("video","playUrl","play_url","url","resourceLink","source","hls_url","hlsUrl","play_url","video_url","m3u8_url","main_url","backup_url").orEmpty().ifBlank { json?.optJSONObject("data")?.stringAny("video","url","play_url","playUrl","resourceLink","hls_url").orEmpty() }
+            if (direct.isNotBlank() && direct.startsWith("http")) return StreamResult(direct, pickSubtitleUrl(json))
+            if (json != null) {
+                // Try to find any http url in response
+                val found = findFirstHttpUrl(json)
+                if (found.isNotBlank()) return StreamResult(found, pickSubtitleUrl(json))
+            }
+            // Fallback to direct URL if API returns playlist directly
+            return StreamResult(url)
+        }
         val multiVideoJson = runCatching { getJson("$base/multi-video?id=${enc(id)}&lang=id") }.getOrNull()
         val list = multiVideoJson?.optJSONArray("episodes")
             ?: multiVideoJson?.optJSONArray("video_list")
@@ -4662,6 +4679,7 @@ private fun pagesFor(p: String): IntRange = 1..1
 
 private fun homeUrls(p: String, page: Int): List<String> {
     val base = apiBase(p)
+    ExtraPlatforms.homeUrls(p, page, base)?.let { return it }
     // Kode Bahasa Indonesia di proxy DramaBox adalah "in"; "lang=id" malah 500 di upstream-nya.
     if (p == "dramabox") {
         return listOf("$base/recommend/book?lang=in", "$base/rank?lang=in", "$base/home?lang=in")
@@ -4739,7 +4757,9 @@ private fun homeUrls(p: String, page: Int): List<String> {
     return listOf("$base/bookmall?lang=id", "$base/rank?page=1&lang=id", "$base/bookmall/tabs?gender=0&lang=id")
 }
 
-private fun detailUrl(d: Drama): String = when (d.platform) {
+private fun detailUrl(d: Drama): String {
+    ExtraPlatforms.detailUrl(d.platform, d.id, apiBase(d.platform))?.let { return it }
+    return when (d.platform) {
     "stardusttv" -> "${apiBase(d.platform)}/video/${enc(d.id)}?lang=id"
     "dramabox" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
     "netshort" -> "${apiBase(d.platform)}/${NetshortCatalog.detailPath(d.id)}"
@@ -4751,9 +4771,36 @@ private fun detailUrl(d: Drama): String = when (d.platform) {
     "freereels" -> "${apiBase(d.platform)}/dramas/${enc(d.id)}?lang=id-ID"
     "bstation" -> "${apiBase(d.platform)}/view/info?id=${enc(d.id)}&lang=id_ID"
     else -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=id"
+    }
 }
 
 private fun dedupe(items: List<Drama>) = items.filter { it.id.isNotBlank() && it.title.isNotBlank() }.distinctBy { it.platform + "|" + it.id }.distinctBy { it.platform + "|" + normalizeKey(it.title) }
+private fun findFirstHttpUrl(json: JSONObject): String {
+    fun scan(node: Any?): String? {
+        when (node) {
+            is JSONObject -> {
+                val keys = node.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val v = node.opt(k)
+                    if (v is String && v.startsWith("http")) return v
+                    val found = scan(v)
+                    if (found != null) return found
+                }
+            }
+            is org.json.JSONArray -> {
+                for (i in 0 until node.length()) {
+                    val v = node.opt(i)
+                    if (v is String && v.startsWith("http")) return v
+                    val found = scan(v)
+                    if (found != null) return found
+                }
+            }
+        }
+        return null
+    }
+    return scan(json).orEmpty()
+}
 private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c.recommended + n.recommended), dedupe(c.popular + n.popular), dedupe(c.newest + n.newest), max(c.loadedPage, n.loadedPage), n.hasMore)
 
 // Feed Melolo memuat rak ("Trending"), tab genre ("Peringkat", "Time Travel"),

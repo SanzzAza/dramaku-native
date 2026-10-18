@@ -1,5 +1,7 @@
 package com.dramaku.app.home
 
+import com.dramaku.app.ExtraPlatforms
+
 /**
  * Kategori pintu masuk di layar awal (desain ala SonzaixBox, brand Dramaku).
  *
@@ -21,7 +23,7 @@ enum class HomeCategory(
         id = "short_drama",
         title = "Short Drama",
         subtitle = "Drama pendek vertikal episode singkat",
-        platforms = listOf("melolo", "dramanova", "freereels", "dramabox", "netshort", "reelshort")
+        platforms = listOf("melolo", "dramanova", "freereels", "dramabox", "netshort", "reelshort") + ExtraPlatforms.platforms.map { it.id }
     ),
     MovieDrama(
         id = "movie_drama",
