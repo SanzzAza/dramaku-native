@@ -6,6 +6,8 @@ Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
 - Desain ulang seluruh antarmuka dengan latar hitam pekat, kartu abu gelap,
   tipografi sans-serif, dan aksen kuning terang.
+- Animasi pembuka baru: logo kuning dengan halo berdenyut, titik orbit,
+  wordmark bertahap, progress halus, dan transisi zoom-fade ke aplikasi.
 - Navigasi bawah kini hanya Cuplikan, Temukan, Perpustakaan, dan Profil;
   menu Hadiah dihapus.
 - Aplikasi langsung membuka Temukan, tetap menyediakan feed Cuplikan, dan tidak

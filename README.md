@@ -24,6 +24,7 @@ Antarmuka memakai latar **hitam pekat**, kartu abu gelap, teks putih, dan aksen 
 
 ## Fitur Native MVP
 
+- Animasi pembuka modern dengan halo, orbit, progress, dan transisi zoom-fade
 - Langsung masuk ke layar Temukan tanpa onboarding akun atau login
 - Chips platform difilter per kategori + preferensi platform tersimpan per kategori
 - Beranda native Compose
