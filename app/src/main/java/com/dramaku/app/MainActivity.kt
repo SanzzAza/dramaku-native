@@ -260,7 +260,7 @@ private enum class Tab(val label: String, val icon: ImageVector, val showNav: Bo
     Search("Cari", Icons.Rounded.Search)
 }
 
-private data class PlatformInfo(val id: String, val label: String, val base: String, val logoUrl: String = "", val logoRes: Int = 0)
+data class PlatformInfo(val id: String, val label: String, val base: String, val logoUrl: String = "", val logoRes: Int = 0)
 private data class Drama(
     val id: String, val title: String, val description: String = "", val poster: String = "",
     val episodes: Int = 0, val views: String = "", val tags: List<String> = emptyList(),

@@ -35,7 +35,7 @@ object MeloShortCatalog {
     // GET /api/v1/dramas/search // Search drama
     fun episodeListPath(id: String, page: Int = 1, limit: Int = 100, lang: String = "id"): String = "api/v1/dramas/${URLEncoder.encode(id, "UTF-8")}/episodes?page=${page}&limit=${limit}&lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/dramas/:id/episodes // Episode list
-    fun episodeVideoUrlPath(id: String, chapter: String, lang: String = "id"): String = "api/v1/dramas/${URLEncoder.encode(id, "UTF-8")}/episodes/${URLEncoder.encode(chapter, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun episodeVideoUrlPath(id: String, chapter: String, lang: String = "id"): String = "api/v1/dramas/${URLEncoder.encode(id, "UTF-8")}/episodes/${chapter}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/dramas/:id/episodes/:chapter // Episode video URL
 
     // Helper generic untuk parsing list dr balasan dramahub.be

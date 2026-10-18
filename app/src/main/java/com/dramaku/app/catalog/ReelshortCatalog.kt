@@ -50,7 +50,7 @@ object ReelshortCatalog {
         "book/${URLEncoder.encode(bookId, "UTF-8")}/chapters?lang=$lang"
 
     fun videoPath(bookId: String, chapterId: String): String =
-        "book/${URLEncoder.encode(bookId, "UTF-8")}/chapter/${URLEncoder.encode(chapterId, "UTF-8")}/video"
+        "book/${URLEncoder.encode(bookId, "UTF-8")}/chapter/${chapterId}/video"
 
     // ── Tabs dari /foryou atau /feed ──
     // Struktur: data.tab_list = [{tab_id, tab_name, sort}]

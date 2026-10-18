@@ -44,7 +44,7 @@ object ShortBoxCatalog {
     // GET /api/search // Cari drama (alias: query, keyword)
     fun detailDramaDaftarEpisodePath(id: String, sort: Int = 1, languages: String = "id"): String = "api/info/${URLEncoder.encode(id, "UTF-8")}?sort=${sort}&languages=${URLEncoder.encode(languages, "UTF-8")}"
     // GET /api/info/:id // Detail drama + daftar episode
-    fun streamUrlM3u8DrmPath(id: String, ep: Int, quality: String = "720"): String = "api/stream/${URLEncoder.encode(id, "UTF-8")}/${URLEncoder.encode(ep, "UTF-8")}?quality=${URLEncoder.encode(quality, "UTF-8")}"
+    fun streamUrlM3u8DrmPath(id: String, ep: Int, quality: String = "720"): String = "api/stream/${URLEncoder.encode(id, "UTF-8")}/${ep}?quality=${URLEncoder.encode(quality, "UTF-8")}"
     // GET /api/stream/:id/:ep // Stream URL (m3u8/DRM)
 
     // Helper generic untuk parsing list dr balasan dramahub.be

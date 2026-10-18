@@ -32,7 +32,7 @@ object ShortSkyCatalog {
     // GET /api/search // Search drama
     fun dramaDetailPath(id: String, lang: String = "id_id"): String = "api/drama/${URLEncoder.encode(id, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/drama/:id // Drama detail
-    fun episodeVideoUrls4807201080Path(id: String, ep: Int, lang: String = "id_id"): String = "api/drama/${URLEncoder.encode(id, "UTF-8")}/episode/${URLEncoder.encode(ep, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun episodeVideoUrls4807201080Path(id: String, ep: Int, lang: String = "id_id"): String = "api/drama/${URLEncoder.encode(id, "UTF-8")}/episode/${ep}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/drama/:id/episode/:ep // Episode video URLs (480/720/1080)
 
     // Helper generic untuk parsing list dr balasan dramahub.be

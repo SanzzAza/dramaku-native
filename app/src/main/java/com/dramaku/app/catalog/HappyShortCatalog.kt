@@ -32,7 +32,7 @@ object HappyShortCatalog {
     // GET /search // Cari drama (alias: kw)
     fun detailDramaDaftarEpisodePath(videoId: Int = 350964): String = "drama/${URLEncoder.encode(videoId, "UTF-8")}"
     // GET /drama/:videoId // Detail drama + daftar episode
-    fun urlStreamingEpisodePath(videoId: Int = 350964, ep: Int = 1): String = "drama/${URLEncoder.encode(videoId, "UTF-8")}/play/${URLEncoder.encode(ep, "UTF-8")}"
+    fun urlStreamingEpisodePath(videoId: Int = 350964, ep: Int = 1): String = "drama/${URLEncoder.encode(videoId, "UTF-8")}/play/${ep}"
     // GET /drama/:videoId/play/:ep // URL streaming episode
 
     // Helper generic untuk parsing list dr balasan dramahub.be

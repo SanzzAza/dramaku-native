@@ -35,7 +35,7 @@ object LuminaReelsCatalog {
     // GET /api/drama/search // Cari drama berdasarkan kata kunci
     fun detailDramaEpisodePath(id: String, lang: String = "en"): String = "api/drama/detail?id=${URLEncoder.encode(id, "UTF-8")}&lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/drama/detail // Detail drama + episode
-    fun playlistHlsHasilDecryptYangBisaDiputarPlayerPath(id: String, index: Int, lang: String = "en"): String = "api/stream/${URLEncoder.encode(id, "UTF-8")}/${URLEncoder.encode(index, "UTF-8")}/master.m3u8?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun playlistHlsHasilDecryptYangBisaDiputarPlayerPath(id: String, index: Int, lang: String = "en"): String = "api/stream/${URLEncoder.encode(id, "UTF-8")}/${index}/master.m3u8?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/stream/:id/:index/master.m3u8 // Playlist HLS hasil decrypt yang bisa diputar player
 
     // Helper generic untuk parsing list dr balasan dramahub.be

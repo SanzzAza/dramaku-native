@@ -47,7 +47,7 @@ object FlickReelsCatalog {
     // GET /api/v1/banners // Banners/sliders
     fun chapterListPath(id: String, lang: String = "id"): String = "api/v1/chapters/${URLEncoder.encode(id, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/chapters/:id // Chapter list
-    fun streamUrlPath(playletId: String, chapterId: String, lang: String = "id"): String = "api/v1/stream/${URLEncoder.encode(playletId, "UTF-8")}/${URLEncoder.encode(chapterId, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun streamUrlPath(playletId: String, chapterId: String, lang: String = "id"): String = "api/v1/stream/${URLEncoder.encode(playletId, "UTF-8")}/${chapterId}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/stream/:playletId/:chapterId // Stream URL
 
     // Helper generic untuk parsing list dr balasan dramahub.be

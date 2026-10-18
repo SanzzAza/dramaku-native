@@ -36,7 +36,7 @@ object DramaBiteCatalog {
     // GET /api/v1/drama/:id // Drama detail with episodes
     fun dramaLikeCountPath(id: String, lang: String = "id"): String = "api/v1/drama/${URLEncoder.encode(id, "UTF-8")}/likes?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/drama/:id/likes // Drama like count
-    fun episodeVideoUrlPath(id: String, ep: Int, lang: String = "id"): String = "api/v1/drama/${URLEncoder.encode(id, "UTF-8")}/episode/${URLEncoder.encode(ep, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun episodeVideoUrlPath(id: String, ep: Int, lang: String = "id"): String = "api/v1/drama/${URLEncoder.encode(id, "UTF-8")}/episode/${ep}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/drama/:id/episode/:ep // Episode video URL
     fun searchDramaGrpcServerSidePath(q: String, lang: String = "id", limit: Int = 20): String = "api/v1/search?q=${URLEncoder.encode(q, "UTF-8")}&lang=${URLEncoder.encode(lang, "UTF-8")}&limit=${limit}"
     // GET /api/v1/search // Search drama (gRPC server-side)

@@ -38,7 +38,7 @@ object VibeShortCatalog {
     // GET /api/foryou/page // For You feed
     fun detailShortplayEpisodePath(id: String): String = "api/shortplay/${URLEncoder.encode(id, "UTF-8")}"
     // GET /api/shortplay/:id // Detail shortplay + episode
-    fun urlStreamingVipPoolCache2JamPath(shortPlayId: String, episode: Int): String = "api/unlock/farm/${URLEncoder.encode(shortPlayId, "UTF-8")}/${URLEncoder.encode(episode, "UTF-8")}"
+    fun urlStreamingVipPoolCache2JamPath(shortPlayId: String, episode: Int): String = "api/unlock/farm/${URLEncoder.encode(shortPlayId, "UTF-8")}/${episode}"
     // GET /api/unlock/farm/:shortPlayId/:episode // URL streaming (VIP pool, cache 2 jam)
 
     // Helper generic untuk parsing list dr balasan dramahub.be

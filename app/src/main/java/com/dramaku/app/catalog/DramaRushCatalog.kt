@@ -35,7 +35,7 @@ object DramaRushCatalog {
     // GET /api/v1/search/:q // Search drama
     fun getEpisodesWithVideoUrlsPaginatedPath(id: String, page: Int = 1, size: Int = 20, lang: String = "id"): String = "api/v1/play/${URLEncoder.encode(id, "UTF-8")}?page=${page}&size=${size}&lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/play/:id // Get episodes with video URLs (paginated)
-    fun getSingleEpisodeVideoUrlPath(id: String, ep: Int, lang: String = "id"): String = "api/v1/play/${URLEncoder.encode(id, "UTF-8")}/${URLEncoder.encode(ep, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun getSingleEpisodeVideoUrlPath(id: String, ep: Int, lang: String = "id"): String = "api/v1/play/${URLEncoder.encode(id, "UTF-8")}/${ep}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/play/:id/:ep // Get single episode video URL
 
     // Helper generic untuk parsing list dr balasan dramahub.be

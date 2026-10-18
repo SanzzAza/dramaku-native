@@ -39,9 +39,9 @@ object PlayletCatalog {
     // GET /search // Pencarian theater
     fun detailTheaterDaftarChapterPath(id: String, language: String = "en"): String = "theater/${URLEncoder.encode(id, "UTF-8")}?language=${URLEncoder.encode(language, "UTF-8")}"
     // GET /theater/:id // Detail theater + daftar chapter
-    fun streamHlsTunggalMasterVariantSegmentV2DecryptV3ClearPath(id: String, chapter: String): String = "theater/${URLEncoder.encode(id, "UTF-8")}/open/${URLEncoder.encode(chapter, "UTF-8")}/playlist.m3u8"
+    fun streamHlsTunggalMasterVariantSegmentV2DecryptV3ClearPath(id: String, chapter: String): String = "theater/${URLEncoder.encode(id, "UTF-8")}/open/${chapter}/playlist.m3u8"
     // GET /theater/:id/open/:chapter/playlist.m3u8 // Stream HLS tunggal (master / variant / segment v2-decrypt v3-clear)
-    fun pilihanSubtitlePerChapterPath(id: String, chapter: String, language: String = ""): String = "theater/${URLEncoder.encode(id, "UTF-8")}/subtitle/${URLEncoder.encode(chapter, "UTF-8")}?language=${URLEncoder.encode(language, "UTF-8")}"
+    fun pilihanSubtitlePerChapterPath(id: String, chapter: String, language: String = ""): String = "theater/${URLEncoder.encode(id, "UTF-8")}/subtitle/${chapter}?language=${URLEncoder.encode(language, "UTF-8")}"
     // GET /theater/:id/subtitle/:chapter // Pilihan subtitle per chapter
 
     // Helper generic untuk parsing list dr balasan dramahub.be

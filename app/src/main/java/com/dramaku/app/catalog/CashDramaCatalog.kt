@@ -41,7 +41,7 @@ object CashDramaCatalog {
     // GET /api/v1/search // Search drama
     fun searchByTagPath(tagId: String, page: Int = 1, lang: String = "id"): String = "api/v1/tags/search?tagId=${URLEncoder.encode(tagId, "UTF-8")}&page=${page}&lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/tags/search // Search by tag
-    fun videoUrlTencentVodPath(vid: String, ep: Int, lang: String = "id"): String = "api/v1/play/${URLEncoder.encode(vid, "UTF-8")}/${URLEncoder.encode(ep, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun videoUrlTencentVodPath(vid: String, ep: Int, lang: String = "id"): String = "api/v1/play/${URLEncoder.encode(vid, "UTF-8")}/${ep}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/play/:vid/:ep // Video URL (Tencent VOD)
 
     // Helper generic untuk parsing list dr balasan dramahub.be

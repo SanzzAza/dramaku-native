@@ -39,7 +39,7 @@ object ShortWaveCatalog {
     // GET /api/search/:query // Cari drama
     fun dramaDetailAllEpisodesCoverPerEpisodePath(dramaId: String, lang: String = ""): String = "api/drama/${URLEncoder.encode(dramaId, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/drama/:dramaId // Drama detail + all episodes + cover per episode
-    fun streamUrlM3u8SubtitleWebvttAutoUnlockJikaLockedPath(dramaId: String, chapterId: String, lang: String = ""): String = "api/stream/${URLEncoder.encode(dramaId, "UTF-8")}/${URLEncoder.encode(chapterId, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun streamUrlM3u8SubtitleWebvttAutoUnlockJikaLockedPath(dramaId: String, chapterId: String, lang: String = ""): String = "api/stream/${URLEncoder.encode(dramaId, "UTF-8")}/${chapterId}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/stream/:dramaId/:chapterId // Stream URL (M3U8) + subtitle (WebVTT). Auto unlock jika locked
 
     // Helper generic untuk parsing list dr balasan dramahub.be

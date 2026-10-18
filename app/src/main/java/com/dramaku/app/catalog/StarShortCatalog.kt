@@ -35,7 +35,7 @@ object StarShortCatalog {
     // GET /api/v1/dramas/:dramaId // Drama detail
     fun episodeListPath(dramaId: String, lang: String = "4"): String = "api/v1/dramas/${URLEncoder.encode(dramaId, "UTF-8")}/episodes?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/dramas/:dramaId/episodes // Episode list
-    fun episodeVideoUrlPath(dramaId: String, epNum: Int, lang: String = "4"): String = "api/v1/dramas/${URLEncoder.encode(dramaId, "UTF-8")}/episodes/${URLEncoder.encode(epNum, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun episodeVideoUrlPath(dramaId: String, epNum: Int, lang: String = "4"): String = "api/v1/dramas/${URLEncoder.encode(dramaId, "UTF-8")}/episodes/${epNum}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/dramas/:dramaId/episodes/:epNum // Episode video URL
 
     // Helper generic untuk parsing list dr balasan dramahub.be

@@ -35,7 +35,7 @@ object ReelBuzzCatalog {
     // GET /api/search // Cari drama
     fun detailDramaDaftarSemuaEpisodePath(dramaId: String, language: String = ""): String = "api/drama/detail?dramaId=${URLEncoder.encode(dramaId, "UTF-8")}&language=${URLEncoder.encode(language, "UTF-8")}"
     // GET /api/drama/detail // Detail drama + daftar semua episode
-    fun urlVideoPerEpisodeNormalHdCdn2LdTerdekripsiTxvodHlsBersihTermasukEpisodePremiumPath(dramaId: String, ep: Int, language: String = ""): String = "api/drama/video/${URLEncoder.encode(dramaId, "UTF-8")}/${URLEncoder.encode(ep, "UTF-8")}?language=${URLEncoder.encode(language, "UTF-8")}"
+    fun urlVideoPerEpisodeNormalHdCdn2LdTerdekripsiTxvodHlsBersihTermasukEpisodePremiumPath(dramaId: String, ep: Int, language: String = ""): String = "api/drama/video/${URLEncoder.encode(dramaId, "UTF-8")}/${ep}?language=${URLEncoder.encode(language, "UTF-8")}"
     // GET /api/drama/video/:dramaId/:ep // URL video per episode (normal: HD CDN2 + LD terdekripsi, txvod: HLS bersih termasuk episode premium)
 
     // Helper generic untuk parsing list dr balasan dramahub.be

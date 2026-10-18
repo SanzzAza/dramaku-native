@@ -38,7 +38,7 @@ object SnackShortCatalog {
     // GET /api/v1/book/:bookId // Book/drama detail
     fun chapterListPath(bookId: String, lang: String = "Indonesian"): String = "api/v1/book/${URLEncoder.encode(bookId, "UTF-8")}/chapters?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/book/:bookId/chapters // Chapter list
-    fun episodeVideoUrlPath(bookId: String, chapterId: String, lang: String = "Indonesian"): String = "api/v1/book/${URLEncoder.encode(bookId, "UTF-8")}/episode/${URLEncoder.encode(chapterId, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun episodeVideoUrlPath(bookId: String, chapterId: String, lang: String = "Indonesian"): String = "api/v1/book/${URLEncoder.encode(bookId, "UTF-8")}/episode/${chapterId}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/v1/book/:bookId/episode/:chapterId // Episode video URL
 
     // Helper generic untuk parsing list dr balasan dramahub.be

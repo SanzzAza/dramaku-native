@@ -38,7 +38,7 @@ object DramaPopsCatalog {
     // GET /api/drama/search // Pencarian film
     fun detailFilmPath(id: String, language: String = "en"): String = "api/drama/${URLEncoder.encode(id, "UTF-8")}?language=${URLEncoder.encode(language, "UTF-8")}"
     // GET /api/drama/:id // Detail film
-    fun videoPlayerEpisodePath(id: String, ep: Int, quality: String = "", language: String = "en"): String = "api/drama/${URLEncoder.encode(id, "UTF-8")}/${URLEncoder.encode(ep, "UTF-8")}?quality=${URLEncoder.encode(quality, "UTF-8")}&language=${URLEncoder.encode(language, "UTF-8")}"
+    fun videoPlayerEpisodePath(id: String, ep: Int, quality: String = "", language: String = "en"): String = "api/drama/${URLEncoder.encode(id, "UTF-8")}/${ep}?quality=${URLEncoder.encode(quality, "UTF-8")}&language=${URLEncoder.encode(language, "UTF-8")}"
     // GET /api/drama/:id/:ep // Video player episode
 
     // Helper generic untuk parsing list dr balasan dramahub.be

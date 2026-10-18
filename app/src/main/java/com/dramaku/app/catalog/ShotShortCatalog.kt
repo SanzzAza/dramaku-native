@@ -34,7 +34,7 @@ object ShotShortCatalog {
     // GET /api/book/:id // Drama detail with episodes
     fun listAllEpisodesWithChapteridPath(id: String, lang: String = "id"): String = "api/book/${URLEncoder.encode(id, "UTF-8")}/episodes?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/book/:id/episodes // List all episodes with chapterId
-    fun chapterVideoUrlWithAutoFetchSubtitlesPath(bookId: String, chapterId: String, lang: String = "id"): String = "api/book/${URLEncoder.encode(bookId, "UTF-8")}/chapter/${URLEncoder.encode(chapterId, "UTF-8")}?lang=${URLEncoder.encode(lang, "UTF-8")}"
+    fun chapterVideoUrlWithAutoFetchSubtitlesPath(bookId: String, chapterId: String, lang: String = "id"): String = "api/book/${URLEncoder.encode(bookId, "UTF-8")}/chapter/${chapterId}?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/book/:bookId/chapter/:chapterId // Chapter video URL with auto-fetch subtitles
     fun categoryListPath(lang: String = "id"): String = "api/category/list?lang=${URLEncoder.encode(lang, "UTF-8")}"
     // GET /api/category/list // Category list
