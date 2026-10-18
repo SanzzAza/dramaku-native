@@ -54,6 +54,7 @@ Antarmuka memakai latar **hitam pekat**, kartu abu gelap, teks putih, dan aksen 
 - Platform logo/brand mark di dropdown dan status platform
 - Copywriting Home dibuat lebih premium, bukan teks developer/native
 - Melolo stream hardening: streamv2-only, player error listener, browser-like HLS headers
+- Refresh otomatis untuk URL video bertanda tangan yang hampir expired + satu kali auto-retry player
 - FlickReels source error fix: safer CDN headers, HLS fallback, multi-resolution fallback
 - Progress v2 dipisahkan berdasarkan platform agar ID drama lintas sumber tidak bentrok
 - Unit test dasar untuk key progress dan parser remote config

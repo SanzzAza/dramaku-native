@@ -266,7 +266,10 @@ private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = em
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
 private data class StreamResult(val url: String, val subtitle: String = "", val subtitleMime: String = "")
 private const val STREAM_CACHE_TTL_MS = 90_000L
+private const val DETAIL_CACHE_TTL_MS = 5 * 60_000L
+private const val SIGNED_URL_SAFETY_MS = 3 * 60_000L
 private data class CachedStream(val result: StreamResult, val expiresAtMs: Long)
+private data class CachedDetail(val detail: Detail, val expiresAtMs: Long)
 private data class PlayerSession(val detail: Detail, val startEpisode: Int)
 private data class HistoryItem(
     val id: String, val title: String, val poster: String, val platform: String,
@@ -3024,6 +3027,7 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
     var curDetail by remember { mutableStateOf<Detail?>(null) }
     var uiVis by remember { mutableStateOf(true) }
     var retryKey by remember { mutableIntStateOf(0) }
+    var autoRetriedPage by remember { mutableIntStateOf(-1) }
     var playing by remember { mutableStateOf(false) }
 
     fun stop() { runCatching { player.playWhenReady = false; player.pause(); player.stop(); player.clearMediaItems() } }
@@ -3033,8 +3037,24 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
     DisposableEffect(Unit) {
         act?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val l = object : Player.Listener {
-            override fun onIsPlayingChanged(p: Boolean) { playing = p }
-            override fun onPlayerError(e: PlaybackException) { loading = false; error = playerError(e) }
+            override fun onIsPlayingChanged(p: Boolean) {
+                playing = p
+                if (p) autoRetriedPage = -1
+            }
+            override fun onPlayerError(e: PlaybackException) {
+                val page = pager.currentPage
+                val drama = items.getOrNull(page)
+                if (drama != null && autoRetriedPage != page) {
+                    autoRetriedPage = page
+                    repo.invalidateStream(drama, 1)
+                    error = null
+                    loading = true
+                    retryKey++
+                } else {
+                    loading = false
+                    error = playerError(e)
+                }
+            }
         }
         player.addListener(l)
         onDispose { act?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); player.removeListener(l); stop(); player.release() }
@@ -3128,7 +3148,10 @@ private fun ClipFeedPlayer(items: List<Drama>, repo: DramakuRepository, store: L
         }
 
         error?.let { e ->
-            PlayerErrorCard(e, Modifier.align(Alignment.Center)) { retryKey++ }
+            PlayerErrorCard(e, Modifier.align(Alignment.Center)) {
+                items.getOrNull(pager.currentPage)?.let { repo.invalidateStream(it, 1) }
+                retryKey++
+            }
         }
     }
 }
@@ -3147,6 +3170,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
+    var autoRetriedEpisode by remember { mutableIntStateOf(0) }
     var lastEp by remember { mutableIntStateOf(startEp.coerceIn(1, total)) }
     var uiVis by remember { mutableStateOf(true) }
     var epSheet by remember { mutableStateOf(false) }
@@ -3199,8 +3223,23 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             act?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
         val l = object : Player.Listener {
-            override fun onIsPlayingChanged(p: Boolean) { playing = p }
-            override fun onPlayerError(e: PlaybackException) { loading = false; error = playerError(e) }
+            override fun onIsPlayingChanged(p: Boolean) {
+                playing = p
+                if (p) autoRetriedEpisode = 0
+            }
+            override fun onPlayerError(e: PlaybackException) {
+                val failedEp = pager.currentPage + 1
+                if (autoRetriedEpisode != failedEp) {
+                    autoRetriedEpisode = failedEp
+                    repo.invalidateStream(detail.drama, failedEp)
+                    error = null
+                    loading = true
+                    retryKey++
+                } else {
+                    loading = false
+                    error = playerError(e)
+                }
+            }
             override fun onPlaybackStateChanged(s: Int) { if (s == Player.STATE_ENDED && store.autoNext() && pager.currentPage < total - 1) { saveProgress(pager.currentPage + 1); scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } } }
         }
         player.addListener(l)
@@ -3597,36 +3636,102 @@ private fun Context.isNetworkAvailable(): Boolean {
 private class DramakuRepository {
     private val dispatcher = Dispatcher().apply { maxRequests = 32; maxRequestsPerHost = 16 }
     private val client = OkHttpClient.Builder().dispatcher(dispatcher).connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
-    private val detailCache = ConcurrentHashMap<String, Detail>()
+    private val detailCache = ConcurrentHashMap<String, CachedDetail>()
     private val streamCache = ConcurrentHashMap<String, CachedStream>()
+    private val forcedDetailRefresh = ConcurrentHashMap.newKeySet<String>()
 
     fun previewDetail(input: Drama): Detail {
-        detailCache[detailKey(input)]?.let { return it }
+        val now = System.currentTimeMillis()
+        detailCache[detailKey(input)]?.takeIf { it.expiresAtMs > now }?.let { return it.detail }
         val t = input.episodes.coerceAtLeast(1)
         return Detail(input.copy(episodes = t), (1..t).map { EpisodeInfo(it) })
     }
 
     suspend fun loadDetailCached(input: Drama): Detail {
-        val k = detailKey(input); detailCache[k]?.let { return it }
-        return loadDetail(input).also { detailCache[k] = it }
+        val k = detailKey(input)
+        val now = System.currentTimeMillis()
+        detailCache[k]?.takeIf { it.expiresAtMs > now }?.let { return it.detail }
+        return refreshDetail(input)
     }
 
-    // Signed URL dari provider cepat expired, jadi cache-nya sengaja pendek: cukup
-    // untuk membuat prefetch episode berikutnya berguna, tidak cukup lama untuk
-    // menyajikan link basi. Tombol "Coba lagi" membuang entri lewat invalidateStream().
+    private suspend fun refreshDetail(input: Drama): Detail {
+        val detail = loadDetail(input)
+        detailCache[detailKey(input)] = CachedDetail(detail, System.currentTimeMillis() + DETAIL_CACHE_TTL_MS)
+        return detail
+    }
+
+    // URL bertanda tangan dapat kedaluwarsa dalam 30–70 menit. Cache stream
+    // tetap pendek dan Detail yang membawa URL langsung ikut punya TTL. Saat
+    // URL mendekati expiry (atau pengguna menekan Coba Lagi), detail diambil
+    // ulang sebelum resolver memilih link video.
     suspend fun resolveStreamCached(d: Detail, ep: Int, ds: Boolean): StreamResult {
-        val k = streamKey(d.drama, ep, ds); val now = System.currentTimeMillis()
-        streamCache[k]?.takeIf { it.expiresAtMs > now }?.let { return it.result }
-        return resolveStream(d, ep, ds).also { r -> if (r.url.isNotBlank()) streamCache[k] = CachedStream(r, now + STREAM_CACHE_TTL_MS) }
+        val k = streamKey(d.drama, ep, ds)
+        val forceKey = forceRefreshKey(d.drama, ep)
+        val now = System.currentTimeMillis()
+        val forceRefresh = forcedDetailRefresh.remove(forceKey)
+        if (!forceRefresh) {
+            streamCache[k]?.takeIf { it.expiresAtMs > now }?.let { return it.result }
+        }
+
+        val stored = d.episodes.firstOrNull { it.number == ep }?.streaming
+            ?: d.episodes.getOrNull(ep - 1)?.streaming.orEmpty()
+        val effectiveDetail = if (forceRefresh || signedUrlNeedsRefresh(stored, now)) {
+            runCatching { refreshDetail(d.drama) }.getOrElse { d }
+        } else d
+
+        return resolveStream(effectiveDetail, ep, ds).also { result ->
+            if (result.url.isNotBlank()) {
+                streamCache[k] = CachedStream(result, streamExpiryMs(result.url, now))
+            }
+        }
     }
 
     fun invalidateStream(d: Drama, ep: Int) {
         streamCache.remove(streamKey(d, ep, true))
         streamCache.remove(streamKey(d, ep, false))
+        detailCache.remove(detailKey(d))
+        forcedDetailRefresh.add(forceRefreshKey(d, ep))
     }
 
     private fun detailKey(d: Drama) = "${d.platform}|${d.id}"
     private fun streamKey(d: Drama, ep: Int, ds: Boolean) = "${d.platform}|${d.id}|$ep|${if (ds) "480" else "720"}"
+    private fun forceRefreshKey(d: Drama, ep: Int) = "${d.platform}|${d.id}|$ep"
+
+    private fun streamExpiryMs(url: String, now: Long): Long {
+        val signedExpiry = signedUrlExpiryMs(url)
+        val safeExpiry = signedExpiry?.minus(60_000L)?.coerceAtLeast(now + 5_000L)
+        return min(now + STREAM_CACHE_TTL_MS, safeExpiry ?: Long.MAX_VALUE)
+    }
+
+    private fun signedUrlNeedsRefresh(stored: String, now: Long): Boolean {
+        if (stored.isBlank()) return false
+        val videoUrl = stored.substringBefore("##").substringAfterLast("|||").trim()
+        val expiry = signedUrlExpiryMs(videoUrl)
+        if (expiry != null) return expiry <= now + SIGNED_URL_SAFETY_MS
+        val lower = videoUrl.lowercase()
+        return (lower.contains("signature=") || lower.contains("policy=") || lower.contains("token=")) &&
+            !lower.contains("auth_key=")
+    }
+
+    private fun signedUrlExpiryMs(url: String): Long? {
+        if (url.isBlank()) return null
+        val epoch = Regex("(?:auth_key=|[?&/]expires?=|[?&]exp=)([0-9]{10,13})", RegexOption.IGNORE_CASE)
+            .find(url)?.groupValues?.getOrNull(1)?.toLongOrNull()
+        if (epoch != null) return if (epoch > 9_999_999_999L) epoch else epoch * 1000L
+
+        val dateRaw = Regex("[?&]X-Amz-Date=([0-9]{8}T[0-9]{6}Z)", RegexOption.IGNORE_CASE)
+            .find(url)?.groupValues?.getOrNull(1)
+        val ttlSeconds = Regex("[?&]X-Amz-Expires=([0-9]+)", RegexOption.IGNORE_CASE)
+            .find(url)?.groupValues?.getOrNull(1)?.toLongOrNull()
+        if (dateRaw != null && ttlSeconds != null) {
+            val format = java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'", java.util.Locale.US).apply {
+                timeZone = java.util.TimeZone.getTimeZone("UTC")
+            }
+            val issuedAt = runCatching { format.parse(dateRaw)?.time }.getOrNull()
+            if (issuedAt != null) return issuedAt + ttlSeconds * 1000L
+        }
+        return null
+    }
 
     suspend fun loadHome(p: String) = loadHomePage(p, 1)
 
@@ -4907,6 +5012,8 @@ private class DramakuRepository {
                 val reqBuilder = Request.Builder().url(url)
                     .header("User-Agent", "DramakuNative/4.9.9 Android")
                     .header("Accept", "application/json, text/plain, */*")
+                    .header("Cache-Control", "no-cache, no-store")
+                    .header("Pragma", "no-cache")
                 if (jsonBody != null) {
                     reqBuilder.post(jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType()))
                 }
