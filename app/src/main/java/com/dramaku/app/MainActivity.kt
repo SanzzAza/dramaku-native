@@ -3206,6 +3206,8 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var foreground by remember { mutableStateOf(act?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) ?: true) }
     var panel by remember { mutableStateOf<PlayerPanel?>(null) }
     var immersive by remember { mutableStateOf(false) }
+    var chromeVisible by remember { mutableStateOf(true) }
+    var chromeTick by remember { mutableIntStateOf(0) }
     var fitContain by remember { mutableStateOf(store.fitContain()) }
     var playbackSpeed by remember { mutableFloatStateOf(store.playbackSpeed()) }
     var speedHold by remember { mutableStateOf(false) }
@@ -3251,6 +3253,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         if (toggle || !liked) { store.toggleLike(detail.drama); liked = !liked }
         showLike = liked
     }
+    fun revealChrome() { chromeVisible = true; chromeTick++ }
     fun seekBy(delta: Long) {
         if (loadedEpisode <= 0 || durMs <= 0L) return
         curMs = PlaybackPolicy.seekPosition(player.currentPosition, delta, durMs)
@@ -3352,6 +3355,13 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                 } else { clearVideoSizeConstraints(); setMaxVideoBitrate(Int.MAX_VALUE) }
             }.build()
     }
+    // Chrome auto-hides a few seconds into playback; pausing, seeking, errors, or any panel brings it back.
+    LaunchedEffect(chromeVisible, chromeTick, playing, panel, isSeeking, error) {
+        if (!playing || panel != null || isSeeking || error != null) { chromeVisible = true; return@LaunchedEffect }
+        if (!chromeVisible) return@LaunchedEffect
+        delay(3_500L)
+        chromeVisible = false
+    }
     LaunchedEffect(notice) { if (notice != null) { delay(1_400); notice = null } }
     LaunchedEffect(showLike) { if (showLike) { delay(650); showLike = false } }
 
@@ -3365,7 +3375,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         if (requestedEpisode != ep) wantsToPlay = true
         requestedEpisode = ep; retryBudget.beginEpisode(ep)
         firstFrame = false; embedUrl = ""; streamHasSub = false; hasSub = false
-        speedHold = false; isSeeking = false; curMs = 0L; durMs = 0L; bufferedMs = 0L
+        speedHold = false; isSeeking = false; chromeVisible = true; curMs = 0L; durMs = 0L; bufferedMs = 0L
         loading = true; buffering = false; error = null
         if (ep in locked) { loading = false; error = "Episode ini masih terkunci di sumber. Pilih episode lain."; return@LaunchedEffect }
         val start = resumeOverride?.takeIf { it.first == ep }?.second ?: PlaybackPolicy.resumePosition(
@@ -3418,11 +3428,12 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         episode = pager.settledPage + 1, total = total, description = detail.drama.description,
         playing = playing, loading = loading, buffering = buffering, failed = error != null, embedded = embedUrl.isNotBlank(),
         liked = liked, collected = collected, positionMs = curMs, durationMs = durMs, bufferedMs = bufferedMs,
-        seeking = isSeeking, speed = playbackSpeed, speedHeld = speedHold, immersive = immersive,
+        seeking = isSeeking, speed = playbackSpeed, speedHeld = speedHold, immersive = immersive, chromeVisible = chromeVisible,
         dataSaver = dataSaver, subtitleEnabled = subOn, hasSubtitles = hasSub, fitContain = fitContain,
         autoNext = autoNext, notice = notice, showLike = showLike
     )
     val action: (PlayerAction) -> Unit = { selected ->
+        revealChrome() // Interacting with the chrome restarts the auto-hide countdown.
         when (selected) {
             PlayerAction.Back -> closePlayer()
             PlayerAction.PlayPause -> togglePlayback()
@@ -3453,7 +3464,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                         if (!firstFrame || loadedEpisode != page + 1) AsyncImage(detail.drama.poster, null, Modifier.fillMaxSize().alpha(0.55f), contentScale = ContentScale.Crop)
                         Box(Modifier.fillMaxSize().episodePlayerGestures(
                             episode = page,
-                            onTap = { togglePlayback() },
+                            onTap = { if (!immersive && !chromeVisible) revealChrome() else togglePlayback() },
                             onDoubleTap = { offset, width ->
                                 when {
                                     offset.x < width * 0.35f -> seekBy(-10_000L)

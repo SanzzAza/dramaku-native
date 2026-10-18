@@ -72,6 +72,7 @@ internal data class EpisodePlayerUiState(
     val speed: Float = 1f,
     val speedHeld: Boolean = false,
     val immersive: Boolean = false,
+    val chromeVisible: Boolean = true,
     val dataSaver: Boolean = false,
     val subtitleEnabled: Boolean = true,
     val hasSubtitles: Boolean = false,
@@ -101,7 +102,7 @@ internal fun EpisodePlayerChrome(
     onSeekCancel: () -> Unit
 ) {
     Box(Modifier.fillMaxSize()) {
-        AnimatedVisibility(!state.immersive, enter = fadeIn(), exit = fadeOut()) {
+        AnimatedVisibility(!state.immersive && state.chromeVisible, enter = fadeIn(), exit = fadeOut()) {
             Box(Modifier.fillMaxSize()) {
                 Box(Modifier.fillMaxWidth().height(110.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.48f), Color.Transparent))))
                 Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(280.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.82f)))))
@@ -163,6 +164,18 @@ internal fun EpisodePlayerChrome(
                         Spacer(Modifier.height(14.dp))
                     }
                 }
+            }
+        }
+
+        // While the chrome auto-hides, a hairline progress keeps orientation without inviting interaction.
+        AnimatedVisibility(
+            !state.immersive && !state.chromeVisible && !state.embedded && state.durationMs > 0,
+            Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(), exit = fadeOut()
+        ) {
+            val fraction = (state.positionMs.toFloat() / state.durationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
+            Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).height(2.dp).background(Color.White.copy(alpha = 0.14f))) {
+                Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(Color.White.copy(alpha = 0.65f)))
             }
         }
 

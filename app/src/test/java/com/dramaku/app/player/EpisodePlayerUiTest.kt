@@ -91,6 +91,14 @@ class EpisodePlayerUiTest {
         compose.onNodeWithText("Keluar layar bersih").assertIsDisplayed()
     }
 
+    @Test fun `auto hidden chrome removes controls without the clean screen exit button`() {
+        content { MaterialTheme { EpisodePlayerChrome(state.copy(chromeVisible = false), {}, {}, {}, {}, {}) } }
+        compose.onNodeWithText(state.title).assertDoesNotExist()
+        compose.onNodeWithText("Koleksi").assertDoesNotExist()
+        compose.onNodeWithText("Episode").assertDoesNotExist()
+        compose.onNodeWithText("Keluar layar bersih").assertDoesNotExist()
+    }
+
     @Test fun `episode sheet opens active range and respects locked episodes`() {
         var selected = 0
         val episodes = (1..65).map { EpisodeChoice(it, locked = it == 35) }

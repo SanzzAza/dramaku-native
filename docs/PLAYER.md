@@ -1,4 +1,4 @@
-# Player streaming 4.9.10
+# Player streaming 4.9.11
 
 ## Acuan dan batas kesesuaian
 
@@ -24,6 +24,10 @@ visual akhir masih perlu dilakukan dengan APK referensi di perangkat Android.
 - Suka dan Koleksi memakai penyimpanan lokal terpisah, tanpa angka sosial palsu.
 - Tombol Episode membuka panel native 5 kolom, rentang 30 episode, poster,
   progres, penanda aktif, dan episode terkunci yang tidak dapat dipilih.
+- Chrome auto-hide ±3,5 detik setelah video berjalan; ketuk sekali untuk
+  menampilkannya lagi (tidak men-jeda). Jeda, seek, error, panel terbuka, atau
+  ganti episode selalu menampilkan chrome kembali. Saat tersembunyi, garis
+  progres tipis 2dp tetap terlihat di tepi bawah.
 - Layar bersih menyembunyikan chrome; tombol keluar dan Back memulihkannya.
 - Menu berisi speed 0,75x–2x, kualitas, subtitle, rasio, auto-next, dan refresh.
 - Auto-next aktif secara default pada instalasi/preferensi yang belum disimpan;

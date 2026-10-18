@@ -2,6 +2,15 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.11 (2026-10-19)
+
+- Fix: overlay player (judul, tombol Suka/Koleksi, panel episode) kembali
+  auto-hide ±3,5 detik setelah video berjalan, seperti perilaku sebelum
+  redesign Melolo. Ketuk sekali menampilkan kontrol lagi tanpa men-jeda;
+  jeda, seek, error, panel terbuka, atau ganti episode memunculkan kontrol.
+- Saat kontrol tersembunyi, garis progres tipis 2dp tetap tampil di tepi
+  bawah layar agar posisi tontonan tetap terbaca.
+
 ## 4.9.10 (2026-10-18)
 
 - Player mengikuti susunan resource Melolo 5.3.6, tetap dengan identitas Dramaku:
