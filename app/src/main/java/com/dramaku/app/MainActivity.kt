@@ -265,7 +265,7 @@ private data class EpisodeInfo(val number: Int, val streaming: String = "", val 
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
 private data class StreamResult(val url: String, val subtitle: String = "", val subtitleMime: String = "")
-private const val STREAM_CACHE_TTL_MS = 90_000L
+private const val STREAM_CACHE_TTL_MS = 45_000L
 private const val DETAIL_CACHE_TTL_MS = 5 * 60_000L
 private const val SIGNED_URL_SAFETY_MS = 3 * 60_000L
 private data class CachedStream(val result: StreamResult, val expiresAtMs: Long)
@@ -2999,11 +2999,11 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
 private fun playerError(e: PlaybackException): String {
     val r = e.message.orEmpty()
     return when {
-        r.contains("403", true) || r.contains("401", true) -> "Akses video ditolak (CDN). Tekan Coba Lagi."
+        r.contains("403", true) || r.contains("401", true) -> "Akses CDN ditolak atau token video habis. URL akan diminta ulang saat Coba Lagi."
         r.contains("429", true) -> "CDN lagi batas permintaan. Tunggu sebentar lalu Coba Lagi."
         r.contains("video/hevc", true) || r.contains("hvc1", true) -> "Video HEVC tidak didukung di perangkat ini. Coba judul/episode lain."
         r.contains("MediaCodecVideoRenderer", true) -> "Decoder tidak bisa memutar video ini."
-        r.contains("Source error", true) -> "Link expired/berubah. Tekan Coba Lagi."
+        r.contains("Source error", true) -> "Sumber video gagal dibuka. Aplikasi sudah mencoba meminta URL baru; tekan Coba Lagi."
         r.contains("timeout", true) -> "Koneksi timeout. Cek internet atau coba lagi."
         else -> r.ifBlank { "Video belum tersedia" }
     }
@@ -3679,11 +3679,21 @@ private class DramakuRepository {
             runCatching { refreshDetail(d.drama) }.getOrElse { d }
         } else d
 
-        return resolveStream(effectiveDetail, ep, ds).also { result ->
-            if (result.url.isNotBlank()) {
-                streamCache[k] = CachedStream(result, streamExpiryMs(result.url, now))
+        var result = resolveStream(effectiveDetail, ep, ds)
+        if (isSignedVideoUrl(result.url) && !streamIsReachable(result.url)) {
+            // URL baru dari resolver pun kadang berasal dari cache upstream yang
+            // sudah basi. Paksa satu refresh detail + resolver, lalu validasi lagi.
+            detailCache.remove(detailKey(d.drama))
+            val freshDetail = runCatching { refreshDetail(d.drama) }.getOrElse { effectiveDetail }
+            result = resolveStream(freshDetail, ep, ds)
+            if (isSignedVideoUrl(result.url) && !streamIsReachable(result.url)) {
+                error("Link video dari sumber sudah kedaluwarsa. Coba lagi sebentar.")
             }
         }
+        if (result.url.isNotBlank()) {
+            streamCache[k] = CachedStream(result, streamExpiryMs(result.url, now))
+        }
+        return result
     }
 
     fun invalidateStream(d: Drama, ep: Int) {
@@ -3703,14 +3713,36 @@ private class DramakuRepository {
         return min(now + STREAM_CACHE_TTL_MS, safeExpiry ?: Long.MAX_VALUE)
     }
 
+    private fun isSignedVideoUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return listOf(
+            "auth_key=", "expires=", "x-amz-", "signature=", "policy=",
+            "token=", "hdnts=", "wssecret=", "x-oss-signature", "x-goog-signature", "sign="
+        ).any { lower.contains(it) }
+    }
+
+    private suspend fun streamIsReachable(url: String): Boolean = withContext(Dispatchers.IO) {
+        val clean = cleanUrl(url)
+        if (!clean.startsWith("http")) return@withContext false
+        runCatching {
+            val request = Request.Builder()
+                .url(clean)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
+                .header("Accept", "*/*")
+                .header("Range", "bytes=0-1")
+                .header("Referer", "https://www.cdreader.com/")
+                .header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
+                .build()
+            client.newCall(request).execute().use { response -> response.isSuccessful }
+        }.getOrDefault(false)
+    }
+
     private fun signedUrlNeedsRefresh(stored: String, now: Long): Boolean {
         if (stored.isBlank()) return false
         val videoUrl = stored.substringBefore("##").substringAfterLast("|||").trim()
         val expiry = signedUrlExpiryMs(videoUrl)
         if (expiry != null) return expiry <= now + SIGNED_URL_SAFETY_MS
-        val lower = videoUrl.lowercase()
-        return (lower.contains("signature=") || lower.contains("policy=") || lower.contains("token=")) &&
-            !lower.contains("auth_key=")
+        return isSignedVideoUrl(videoUrl)
     }
 
     private fun signedUrlExpiryMs(url: String): Long? {
@@ -4835,13 +4867,23 @@ private class DramakuRepository {
         val epInfo = d.episodes.firstOrNull { it.number == ep } ?: d.episodes.getOrNull(ep - 1)
         val stored = epInfo?.streaming.orEmpty().trim()
 
-        // Jika EpisodeInfo.streaming sudah berisi URL video langsung (mis. sodareels, dotdrama, shorten, raptdrama, rapidtv, microdrama, goodshort)
-        if (stored.startsWith("http://") || stored.startsWith("https://")) {
-            if (stored.contains("##")) {
-                val parts = stored.split("##", limit = 2)
+        fun storedResult(value: String = stored): StreamResult? {
+            if (!value.startsWith("http://") && !value.startsWith("https://")) return null
+            if (value.contains("##")) {
+                val parts = value.split("##", limit = 2)
                 return StreamResult(cleanUrl(parts[0]), cleanUrl(parts.getOrElse(1) { "" }))
             }
-            return StreamResult(cleanUrl(stored))
+            return StreamResult(cleanUrl(value))
+        }
+
+        // Enam sumber ini mengirim URL episode langsung di endpoint detail.
+        // Ambil dari cache detail ber-TTL 5 menit, bukan Detail lama yang masih
+        // tertahan di layar; token provider hanya hidup sekitar 30–70 menit.
+        if (p in setOf("sodareels", "dotdrama", "shorten", "raptdrama", "rapidtv", "microdrama")) {
+            val refreshed = loadDetailCached(d.drama)
+            val freshEp = refreshed.episodes.firstOrNull { it.number == ep } ?: refreshed.episodes.getOrNull(ep - 1)
+            storedResult(freshEp?.streaming.orEmpty())?.let { return it }
+            error("Video belum tersedia")
         }
 
         if (p == "playlet") {
@@ -4981,25 +5023,25 @@ private class DramakuRepository {
             return StreamResult(stream)
         }
 
-        if (p == "sodareels" || p == "dotdrama" || p == "shorten" || p == "raptdrama" || p == "rapidtv" || p == "microdrama") {
-            val refreshed = loadDetail(d.drama)
-            val refEp = refreshed.episodes.firstOrNull { it.number == ep } ?: refreshed.episodes.getOrNull(ep - 1)
-            val refUrl = refEp?.streaming.orEmpty()
-            if (refUrl.startsWith("http")) {
-                if (refUrl.contains("##")) {
-                    val parts = refUrl.split("##", limit = 2)
-                    return StreamResult(cleanUrl(parts[0]), cleanUrl(parts.getOrElse(1) { "" }))
-                }
-                return StreamResult(cleanUrl(refUrl))
+        val url = ExtraPlatforms.streamUrl(p, id, ep, base)
+        if (url != null) {
+            // Beberapa proxy (mis. LuminaReels/Playlet) memang mengembalikan
+            // playlist langsung, bukan JSON.
+            if (url.substringBefore('?').endsWith(".m3u8", ignoreCase = true)) {
+                return StreamResult(url)
             }
-            error("Video belum tersedia")
+            val json = runCatching { getJson(url) }.getOrNull()
+            if (json != null) {
+                val stream = extractStreamUrl(json, ds)
+                if (stream.isNotBlank()) return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
+            }
         }
 
-        val url = ExtraPlatforms.streamUrl(p, id, ep, base) ?: error("Video belum tersedia")
-        val json = getJson(url)
-        val stream = extractStreamUrl(json, ds)
-        if (stream.isBlank()) error("Video belum tersedia")
-        return StreamResult(stream, pickSubtitleUrl(json, json.optJSONObject("data")))
+        // Cadangan terakhir untuk provider yang menyisipkan stream di detail.
+        // Jalur endpoint di atas selalu dicoba lebih dulu agar URL bertanda
+        // tangan tidak diambil dari Detail lama.
+        storedResult()?.let { return it }
+        error("Video belum tersedia")
     }
 
     private suspend fun getJson(url: String, jsonBody: String? = null): JSONObject = withContext(Dispatchers.IO) {

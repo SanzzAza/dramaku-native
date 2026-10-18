@@ -8,10 +8,13 @@ Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
   tipografi sans-serif, dan aksen kuning terang.
 - Animasi pembuka baru: logo kuning dengan halo berdenyut, titik orbit,
   wordmark bertahap, progress halus, dan transisi zoom-fade ke aplikasi.
-- Perbaikan link video kedaluwarsa: expiry `auth_key`, Bunny `expires`, dan
-  AWS `X-Amz-Date/X-Amz-Expires` kini dibaca; detail bertanda tangan dimuat
-  ulang otomatis, cache detail dibatasi 5 menit, dan player mencoba ulang
-  sekali dengan URL baru sebelum menampilkan error.
+- Perbaikan link video kedaluwarsa untuk seluruh sumber: expiry `auth_key`,
+  Bunny `expires`, dan AWS `X-Amz-Date/X-Amz-Expires` kini dibaca; detail
+  bertanda tangan dimuat ulang otomatis dan cache detail dibatasi 5 menit.
+- Seluruh 35 platform tambahan kini mendahulukan endpoint stream baru daripada
+  URL inline dari detail. Enam sumber direct-link ditangani dengan cache detail
+  pendek; URL signed divalidasi ke CDN, cache stream dibatasi 45 detik, dan
+  player mencoba ulang sekali dengan URL baru sebelum menampilkan error.
 - Navigasi bawah kini hanya Cuplikan, Temukan, Perpustakaan, dan Profil;
   menu Hadiah dihapus.
 - Aplikasi langsung membuka Temukan, tetap menyediakan feed Cuplikan, dan tidak
