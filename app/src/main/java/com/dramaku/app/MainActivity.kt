@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -847,9 +848,11 @@ private fun PlatformPickerModal(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .wrapContentHeight()
+                .heightIn(max = with(LocalConfiguration.current) { screenHeightDp.dp * 0.82f })
         ) {
             Column(
                 Modifier
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
                 // Handle bar
@@ -4806,13 +4809,54 @@ private fun mergeHomeBundles(c: HomeBundle, n: HomeBundle) = HomeBundle(dedupe(c
 // Feed Melolo memuat rak ("Trending"), tab genre ("Peringkat", "Time Travel"),
 // dan section layer yang sama-sama punya pasangan id+name. Mereka bukan drama.
 // Syaratnya pakai sinyal konten nyata: cover, sinopsis, atau jumlah episode.
+// Kunci field generik untuk semua platform (lama + 35 baru dari dramahub.be).
+// Tiap upstream menamai field beda-beda (playlet_id, video_id, seriesId, cid,
+// bahkan key ter-obfuscate seperti dcup/dlit), jadi semua alias dipungut di sini.
+private val DRAMA_ID_KEYS = arrayOf(
+    "book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid",
+    "dramaId", "t_book_id", "slug", "playlet_id", "video_id", "videoId", "seriesId",
+    "series_id", "contentId", "content_id", "shortPlayCode", "shortplay_id",
+    "shortPlayId", "theater_id", "compilationsId", "cid", "vid", "dcup", "dlit"
+)
+private val DRAMA_TITLE_KEYS = arrayOf(
+    "book_name", "bookName", "drama_name", "title", "book_title", "bookTitle", "name",
+    "shortTitle", "anime_title", "playlet_title", "video_name", "videoName",
+    "seriesName", "series_name", "contentName", "content_name", "shortPlayName",
+    "short_play_name", "theater_name", "playletName", "nseri", "nmeasu", "vod_name",
+    "drama_title", "subjectName", "subject_name"
+)
+private val DRAMA_COVER_KEYS = arrayOf(
+    "cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg",
+    "cover_url", "posterUri", "book_pic", "bookPic", "coverUrl", "picUrl",
+    "cover_image", "cover_img", "video_img", "coverImgUrl", "contentCoverUrl",
+    "coverId", "pday", "pbat", "poster_url", "vertical_cover", "verticalCover",
+    "coverImage", "img", "img_url", "imgUrl", "imageUrl", "pic", "pic_url",
+    "thumbnail", "thumbnail_url", "headImg", "head_img", "vertical_image",
+    "coverImg", "hcover", "vcover"
+)
+private val DRAMA_DESC_KEYS = arrayOf(
+    "introduction", "description", "meta_description", "meta_sinopsis", "shoot",
+    "content", "synopsis", "abstract", "desc", "evaluate", "special_desc", "dwill",
+    "ddet", "recommendIntro", "summary", "intro", "brief", "plot", "introduce"
+)
+private val DRAMA_EP_KEYS = arrayOf(
+    "serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode",
+    "total_episodes", "totalEpisodes", "episode_num", "episodes", "freeEpisodes",
+    "chapter_num", "totalEpisode", "uploadOfEpisodes", "current_count", "total_num",
+    "eps", "ewood", "ewin"
+)
+private val DRAMA_SIGNAL_KEYS = listOf(
+    "subjectId", "key", "season_id", "ep_id", "aid", "shortPlayCode", "compilationsId",
+    "theater_id", "shortplay_id", "cid", "playlet_id", "video_id", "seriesId",
+    "contentId", "dcup", "dlit"
+)
+
 private fun JSONObject.hasDramaSignal(): Boolean =
-    stringAny("cover", "thumb_url", "image", "poster", "coverWap", "bookCover", "posterImg", "cover_url", "posterUri", "book_pic", "bookPic").isNotBlank() ||
+    stringAny(*DRAMA_COVER_KEYS).isNotBlank() ||
         optJSONObject("cover") != null ||
-        stringAny("abstract", "introduction", "description", "synopsis", "content", "meta_description", "desc", "evaluate", "special_desc").isNotBlank() ||
-        intAny("serial_count", "chapter_count", "chapterCount", "episode_count", "meta_episode", "total_episodes", "totalEpisodes") > 0 ||
-        has("subjectId") || has("key") || has("season_id") || has("ep_id") || has("aid") ||
-        (has("season_id") && stringAny("title").isNotBlank() && stringAny("cover").isNotBlank())
+        stringAny(*DRAMA_DESC_KEYS).isNotBlank() ||
+        intAny(*DRAMA_EP_KEYS, 0) > 0 ||
+        DRAMA_SIGNAL_KEYS.any { has(it) }
 
 private fun flat(any: Any?, fp: String): List<Drama> {
     val out = mutableListOf<Drama>()
@@ -4829,8 +4873,8 @@ private fun flat(any: Any?, fp: String): List<Drama> {
                 }
             }
             is JSONObject -> {
-                            val bookId = node.stringAny("book_id", "bookId", "drama_id", "subjectId", "id", "key", "season_id", "aid", "dramaId", "t_book_id", "slug")
-                val bookName = node.stringAny("book_name", "bookName", "drama_name", "title", "book_title", "bookTitle", "name", "shortTitle", "anime_title")
+                            val bookId = node.stringAny(*DRAMA_ID_KEYS)
+                val bookName = node.stringAny(*DRAMA_TITLE_KEYS)
                 if (bookId.isNotBlank() && bookName.isNotBlank() && node.hasDramaSignal()) {
                     val d = normalize(node, fp)
                     if (d.id.isNotBlank() && d.title.isNotBlank() && !d.title.equals("Populer", true) && !d.title.equals("Romansa", true) && !d.title.equals("Ceo", true)) {
@@ -4857,14 +4901,14 @@ private fun flat(any: Any?, fp: String): List<Drama> {
 private fun normalize(o: JSONObject, fp: String): Drama {
     val p = fp
     // Bstation: season_id atau aid sebagai ID; Dramanova (dramahub.be): dramaId.
-    val id = o.stringAny("drama_id", "book_id", "bookId", "id", "subjectId", "key", "season_id", "aid", "dramaId", "t_book_id", "slug")
+    val id = o.stringAny(*DRAMA_ID_KEYS)
     return Drama(
         id,
-        o.stringAny("drama_name", "book_name", "bookName", "title", "book_title", "bookTitle", "name", "shortTitle", "anime_title"),
-        cleanText(o.stringAny("introduction", "description", "meta_description", "meta_sinopsis", "shoot", "content", "synopsis", "abstract", "desc", "evaluate", "special_desc")),
-        fixImg(o.stringAny("thumb_url", "cover_url", "coverWap", "cover", "bookCover", "image", "poster", "posterImg", "posterUri", "book_pic", "bookPic").ifBlank { o.coverUrl() }),
+        o.stringAny(*DRAMA_TITLE_KEYS),
+        cleanText(o.stringAny(*DRAMA_DESC_KEYS)),
+        fixImg(o.stringAny(*DRAMA_COVER_KEYS).ifBlank { o.coverUrl() }),
         // totalChapterNum = nama field jumlah episode di balasan /search DramaBox.
-        o.intAny("chapter_count", "chapterCount", "episode_count", "meta_episode", "episode_number", "total_episodes", "chapterCnt", "totalEpisode", "totalEpisodes", "totalChapterNum", 0),
+        o.intAny(*DRAMA_EP_KEYS, "episode_number", "chapterCnt", "totalChapterNum", 0),
         o.stringAny("watch_value", "hotCode", "viewCountDisplay", "hits", "viewers", "views").ifBlank {
             val fc = o.optLong("follow_count", 0)
             if (fc > 0) "${fc/1000}K" else o.optJSONObject("rankVo")?.stringAny("hotCode").orEmpty()
