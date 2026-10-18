@@ -66,6 +66,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -3174,8 +3175,11 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var lastEp by remember { mutableIntStateOf(startEp.coerceIn(1, total)) }
     var uiVis by remember { mutableStateOf(true) }
     var epSheet by remember { mutableStateOf(false) }
+    var settingsSheet by remember { mutableStateOf(false) }
     var fitContain by remember(detail.drama.id, detail.drama.platform) { mutableStateOf(if (preferLandscape) true else store.fitContain()) }
     var playing by remember { mutableStateOf(false) }
+    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    var isFavorite by remember(detail.drama.id, detail.drama.platform) { mutableStateOf(store.isFav(detail.drama.id, detail.drama.platform)) }
     var curMs by remember { mutableLongStateOf(0L) }
     var durMs by remember { mutableLongStateOf(0L) }
     var isSeeking by remember { mutableStateOf(false) }
@@ -3186,7 +3190,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var hasSub by remember { mutableStateOf(false) }
     var curStreamUrl by remember { mutableStateOf("") }
     var subOn by remember { mutableStateOf(store.subtitleOn()) }
-    val dataSaver = remember(detail.drama.id) { store.dataSaver() }
+    var dataSaver by remember(detail.drama.id) { mutableStateOf(store.dataSaver()) }
 
     // Satu tempat untuk semua preferensi trek: teks nyala/mati dan batas kualitas
     // saat Hemat Data. Keduanya berlaku tanpa perlu memuat ulang stream.
@@ -3212,7 +3216,13 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
 
     fun saveProgress(ep: Int) { runCatching { store.updateProgress(detail.drama.id, detail.drama.platform, ep, player.currentPosition.coerceAtLeast(0L), player.duration.takeIf { it > 0 } ?: 0L) } }
     fun closePlayer() { saveProgress(pager.currentPage + 1); runCatching { player.pause() }; onClose() }
-    BackHandler { if (epSheet) epSheet = false else closePlayer() }
+    BackHandler {
+        when {
+            settingsSheet -> settingsSheet = false
+            epSheet -> epSheet = false
+            else -> closePlayer()
+        }
+    }
 
     DisposableEffect(act, preferLandscape) {
         act?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -3259,8 +3269,8 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         lc.addObserver(obs); onDispose { lc.removeObserver(obs) }
     }
 
-    LaunchedEffect(uiVis, loading, error, pager.currentPage) {
-        if (uiVis && !loading && error == null && !epSheet) { delay(2800); uiVis = false }
+    LaunchedEffect(uiVis, loading, error, pager.currentPage, epSheet, settingsSheet) {
+        if (uiVis && !loading && error == null && !epSheet && !settingsSheet) { delay(2800); uiVis = false }
     }
 
     LaunchedEffect(player, pager.currentPage, loading) {
@@ -3272,12 +3282,12 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         }
     }
 
-    LaunchedEffect(flash) { if (flash != null) { delay(700); flash = null } }
+    LaunchedEffect(flash) { if (flash != null) { delay(700); flash = null; liked = false } }
 
     LaunchedEffect(pager.currentPage, retryKey) {
         val ep = pager.currentPage + 1
         if (lastEp != ep) saveProgress(lastEp); lastEp = ep
-        uiVis = true; epSheet = false; liked = false; curMs = 0; durMs = 0; lastSaveMs = 0; loading = true; error = null
+        uiVis = true; epSheet = false; settingsSheet = false; liked = false; curMs = 0; durMs = 0; lastSaveMs = 0; loading = true; error = null
         val savedPos = store.progressMs(detail.drama.id, detail.drama.platform, ep)
         val savedDur = store.progressDurationMs(detail.drama.id, detail.drama.platform, ep)
         val start = if (savedDur > 0 && savedPos >= savedDur - 4000) 0L else savedPos
@@ -3295,21 +3305,24 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             // Simpan URL untuk WebView via state? Kita pakai stream.url langsung di UI nanti
         } else {
             runCatching { player.stop(); player.clearMediaItems() }
-            player.setMediaItem(buildMediaItem(stream)); player.prepare()
+            player.setMediaItem(buildMediaItem(stream)); player.prepare(); player.setPlaybackSpeed(playbackSpeed)
             if (start > 0) player.seekTo(start); player.playWhenReady = true; loading = false
             if (ep < total) launch { try { repo.resolveStreamCached(detail, ep + 1, store.dataSaver()) } catch (_: Throwable) {} }
         }
     }
 
-    Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(player, pager.currentPage) {
+    Box(Modifier.fillMaxSize().background(Color.Black).pointerInput(player, pager.currentPage, isFavorite) {
         detectTapGestures(
-            onTap = { uiVis = !uiVis; if (!uiVis) epSheet = false },
+            onTap = { uiVis = !uiVis; if (!uiVis) { epSheet = false; settingsSheet = false } },
             onDoubleTap = { o -> uiVis = true; val w = size.width.coerceAtLeast(1); when {
                 o.x < w * 0.42f -> { val n = (player.currentPosition - 10000).coerceAtLeast(0); player.seekTo(n); curMs = n; flash = "-10s" }
                 o.x > w * 0.58f -> { val n = (player.currentPosition + 10000).coerceAtMost(player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE); player.seekTo(n); curMs = n; flash = "+10s" }
-                else -> { liked = true; flash = "♥" }
+                else -> {
+                    if (!isFavorite) { store.toggleFav(detail.drama); isFavorite = true }
+                    liked = true; flash = "♥"
+                }
             }},
-            onPress = { val q = withTimeoutOrNull(520) { tryAwaitRelease() }; if (q == null) { speedHold = true; flash = "2x"; runCatching { player.setPlaybackSpeed(2f) }; tryAwaitRelease(); runCatching { player.setPlaybackSpeed(1f) }; speedHold = false } }
+            onPress = { val q = withTimeoutOrNull(520) { tryAwaitRelease() }; if (q == null) { speedHold = true; flash = "2x"; runCatching { player.setPlaybackSpeed(2f) }; tryAwaitRelease(); runCatching { player.setPlaybackSpeed(playbackSpeed) }; speedHold = false } }
         )
     }) {
         VerticalPager(pager, Modifier.fillMaxSize()) { page ->
@@ -3364,99 +3377,118 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                         AndroidView(factory = { PlayerView(it).apply { useController = false; this.player = player; resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM } }, update = { view -> view.player = player; view.resizeMode = if (fitContain) AspectRatioFrameLayout.RESIZE_MODE_FIT else AspectRatioFrameLayout.RESIZE_MODE_ZOOM }, modifier = Modifier.fillMaxSize())
                     }
                 }
-                if (uiVis || loading || error != null) {
-                    Box(
-                        Modifier.fillMaxSize().background(
-                            Brush.verticalGradient(
-                                listOf(DS.Bg.copy(alpha = 0.25f), Color.Transparent, DS.Bg.copy(alpha = 0.85f)),
-                                startY = 100f
-                            )
+                Box(
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.88f)),
+                            startY = 520f
                         )
                     )
-                    Column(
-                        Modifier.align(Alignment.BottomStart).padding(start = 18.dp, end = 18.dp, bottom = 138.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PlayerOverlayChip(platformLabel(detail.drama.platform))
-                            if (total > 1) PlayerOverlayChip("Ep ${page + 1} / $total")
-                            if (preferLandscape) PlayerOverlayChip("Wide")
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Text(detail.drama.title, color = DS.Hi, fontSize = 20.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, lineHeight = 24.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Spacer(Modifier.height(5.dp))
-                        Text(
-                            when {
-                                !playing -> "Ketuk layar untuk kontrol"
-                                total > 1 -> "Geser naik atau turun untuk ganti episode"
-                                else -> "Selamat menonton"
-                            },
-                            color = DS.Body,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
-                            fontFamily = Type.Sans,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-            }
-        }
-
-        AnimatedVisibility(uiVis || loading || error != null, Modifier.align(Alignment.TopStart)) {
-            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.clip(CircleShape).background(DS.Bg.copy(alpha = 0.45f))) {
-                    GhostIconButton(Icons.Rounded.ArrowBack, "Tutup", ::closePlayer)
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(detail.drama.title, color = DS.Hi, fontSize = 13.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (total > 1) Text("Ep ${pager.currentPage + 1} / $total", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans)
-                }
-                Text(
-                    if (preferLandscape) "Landscape" else "Portrait",
-                    color = DS.Body, fontSize = 10.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clip(RoundedCornerShape(50)).border(1.dp, DS.Line, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 6.dp)
                 )
             }
         }
 
-        // Kontrol bawah — satu panel, tidak ada tombol yang menutupi video.
-        AnimatedVisibility(uiVis || loading || error != null, Modifier.align(Alignment.BottomCenter)) {
-            Surface(color = DS.SheetBg, shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp), modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(formatMs(curMs), color = DS.Hi, fontSize = 11.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
-                        Spacer(Modifier.weight(1f))
-                        Text(if (durMs > 0) formatMs(durMs) else "", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans)
-                    }
-                    Slider(
-                        value = if (durMs > 0) (curMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f) else 0f,
-                        onValueChange = { isSeeking = true; curMs = (it * durMs).toLong().coerceAtLeast(0) },
-                        onValueChangeFinished = { player.seekTo(curMs); saveProgress(pager.currentPage + 1); isSeeking = false },
-                        enabled = durMs > 0,
-                        colors = SliderDefaults.colors(thumbColor = DS.Cream, activeTrackColor = DS.Green, inactiveTrackColor = DS.Card2),
-                        modifier = Modifier.fillMaxWidth().height(24.dp)
-                    )
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { uiVis = true; epSheet = true }) { Icon(Icons.Rounded.List, "Episode", tint = DS.Body) }
-                        IconButton(onClick = { uiVis = true; repo.invalidateStream(detail.drama, pager.currentPage + 1); retryKey++ }) { Icon(Icons.Rounded.Refresh, "Muat ulang", tint = DS.Body) }
-                        Spacer(Modifier.weight(1f))
-                        if (hasSub) {
-                            IconButton(onClick = { uiVis = true; subOn = !subOn; store.setSubtitleOn(subOn); flash = if (subOn) "Subtitle on" else "Subtitle off" }) {
-                                Icon(Icons.Rounded.ClosedCaption, "Subtitle", tint = if (subOn) DS.Green else DS.Muted)
-                            }
-                        }
-                        IconButton(onClick = { uiVis = true; fitContain = !fitContain; if (!preferLandscape) store.setFitContain(fitContain) }) { Icon(if (fitContain) Icons.Rounded.AspectRatio else Icons.Rounded.Fullscreen, "Ukuran layar", tint = DS.Body) }
-                        Spacer(Modifier.width(10.dp))
-                        Box(
-                            Modifier.size(46.dp).clip(CircleShape).background(DS.Cream).clickable { uiVis = true; if (player.isPlaying) player.pause() else player.play() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Jeda" else "Putar", tint = DS.Ink, modifier = Modifier.size(23.dp))
-                        }
-                    }
+        AnimatedVisibility(uiVis || loading || error != null, Modifier.align(Alignment.TopStart)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                PlayerGlassButton(Icons.Rounded.ArrowBack, "Tutup", onClick = ::closePlayer)
+                Spacer(Modifier.width(11.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(detail.drama.title, color = DS.Hi, fontSize = 14.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Episode ${pager.currentPage + 1} dari $total", color = DS.Body, fontSize = 11.sp, fontFamily = Type.Sans)
+                }
+                PlayerGlassButton(Icons.Rounded.MoreVert, "Pengaturan") { settingsSheet = true; uiVis = true }
+            }
+        }
+
+        AnimatedVisibility(uiVis && !loading && error == null, Modifier.align(Alignment.Center)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                PlayerGlassButton(Icons.Rounded.Replay10, "Mundur 10 detik", size = 48.dp) {
+                    val next = (player.currentPosition - 10_000L).coerceAtLeast(0L)
+                    player.seekTo(next); curMs = next
+                }
+                Box(
+                    Modifier.size(68.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.58f))
+                        .border(1.dp, Color.White.copy(alpha = 0.24f), CircleShape)
+                        .clickable { if (player.isPlaying) player.pause() else player.play() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Jeda" else "Putar", tint = Color.White, modifier = Modifier.size(35.dp))
+                }
+                PlayerGlassButton(Icons.Rounded.Forward10, "Maju 10 detik", size = 48.dp) {
+                    val next = (player.currentPosition + 10_000L).coerceAtMost(player.duration.takeIf { it > 0 } ?: Long.MAX_VALUE)
+                    player.seekTo(next); curMs = next
                 }
             }
+        }
+
+        Column(
+            Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 88.dp, bottom = 44.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PlatformLogo(detail.drama.platform, Modifier.size(20.dp))
+                Spacer(Modifier.width(7.dp))
+                Text(platformLabel(detail.drama.platform), color = DS.Hi, fontSize = 12.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(8.dp))
+                Text("• Episode ${pager.currentPage + 1}", color = DS.Body, fontSize = 11.5.sp, fontFamily = Type.Sans)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(detail.drama.title, color = Color.White, fontSize = 18.sp, lineHeight = 22.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (detail.drama.description.isNotBlank()) {
+                Spacer(Modifier.height(5.dp))
+                Text(detail.drama.description, color = Color.White.copy(alpha = 0.82f), fontSize = 11.5.sp, lineHeight = 16.sp, fontFamily = Type.Sans, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            if (total > 1) {
+                Spacer(Modifier.height(9.dp))
+                Row(
+                    Modifier.clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.14f))
+                        .clickable { epSheet = true; uiVis = true }.padding(horizontal = 11.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.PlaylistPlay, null, tint = Color.White, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Pilih episode", color = Color.White, fontSize = 11.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.width(3.dp))
+                    Icon(Icons.Rounded.ChevronRight, null, tint = Color.White, modifier = Modifier.size(15.dp))
+                }
+            }
+        }
+
+        Column(
+            Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 62.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            PlayerSideAction(
+                icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                label = if (isFavorite) "Tersimpan" else "Simpan",
+                active = isFavorite
+            ) {
+                store.toggleFav(detail.drama)
+                isFavorite = !isFavorite
+                liked = isFavorite
+                flash = if (isFavorite) "♥" else "Dihapus"
+            }
+            PlayerSideAction(Icons.Rounded.GridView, "Episode") { epSheet = true; uiVis = true }
+            PlayerSideAction(Icons.Rounded.Share, "Bagikan") { shareDrama(ctx, detail.drama) }
+            PlayerSideAction(Icons.Rounded.MoreHoriz, "Lainnya") { settingsSheet = true; uiVis = true }
+        }
+
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+            AnimatedVisibility(uiVis) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(formatMs(curMs), color = Color.White, fontSize = 10.sp, fontFamily = Type.Sans)
+                    Spacer(Modifier.weight(1f))
+                    Text(if (durMs > 0) formatMs(durMs) else "", color = Color.White.copy(alpha = 0.72f), fontSize = 10.sp, fontFamily = Type.Sans)
+                }
+            }
+            Slider(
+                value = if (durMs > 0) (curMs.toFloat() / durMs.toFloat()).coerceIn(0f, 1f) else 0f,
+                onValueChange = { isSeeking = true; curMs = (it * durMs).toLong().coerceAtLeast(0) },
+                onValueChangeFinished = { player.seekTo(curMs); saveProgress(pager.currentPage + 1); isSeeking = false },
+                enabled = durMs > 0,
+                colors = SliderDefaults.colors(thumbColor = DS.Green, activeTrackColor = DS.Green, inactiveTrackColor = Color.White.copy(alpha = 0.34f)),
+                modifier = Modifier.fillMaxWidth().height(22.dp)
+            )
         }
 
         AnimatedVisibility(flash != null || speedHold || liked, Modifier.align(Alignment.Center)) {
@@ -3477,28 +3509,103 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             PlayerErrorCard(e, Modifier.align(Alignment.Center)) { repo.invalidateStream(detail.drama, pager.currentPage + 1); retryKey++ }
         }
 
-        // Sheet episode
         if (epSheet) {
-            Box(Modifier.fillMaxSize().background(DS.Bg.copy(alpha = 0.84f)).clickable { epSheet = false })
-            Surface(color = DS.Raise, shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp), modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().heightIn(max = 420.dp)) {
-                Column(Modifier.padding(18.dp)) {
-                    Text("Episode", color = DS.Hi, fontSize = 19.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(3.dp))
-                    Text(detail.drama.title, color = DS.Muted, fontSize = 12.sp, fontFamily = Type.Sans, maxLines = 1)
-                    Spacer(Modifier.height(14.dp))
-                    LazyVerticalGrid(columns = GridCells.Fixed(6), verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.70f)).clickable { epSheet = false })
+            Surface(
+                color = Color(0xFF111111),
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.68f)
+            ) {
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) {
+                    Box(Modifier.width(38.dp).height(4.dp).clip(RoundedCornerShape(50)).background(DS.Faint).align(Alignment.CenterHorizontally))
+                    Spacer(Modifier.height(16.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Pilih Episode", color = DS.Hi, fontSize = 21.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.height(3.dp))
+                            Text("${detail.drama.title} · $total episode", color = DS.Muted, fontSize = 11.5.sp, fontFamily = Type.Sans, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        IconButton(onClick = { epSheet = false }) { Icon(Icons.Rounded.Close, "Tutup", tint = DS.Body) }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(5),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = PaddingValues(bottom = 20.dp)
+                    ) {
                         items((1..total).toList()) { ep ->
                             val active = ep == pager.currentPage + 1
-                            Box(
-                                Modifier.height(40.dp).clip(RoundedCornerShape(10.dp))
-                                    .background(if (active) DS.Cream else DS.Card)
+                            Column(
+                                Modifier.height(58.dp).clip(RoundedCornerShape(12.dp))
+                                    .background(if (active) DS.Green else DS.Card)
+                                    .border(1.dp, if (active) DS.Green else DS.Line, RoundedCornerShape(12.dp))
                                     .clickable { epSheet = false; uiVis = true; scope.launch { pager.animateScrollToPage(ep - 1) } },
-                                contentAlignment = Alignment.Center
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Text(ep.toString(), color = if (active) DS.Ink else DS.Hi, fontWeight = if (active) FontWeight.Bold else FontWeight.Medium, fontSize = 12.5.sp, fontFamily = Type.Sans)
+                                Text(ep.toString(), color = if (active) DS.Ink else DS.Hi, fontWeight = FontWeight.Bold, fontSize = 14.sp, fontFamily = Type.Sans)
+                                if (active) Text("Diputar", color = DS.Ink.copy(alpha = 0.72f), fontSize = 8.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }
+                }
+            }
+        }
+
+        if (settingsSheet) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.70f)).clickable { settingsSheet = false })
+            Surface(
+                color = Color(0xFF151515),
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            ) {
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+                    Box(Modifier.width(38.dp).height(4.dp).clip(RoundedCornerShape(50)).background(DS.Faint).align(Alignment.CenterHorizontally))
+                    Spacer(Modifier.height(16.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Pengaturan Pemutar", color = DS.Hi, fontSize = 19.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { settingsSheet = false }) { Icon(Icons.Rounded.Close, "Tutup", tint = DS.Body) }
+                    }
+                    Spacer(Modifier.height(15.dp))
+                    Text("Kecepatan", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(9.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
+                            val active = playbackSpeed == speed
+                            val speedText = if (speed == speed.toInt().toFloat()) "${speed.toInt()}x" else "${speed}x"
+                            Box(
+                                Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(10.dp))
+                                    .background(if (active) DS.Green else DS.Card2)
+                                    .clickable {
+                                        playbackSpeed = speed
+                                        player.setPlaybackSpeed(speed)
+                                        flash = if (speed == 1f) "Normal" else speedText
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(speedText, color = if (active) DS.Ink else DS.Hi, fontSize = 11.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    PlayerSettingRow(Icons.Rounded.HighQuality, "Kualitas video", if (dataSaver) "Hemat · maks. 480p" else "Otomatis · kualitas terbaik") {
+                        dataSaver = !dataSaver
+                        store.setDataSaver(dataSaver)
+                        settingsSheet = false
+                        repo.invalidateStream(detail.drama, pager.currentPage + 1)
+                        retryKey++
+                    }
+                    PlayerSettingRow(Icons.Rounded.ClosedCaption, "Subtitle", if (!hasSub) "Tidak tersedia" else if (subOn) "Aktif" else "Nonaktif", enabled = hasSub) {
+                        subOn = !subOn; store.setSubtitleOn(subOn); flash = if (subOn) "Subtitle aktif" else "Subtitle nonaktif"
+                    }
+                    PlayerSettingRow(Icons.Rounded.AspectRatio, "Ukuran video", if (fitContain) "Rasio asli" else "Penuhi layar") {
+                        fitContain = !fitContain; if (!preferLandscape) store.setFitContain(fitContain)
+                    }
+                    PlayerSettingRow(Icons.Rounded.Refresh, "Muat ulang video", "Ambil link streaming terbaru") {
+                        settingsSheet = false; repo.invalidateStream(detail.drama, pager.currentPage + 1); retryKey++
+                    }
+                    Spacer(Modifier.height(12.dp))
                 }
             }
         }
@@ -3506,19 +3613,65 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
 }
 
 @Composable
-private fun PlayerOverlayChip(text: String) {
-    Text(
-        text,
-        color = DS.Hi,
-        fontSize = 11.sp,
-        fontFamily = Type.Sans,
-        fontWeight = FontWeight.SemiBold,
-        maxLines = 1,
-        modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(DS.Bg.copy(alpha = 0.50f))
-            .padding(horizontal = 10.dp, vertical = 5.dp)
-    )
+private fun PlayerGlassButton(
+    icon: ImageVector,
+    label: String,
+    size: Dp = 40.dp,
+    onClick: () -> Unit
+) {
+    Box(
+        Modifier.size(size).clip(CircleShape).background(Color.Black.copy(alpha = 0.48f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, label, tint = Color.White, modifier = Modifier.size(size * 0.50f))
+    }
+}
+
+@Composable
+private fun PlayerSideAction(
+    icon: ImageVector,
+    label: String,
+    active: Boolean = false,
+    onClick: () -> Unit
+) {
+    Column(
+        Modifier.width(66.dp).clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            Modifier.size(45.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.34f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, label, tint = if (active) DS.Green else Color.White, modifier = Modifier.size(28.dp))
+        }
+        Spacer(Modifier.height(3.dp))
+        Text(label, color = Color.White, fontSize = 9.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+@Composable
+private fun PlayerSettingRow(
+    icon: ImageVector,
+    title: String,
+    value: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(DS.Card2), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = if (enabled) DS.Hi else DS.Faint, modifier = Modifier.size(19.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(title, color = if (enabled) DS.Hi else DS.Faint, fontSize = 13.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(value, color = if (enabled) DS.Muted else DS.Faint, fontSize = 11.5.sp, fontFamily = Type.Sans)
+        Spacer(Modifier.width(5.dp))
+        Icon(Icons.Rounded.ChevronRight, null, tint = DS.Faint, modifier = Modifier.size(17.dp))
+    }
 }
 
 @Composable

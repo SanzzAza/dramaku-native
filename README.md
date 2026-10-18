@@ -38,8 +38,8 @@ Antarmuka memakai latar **hitam pekat**, kartu abu gelap, teks putih, dan aksen 
 - Riwayat tontonan + progress lokal
 - Settings native
 - Share sheet Android native
-- Native player vertical swipe episode ala TikTok memakai Compose VerticalPager + Media3 ExoPlayer
-- Bar progress video, seek/drag, auto-hide overlay, episode sheet, double tap seek, long press 2x
+- Native player vertikal ala aplikasi short-drama: swipe episode, info cerita minimal, toolbar kanan, kontrol tengah, dan progress tipis
+- Episode sheet 5 kolom, menu kualitas/subtitle/rasio/kecepatan, double tap like/seek, long press 2x, serta auto-hide kontrol
 - Search filter platform, progress per episode, episode range, Auto Next, dan default mode video
 - Library hapus item satuan, settings final, dialog privasi/disclaimer, dan report episode native
 - Remote config native, announcement/status platform, home premium, detail info tiles, search trending/filter
@@ -50,7 +50,7 @@ Antarmuka memakai latar **hitam pekat**, kartu abu gelap, teks putih, dan aksen 
 - Bugfix cuplikan audio: preview stop total sebelum masuk full player/detail
 - Bugfix cuplikan overlay: compact mini card agar tidak menutupi video
 - Bugfix platform resolver: FreeReels raw HLS, GoodShort detail stream fallback, DramaNova fallback home
-- Bugfix full player overlay: judul compact, poster mini, sinopsis pendek seperti WebView lama
+- Full player memakai overlay minimal tanpa panel kontrol besar yang menutupi video
 - Platform logo/brand mark di dropdown dan status platform
 - Copywriting Home dibuat lebih premium, bukan teks developer/native
 - Melolo stream hardening: streamv2-only, player error listener, browser-like HLS headers

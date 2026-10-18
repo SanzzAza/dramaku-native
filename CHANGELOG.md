@@ -17,6 +17,12 @@ Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
   player mencoba ulang sekali dengan URL baru sebelum menampilkan error.
 - Navigasi bawah kini hanya Cuplikan, Temukan, Perpustakaan, dan Profil;
   menu Hadiah dihapus.
+- Pemutar streaming didesain ulang menjadi pengalaman short-drama vertikal:
+  video layar penuh, info cerita minimal di kiri bawah, toolbar Simpan/Episode/
+  Bagikan/Lainnya di kanan, kontrol play dan seek di tengah, serta progress tipis.
+- Sheet episode kini memakai grid 5 kolom. Menu pemutar menyediakan kualitas,
+  subtitle, rasio layar, kecepatan 0,75x–2x, dan refresh link terbaru; gestur
+  swipe episode, double tap, dan tahan 2x tetap tersedia.
 - Aplikasi langsung membuka Temukan, tetap menyediakan feed Cuplikan, dan tidak
   menambahkan onboarding akun, form login, maupun sistem autentikasi.
 - Hapus kartu Movie Box dan Bstation dari layar awal.
