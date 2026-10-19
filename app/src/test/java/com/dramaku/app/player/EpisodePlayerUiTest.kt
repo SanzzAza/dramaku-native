@@ -49,7 +49,7 @@ class EpisodePlayerUiTest {
                 EpisodePlayerChrome(state, {}, {}, {}, {}, {})
             } }
         }
-        compose.onAllNodesWithText(state.title).assertCountEquals(1)
+        compose.onAllNodesWithText(state.title, substring = true).assertCountEquals(1)
         compose.onNodeWithText("Ep. 3").assertIsDisplayed()
         compose.onNodeWithContentDescription("Putar video").assertDoesNotExist()
         compose.onNodeWithContentDescription("Mundur 10 detik").assertDoesNotExist()
@@ -86,14 +86,14 @@ class EpisodePlayerUiTest {
 
     @Test fun `clean screen hides chrome but keeps an exit control`() {
         content { MaterialTheme { EpisodePlayerChrome(state.copy(immersive = true), {}, {}, {}, {}, {}) } }
-        compose.onNodeWithText(state.title).assertDoesNotExist()
+        compose.onAllNodesWithText(state.title, substring = true).assertCountEquals(0)
         compose.onNodeWithText("Koleksi").assertDoesNotExist()
         compose.onNodeWithText("Keluar layar bersih").assertIsDisplayed()
     }
 
     @Test fun `auto hidden chrome removes controls without the clean screen exit button`() {
         content { MaterialTheme { EpisodePlayerChrome(state.copy(chromeVisible = false), {}, {}, {}, {}, {}) } }
-        compose.onNodeWithText(state.title).assertDoesNotExist()
+        compose.onAllNodesWithText(state.title, substring = true).assertCountEquals(0)
         compose.onNodeWithText("Koleksi").assertDoesNotExist()
         compose.onNodeWithText("Episode").assertDoesNotExist()
         compose.onNodeWithText("Keluar layar bersih").assertDoesNotExist()

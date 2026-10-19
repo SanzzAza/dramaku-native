@@ -1,4 +1,4 @@
-# Player streaming 4.9.11
+# Player streaming 4.9.12
 
 ## Acuan dan batas kesesuaian
 
@@ -17,6 +17,13 @@ visual akhir masih perlu dilakukan dengan APK referensi di perangkat Android.
 ## Interaksi
 
 - Header hanya `Ep. n`, tombol kembali, dan menu; judul tidak diduplikasi.
+- Judul bawah berformat `Ep.n · Judul ›` ala Melolo, diikuti cuplikan sinopsis
+  maksimal 2 baris (ketuk membuka panel Tentang cerita). Pill episode memuat
+  total episode dan label platform.
+- Rail aksi menampilkan jumlah penonton asli dari API sumber di bawah ikon
+  Suka bila tersedia; tidak ada angka sosial buatan.
+- Double tap tengah memicu burst hati melayang (satu hati besar pop + enam
+  hati kecil menyebar ke atas, ±850 ms).
 - Ketuk video untuk jeda/putar. Ikon play tengah hanya terlihat saat jeda.
 - Swipe vertikal berganti episode setelah halaman berhenti (`settledPage`).
 - Double tap sisi kiri/kanan mundur/maju 10 detik; tengah menambahkan Suka.

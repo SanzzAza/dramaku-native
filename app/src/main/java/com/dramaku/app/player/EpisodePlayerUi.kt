@@ -1,6 +1,9 @@
 package com.dramaku.app.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
@@ -32,6 +35,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -55,6 +59,7 @@ internal data class EpisodePlayerUiState(
     val title: String,
     val poster: String,
     val platform: String,
+    val views: String = "",
     val episode: Int,
     val total: Int,
     val description: String = "",
@@ -122,7 +127,7 @@ internal fun EpisodePlayerChrome(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    SideAction(if (state.liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Suka", state.liked, Color(0xFFFF5C75)) { onAction(PlayerAction.Like) }
+                    SideAction(if (state.liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, state.views.ifBlank { "Suka" }, state.liked, Color(0xFFFF5C75)) { onAction(PlayerAction.Like) }
                     SideAction(if (state.collected) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder, if (state.collected) "Tersimpan" else "Koleksi", state.collected) { onAction(PlayerAction.Collect) }
                     SideAction(Icons.Rounded.Share, "Bagikan") { onAction(PlayerAction.Share) }
                     SideAction(Icons.Rounded.Fullscreen, "Bersih") { onAction(PlayerAction.Immersive) }
@@ -133,11 +138,13 @@ internal fun EpisodePlayerChrome(
                 ) {
                     Column(Modifier.fillMaxWidth().padding(end = 60.dp).clickable { onAction(PlayerAction.Details) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Label(state.title, Modifier.weight(1f, fill = false), size = 17.sp, weight = FontWeight.Bold, maxLines = 2)
+                            Label("Ep.${state.episode} · ${state.title}", Modifier.weight(1f, fill = false), size = 17.sp, weight = FontWeight.Bold, maxLines = 2)
                             Icon(Icons.Rounded.ChevronRight, "Info cerita", tint = Color.White, modifier = Modifier.size(20.dp))
                         }
-                        Spacer(Modifier.height(5.dp))
-                        Label("Ep. ${state.episode} / ${state.total} · ${state.platform}", color = Color.White.copy(alpha = 0.76f), size = 12.sp)
+                        if (state.description.isNotBlank()) {
+                            Spacer(Modifier.height(6.dp))
+                            Label(state.description, color = Color.White.copy(alpha = 0.68f), size = 12.sp, maxLines = 2)
+                        }
                     }
                     Spacer(Modifier.height(16.dp))
                     Row(
@@ -150,7 +157,7 @@ internal fun EpisodePlayerChrome(
                         Spacer(Modifier.width(10.dp))
                         Box(Modifier.width(1.dp).height(12.dp).background(Color.White.copy(alpha = 0.25f)))
                         Spacer(Modifier.width(10.dp))
-                        Label("Total ${state.total} episode", color = Color.White.copy(alpha = 0.7f), size = 12.sp, modifier = Modifier.weight(1f))
+                        Label("Total ${state.total} episode · ${state.platform}", color = Color.White.copy(alpha = 0.7f), size = 12.sp, modifier = Modifier.weight(1f))
                         Icon(Icons.Rounded.ChevronRight, null, tint = Color.White, modifier = Modifier.size(18.dp))
                     }
                     if (!state.embedded) {
@@ -194,7 +201,7 @@ internal fun EpisodePlayerChrome(
             }
         }
         AnimatedVisibility(state.showLike, Modifier.align(Alignment.Center), enter = fadeIn(), exit = fadeOut()) {
-            Icon(Icons.Rounded.Favorite, null, tint = Color(0xFFFF5C75), modifier = Modifier.size(88.dp))
+            HeartBurst()
         }
         if (state.speedHeld) {
             Surface(Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(top = 70.dp), color = Color.Black.copy(alpha = 0.60f), shape = RoundedCornerShape(30.dp)) {
@@ -216,6 +223,39 @@ internal fun EpisodePlayerChrome(
                 Spacer(Modifier.width(5.dp))
                 Label("Keluar layar bersih", size = 11.sp)
             }
+        }
+    }
+}
+
+/** Double-tap love: one popping heart plus a small burst drifting upward, Melolo-style. */
+@Composable
+private fun HeartBurst(modifier: Modifier = Modifier) {
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { progress.animateTo(1f, tween(850, easing = LinearOutSlowInEasing)) }
+    val p = progress.value
+    Box(modifier.size(220.dp), contentAlignment = Alignment.Center) {
+        Icon(
+            Icons.Rounded.Favorite, null, tint = Color(0xFFFF5C75),
+            modifier = Modifier.size(88.dp).graphicsLayer {
+                val pop = if (p < 0.25f) p / 0.25f else 1f
+                scaleX = 0.55f + 0.45f * pop; scaleY = 0.55f + 0.45f * pop
+                alpha = 1f - (if (p > 0.6f) (p - 0.6f) / 0.4f else 0f)
+            }
+        )
+        listOf(
+            Triple(-62f, -46f, 0.95f), Triple(50f, -64f, 0.75f), Triple(-28f, -84f, 0.6f),
+            Triple(72f, -20f, 0.65f), Triple(-76f, 6f, 0.55f), Triple(36f, 16f, 0.85f)
+        ).forEach { (dx, dy, baseScale) ->
+            Icon(
+                Icons.Rounded.Favorite, null, tint = Color(0xFFFF5C75).copy(alpha = 0.92f),
+                modifier = Modifier.size(26.dp).graphicsLayer {
+                    translationX = dx.dp.toPx() * p
+                    translationY = (dy.dp.toPx() - 34.dp.toPx()) * p
+                    val scale = baseScale * (0.4f + 0.6f * p)
+                    scaleX = scale; scaleY = scale
+                    alpha = (1f - p * p).coerceIn(0f, 1f)
+                }
+            )
         }
     }
 }

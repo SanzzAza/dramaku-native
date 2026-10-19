@@ -1011,10 +1011,14 @@ private fun HomeScreen(
         }
     }
 
+    val latestHistory = remember(history) { history.maxByOrNull { it.updated } }
+    var resumeDismissed by remember(latestHistory?.let { "${it.platform}|${it.id}|${it.episode}" }) { mutableStateOf(false) }
+
+    Box(Modifier.fillMaxSize().background(DS.Bg)) {
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize().background(DS.Bg),
-        contentPadding = PaddingValues(bottom = 24.dp)
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = if (latestHistory != null && !resumeDismissed) 96.dp else 24.dp)
     ) {
         item {
             HomeHeader(
@@ -1041,6 +1045,27 @@ private fun HomeScreen(
                     .filter { it.id.isNotBlank() && it.title.isNotBlank() }
                     .distinctBy { it.platform + "|" + it.id }
                     .distinctBy { it.platform + "|" + normalizeKey(it.title) }
+
+                val trending = data.popular
+                    .filter { it.id.isNotBlank() && it.title.isNotBlank() }
+                    .distinctBy { it.platform + "|" + it.id }
+                    .take(10)
+                if (trending.size >= 3) {
+                    item(key = "trending_$platformId") {
+                        Column {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.LocalFireDepartment, null, tint = DS.Green, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Lagi Trending", color = DS.Hi, fontSize = 16.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                itemsIndexed(trending, key = { _, d -> d.platform + "|" + d.id }) { index, d -> TrendingRankCard(index + 1, d, onDrama) }
+                            }
+                            Spacer(Modifier.height(20.dp))
+                        }
+                    }
+                }
 
                 if (all.isEmpty()) {
                     item { EmptyState("Rak masih kosong", "Coba muat ulang, atau pindah sumber dulu.", Icons.Rounded.Movie) }
@@ -1080,6 +1105,90 @@ private fun HomeScreen(
                     }
                 }
             }
+        }
+    }
+
+    if (latestHistory != null) {
+        AnimatedVisibility(
+            visible = !resumeDismissed,
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut()
+        ) {
+            ResumeFloatingCard(latestHistory, onResume = onResume, onDismiss = { resumeDismissed = true })
+        }
+    }
+    }
+}
+
+/** Melolo-style trending rail: big rank numeral over the poster, real view counts only. */
+@Composable
+private fun TrendingRankCard(rank: Int, drama: Drama, onClick: (Drama) -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(Modifier.width(120.dp).clip(RoundedCornerShape(12.dp)).clickable { onClick(drama) }) {
+        Box(Modifier.fillMaxWidth().aspectRatio(0.70f).clip(shape).background(DS.Card2)) {
+            AsyncImage(drama.poster, drama.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.80f)))))
+            Text(
+                rank.toString(),
+                Modifier.align(Alignment.BottomStart).padding(start = 8.dp),
+                color = Color.White,
+                fontSize = 42.sp,
+                fontFamily = Type.Sans,
+                fontWeight = FontWeight.Bold
+            )
+            if (drama.views.isNotBlank()) {
+                Row(Modifier.align(Alignment.BottomEnd).padding(end = 7.dp, bottom = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.PlayArrow, null, tint = Color.White.copy(alpha = 0.92f), modifier = Modifier.size(12.dp))
+                    Spacer(Modifier.width(2.dp))
+                    Text(drama.views, color = Color.White.copy(alpha = 0.92f), fontSize = 10.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            drama.title, color = DS.Hi, fontSize = 12.sp, lineHeight = 15.5.sp, fontFamily = Type.Sans,
+            fontWeight = FontWeight.SemiBold, minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(4.dp))
+    }
+}
+
+/** Floating resume chip above the nav bar: one tap back to the exact episode and second. */
+@Composable
+private fun ResumeFloatingCard(h: HistoryItem, onResume: (HistoryItem) -> Unit, onDismiss: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        Modifier
+            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .fillMaxWidth()
+            .clip(shape)
+            .background(DS.Card)
+            .border(1.dp, DS.Line, shape)
+            .clickable { onResume(h) }
+            .padding(start = 10.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.width(38.dp).height(52.dp).clip(RoundedCornerShape(8.dp)).background(DS.Card2)) {
+            if (h.poster.isNotBlank()) AsyncImage(h.poster, h.title, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text("LANJUT NONTON", color = DS.Green, fontSize = 9.sp, fontFamily = Type.Sans, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(3.dp))
+            Text(h.title, color = DS.Hi, fontSize = 13.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(2.dp))
+            Text("Ep. ${h.episode}" + if (h.pct > 0) " · ${h.pct}% selesai" else "", color = DS.Muted, fontSize = 11.sp, fontFamily = Type.Sans, maxLines = 1)
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(
+            Modifier.size(36.dp).clip(CircleShape).background(DS.Green).clickable { onResume(h) },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Rounded.PlayArrow, "Lanjut nonton", tint = DS.Ink, modifier = Modifier.size(20.dp))
+        }
+        IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+            Icon(Icons.Rounded.Close, "Tutup", tint = DS.Muted, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -3363,7 +3472,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         chromeVisible = false
     }
     LaunchedEffect(notice) { if (notice != null) { delay(1_400); notice = null } }
-    LaunchedEffect(showLike) { if (showLike) { delay(650); showLike = false } }
+    LaunchedEffect(showLike) { if (showLike) { delay(900); showLike = false } }
 
     LaunchedEffect(pager.settledPage, retryKey) {
         val ep = pager.settledPage + 1
@@ -3425,7 +3534,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
 
     val ui = EpisodePlayerUiState(
         title = detail.drama.title, poster = detail.drama.poster, platform = platformLabel(detail.drama.platform),
-        episode = pager.settledPage + 1, total = total, description = detail.drama.description,
+        views = detail.drama.views, episode = pager.settledPage + 1, total = total, description = detail.drama.description,
         playing = playing, loading = loading, buffering = buffering, failed = error != null, embedded = embedUrl.isNotBlank(),
         liked = liked, collected = collected, positionMs = curMs, durationMs = durMs, bufferedMs = bufferedMs,
         seeking = isSeeking, speed = playbackSpeed, speedHeld = speedHold, immersive = immersive, chromeVisible = chromeVisible,

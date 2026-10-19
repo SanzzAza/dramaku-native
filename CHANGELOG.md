@@ -2,6 +2,18 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.12 (2026-10-19)
+
+- Player makin mirip Melolo: judul `Ep.n · Judul ›` satu baris, cuplikan
+  sinopsis 2 baris di bawah judul, jumlah penonton asli dari API di bawah ikon
+  Suka, dan pill episode kini memuat label platform.
+- Double tap tengah memunculkan burst hati melayang (pop + 6 hati kecil
+  menyebar), menggantikan satu ikon hati statis.
+- Home: rail “Lagi Trending” dengan angka peringkat besar ala Top-10 di atas
+  poster plus badge jumlah tayang, diambil dari daftar populer sumber.
+- Home: kartu “Lanjut Nonton” mengambang di bawah — satu ketuk kembali ke
+  episode dan posisi terakhir, bisa ditutup, muncul lagi saat riwayat berganti.
+
 ## 4.9.11 (2026-10-19)
 
 - Fix: overlay player (judul, tombol Suka/Koleksi, panel episode) kembali
