@@ -4948,7 +4948,16 @@ private class DramakuRepository {
                 .sortedBy { it.optInt("quality", 0) }
             val pick = if (ds) paths.firstOrNull() else paths.lastOrNull()
             val video = pick?.stringAny("urlvideo", "url", "videoPath").orEmpty()
-            if (video.isNotBlank()) return StreamResult(video, pickSubtitleUrl(data, json))
+            if (video.isNotBlank()) {
+                // Gateway iniapi cuma relay lambat (TTFB ~12 dtk, belasan KB/s).
+                // Param u= berisi URL CDN asli yang identik byte-per-byte dan
+                // jauh lebih cepat — pakai itu bila masih hidup; kalau CDN
+                // menolak (mis. geo), jatuh kembali ke gateway.
+                val direct = DramaboxCatalog.directVideoUrl(video)
+                val sub = pickSubtitleUrl(data, json)
+                if (direct.isNotBlank() && streamIsReachable(direct)) return StreamResult(direct, sub)
+                return StreamResult(video, sub)
+            }
             // Cadangan bentuk lama { video: "..." } bila proxy berganti lagi.
             val legacy = DramaboxCatalog.streamUrl(json)
             if (legacy.isNotBlank()) return StreamResult(legacy, pickSubtitleUrl(json))

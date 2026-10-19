@@ -69,4 +69,44 @@ object DramaboxCatalog {
 
     /** Path rak "Permata tersembunyi" — endpoint khusus DramaBox di proxy baru. */
     const val HIDDEN_GEMS_PATH = "hidden-gems?lang=in"
+
+    private const val B64_URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+    /** Decode base64 URL-safe tanpa padding — pure Kotlin supaya tetap bisa diuji unit. */
+    private fun decodeBase64Url(s: String): ByteArray? {
+        val clean = s.trim().trimEnd('=')
+        if (clean.isEmpty()) return null
+        val out = java.io.ByteArrayOutputStream(clean.length * 3 / 4)
+        var buffer = 0
+        var bits = 0
+        for (raw in clean) {
+            val c = when (raw) { '+' -> '-'; '/' -> '_'; else -> raw }
+            val idx = B64_URL_ALPHABET.indexOf(c)
+            if (idx < 0) return null
+            buffer = (buffer shl 6) or idx
+            bits += 6
+            if (bits >= 8) {
+                bits -= 8
+                out.write((buffer shr bits) and 0xFF)
+            }
+        }
+        return out.toByteArray()
+    }
+
+    /**
+     * URL video dari proxy v2 dibungkus gateway relay
+     * (`https://dramabox.iniapi.web.id/api/web/stream?u=<base64>`), dan relay itu
+     * lambat — terukur TTFB ~12 dtk dengan throughput belasan KB/s. Param `u`
+     * berisi URL CDN dramaboxdb bertanda tangan CloudFront yang kontennya
+     * byte-per-byte identik dan jauh lebih cepat, jadi lebih baik diputar
+     * langsung. Kembalikan string kosong bila bukan format gateway tersebut.
+     */
+    fun directVideoUrl(wrapped: String): String {
+        val marker = "stream?u="
+        val idx = wrapped.indexOf(marker)
+        if (idx < 0) return ""
+        val payload = wrapped.substring(idx + marker.length).substringBefore('&').substringBefore('#')
+        val decoded = decodeBase64Url(payload)?.toString(Charsets.UTF_8).orEmpty()
+        return if (decoded.startsWith("http://") || decoded.startsWith("https://")) decoded.trim() else ""
+    }
 }

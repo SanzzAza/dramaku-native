@@ -36,6 +36,24 @@ class DramaboxCatalogTest {
         assertEquals("", DramaboxCatalog.streamUrl(JSONObject("""{"code":0,"message":"Success"}""")))
     }
 
+    @Test
+    fun `directVideoUrl decodes the slow gateway wrapper to the signed cdn url`() {
+        // base64url dari: https://hwztvideo.dramaboxdb.com/a/b/701.encrypt.mp4?etavirp_nuyila=1&Expires=99&Signature=AbC-_x&Key-Pair-Id=K3
+        val wrapped = "https://dramabox.iniapi.web.id/api/web/stream?u=" +
+            "aHR0cHM6Ly9od3p0dmlkZW8uZHJhbWFib3hkYi5jb20vYS9iLzcwMS5lbmNyeXB0Lm1wND9ldGF2aXJwX251eWlsYT0xJkV4cGlyZXM9OTkmU2lnbmF0dXJlPUFiQy1feCZLZXktUGFpci1JZD1LMw"
+        assertEquals(
+            "https://hwztvideo.dramaboxdb.com/a/b/701.encrypt.mp4?etavirp_nuyila=1&Expires=99&Signature=AbC-_x&Key-Pair-Id=K3",
+            DramaboxCatalog.directVideoUrl(wrapped)
+        )
+    }
+
+    @Test
+    fun `directVideoUrl stays empty for plain cdn urls and broken payloads`() {
+        assertEquals("", DramaboxCatalog.directVideoUrl("https://cdn.example.com/a.mp4"))
+        assertEquals("", DramaboxCatalog.directVideoUrl("https://x.y/api/web/stream?u=%%%bukan-base64"))
+        assertEquals("", DramaboxCatalog.directVideoUrl("https://x.y/api/web/stream?u=aGFsbyBkdW5pYQ")) // bukan URL
+    }
+
     // Ringkasan /categories dari API (name sudah Bahasa Indonesia).
     private val categoriesResponse = JSONObject(
         """

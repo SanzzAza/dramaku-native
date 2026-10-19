@@ -2,6 +2,16 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.17 (2026-10-19)
+
+- DramaBox mulai diputar jauh lebih cepat. Gateway relay `iniapi` yang
+  dibalas endpoint /play ternyata sangat lambat (TTFB terukur ~12 detik,
+  throughput belasan KB/s) — itulah kenapa docs terasa cepat (hanya JSON)
+  tapi video lama bufferingnya. Param `u=` di URL gateway berisi base64 URL
+  CDN dramaboxdb bertanda tangan CloudFront dengan konten byte-per-byte
+  identik (TTFB ~0,1 dtk, ~4 MB/s); aplikasi kini men-decode dan memutar
+  CDN-nya langsung, dengan fallback otomatis ke gateway bila CDN menolak.
+
 ## 4.9.16 (2026-10-19)
 
 - DramaBox hidup kembali 🎉 — migrasi ke proxy v2 (`dramahub.be/dramaboxv2/api/v1`)
