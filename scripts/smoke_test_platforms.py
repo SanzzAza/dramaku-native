@@ -23,7 +23,7 @@ MAIN_BASE = {
     "melolo": f"{HUB}/melolo/api/v1",
     "dramanova": f"{HUB}/dramanova",
     "freereels": f"{HUB}/freereels/api/v1",
-    "dramabox": f"{HUB}/dramaboxbaru/api",
+    "dramabox": f"{HUB}/dramaboxv2/api/v1",
     "netshort": f"{HUB}/netshort/api/v1",
     "reelshort": f"{HUB}/reelshort/api/v1",
     "stardusttv": f"{HUB}/stardusttv/api/v1",
@@ -78,7 +78,7 @@ COVER_KEYS = ("cover", "poster", "book_pic", "bookPic", "coverWap", "cover_url",
               "img", "pic", "icon", "coverImg", "videoCover", "shortPlayCover")
 TITLE_KEYS = ("title", "book_name", "bookName", "name", "drama_name", "dramaName",
               "videoName", "video_name", "seriesName", "shortPlayName", "subject")
-URL_RE = re.compile(r"https?://[^\s\"']+\.(m3u8|mp4)([?#][^\s\"']*)?", re.I)
+URL_RE = re.compile(r"https?://[^\s\"']+(?:\.(?:m3u8|mp4)(?:[?#][^\s\"']*)?|/api/web/stream\?u=[A-Za-z0-9_=-]+)", re.I)
 
 def walk(o):
     if isinstance(o, dict):
@@ -89,9 +89,12 @@ def walk(o):
         for v in o:
             yield from walk(v)
 
-def first_drama(js):
+def first_drama(js, platform=None):
     fallback = (None, None)
     for obj in walk(js):
+        # DramaBox v2: buku prefix 41… mati di upstream — lewati seperti aplikasi.
+        if platform == "dramabox" and str(obj.get("bookId", "")).startswith("41"):
+            continue
         t = next((str(obj[k]).strip() for k in TITLE_KEYS if obj.get(k)), "")
         i = next((str(obj[k]).strip() for k in ID_KEYS if obj.get(k) not in (None, "", 0)), "")
         if not (t and i) or t.startswith("http"):
@@ -186,7 +189,7 @@ HOME = {
     "melolo": "{b}/bookmall?lang=id",
     "dramanova": "{b}/discover/feed?pageNum=1&pageSize=20&languages=in",
     "freereels": "{b}/foryou?page=1&lang=id-ID",
-    "dramabox": "{b}/recommend/book?lang=in",
+    "dramabox": "{b}/home?lang=in&page=1",
     "netshort": "{b}/explore/1?lang=id_ID",
     "reelshort": "{b}/foryou?lang=in",
     "stardusttv": "{b}/homepage?lang=id",
@@ -215,7 +218,7 @@ STREAM = {
     "stardusttv": "{b}/video/{id}/episode/1?lang=id",
     "dramanova": "{b}/unlock/{id}/1?languages=in&subtitles=true",
     "freereels": "{b}/dramas/{id}/play/1?lang=id-ID",
-    "dramabox": "{b}/stream?bookId={id}&episode=1&lang=in",
+    "dramabox": "{b}/play?bookId={id}&episode=1&lang=in",
     "netshort": "{b}/episode/{id}/1?lang=id_ID",
     "melolo": "{b}/multi-video?id={id}&lang=id",
 }
@@ -260,7 +263,7 @@ def test_platform(p):
         home = get_json(HOME[p].format(b=b))
     except Exception as e:
         return p, "HOME-FAIL", str(e)[:80]
-    did, title = first_drama(home)
+    did, title = first_drama(home, p)
     if not did:
         return p, "HOME-EMPTY", "tidak menemukan drama di balasan home"
     eid = urllib.parse.quote(did, safe="")

@@ -2,6 +2,19 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.16 (2026-10-19)
+
+- DramaBox hidup kembali 🎉 — migrasi ke proxy v2 (`dramahub.be/dramaboxv2/api/v1`)
+  setelah proxy lama (`dramaboxbaru`) mati total: home ber-page + rank,
+  detail `book?id=`, stream `play?bookId=&episode=` (videoPathList
+  540/720/1080 — hemat data memilih 540, normal 1080), search tetap jalan.
+- Episode berformat `chapterIndex` 0-based didukung; episode berbayar tetap
+  diputar lewat proxy (tidak dikunci di UI).
+- Buku katalog prefix `41…` yang selalu dijawab "tidak ditemukan" oleh
+  upstream difilter dari home/rank/pencarian agar tidak ada judul zonk.
+- Rak genre DramaBox menyesuaikan: tanpa /categories & /hidden-gems di v2,
+  beranda memakai satu rak "Jelajahi katalog".
+
 ## 4.9.15 (2026-10-19)
 
 - Audit 42 platform via smoke test otomatis (`scripts/smoke_test_platforms.py`)

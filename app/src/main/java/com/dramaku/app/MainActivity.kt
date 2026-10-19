@@ -325,7 +325,7 @@ private val Platforms = listOf(
     PlatformInfo("melolo", "Melolo", "https://dramahub.be/melolo/api/v1", logoUrl = "https://dramahub.be/logos/melolo.png", logoRes = R.drawable.logo_melolo),
     PlatformInfo("dramanova", "Dramanova", "https://dramahub.be/dramanova", logoUrl = "https://dramahub.be/logos/dramanova.png", logoRes = R.drawable.logo_dramanova),
     PlatformInfo("freereels", "FreeReels", "https://dramahub.be/freereels/api/v1", logoUrl = "https://dramahub.be/logos/freereels.png", logoRes = R.drawable.logo_freereels),
-    PlatformInfo("dramabox", "DramaBox", "https://dramahub.be/dramaboxbaru/api", logoUrl = "https://dramahub.be/logos/dramabox.png", logoRes = R.drawable.logo_dramabox),
+    PlatformInfo("dramabox", "DramaBox", "https://dramahub.be/dramaboxv2/api/v1", logoUrl = "https://dramahub.be/logos/dramabox.png", logoRes = R.drawable.logo_dramabox),
     PlatformInfo("netshort", "NetShort", "https://dramahub.be/netshort/api/v1", logoUrl = "https://dramahub.be/logos/netshort.png", logoRes = R.drawable.logo_netshort),
     PlatformInfo("reelshort", "ReelShort", "https://dramahub.be/reelshort/api/v1", logoUrl = "https://dramahub.be/logos/reelshort.png", logoRes = R.drawable.logo_reelshort),
     PlatformInfo("anichin", "Anichin", "https://dramahub.be/anichin", logoUrl = "https://dramahub.be/logos/anichin.png", logoRes = R.drawable.logo_anichin),
@@ -471,14 +471,21 @@ private fun App() {
             // Kalau endpoint itu kosong/gagal, daftar type id lama dipakai.
             selPlatform == "dramabox" -> {
                 val cats = repo.dramaboxCategories()
-                val genres: List<Pair<String, Int>> =
-                    if (cats.isEmpty()) DRAMABOX_FALLBACK_GENRES else cats.map { it.name to it.id }
-                val gems: Pair<String, suspend () -> List<Drama>> =
-                    "Permata tersembunyi" to { repo.browsePath(selPlatform, DramaboxCatalog.HIDDEN_GEMS_PATH) }
-                val rows: List<Pair<String, suspend () -> List<Drama>>> = genres.map { (label, typeId) ->
-                    label to { repo.browsePath(selPlatform, DramaboxCatalog.browsePath(typeId)) }
+                if (cats.isEmpty()) {
+                    // Proxy v2 tidak punya /categories & /hidden-gems, dan /browse
+                    // mengabaikan sebagian besar type id lama — satu rak jelajah
+                    // cukup supaya tidak muncul banyak rak dengan isi kembar.
+                    listOf<Pair<String, suspend () -> List<Drama>>>(
+                        "Jelajahi katalog" to { repo.browsePath(selPlatform, DramaboxCatalog.browsePath(2)) }
+                    )
+                } else {
+                    val gems: Pair<String, suspend () -> List<Drama>> =
+                        "Permata tersembunyi" to { repo.browsePath(selPlatform, DramaboxCatalog.HIDDEN_GEMS_PATH) }
+                    val rows: List<Pair<String, suspend () -> List<Drama>>> = cats.map { c ->
+                        c.name to suspend { repo.browsePath(selPlatform, DramaboxCatalog.browsePath(c.id)) }
+                    }
+                    listOf(gems) + rows
                 }
-                listOf(gems) + rows
             }
             // NetShort (dramahub.be): rak dirakit dari dua endpoint katalog —
             // /tabs untuk tab konten (Anime, Pelukan Jakarta, …) dan /categories
@@ -4343,19 +4350,25 @@ private class DramakuRepository {
             return Detail(parsed.copy(episodes = count), eps)
         }
         if (p == "dramabox") {
-            // Struktur DramaBox: data.bookInfo { bookName, cover, introduction, chapterCount }
-            // + data.chapterList [{ id, indexStr, utime, duration }].
+            // Proxy v2: data { bookName, coverWap, introduction, tags, chapterCount,
+            // episodeList [{ chapterIndex (0-based), chapterId, isPay }] }.
+            // Bentuk lama (bookInfo + chapterList) tetap didukung sebagai cadangan.
             val data = json.optJSONObject("data") ?: error("Detail tidak ditemukan")
             val info = data.optJSONObject("bookInfo") ?: data
-            val epsArr = data.optJSONArray("chapterList") ?: JSONArray()
+            val epsArr = data.optJSONArray("chapterList") ?: data.optJSONArray("episodeList") ?: JSONArray()
             val title = info.stringAny("bookName", "name", "title").ifBlank { input.title }
             val desc = cleanText(info.stringAny("introduction", "description", "synopsis")).ifBlank { input.description }
             val poster = fixImg(info.stringAny("cover", "coverWap", "image", "poster").ifBlank { input.poster })
             val eps = epsArr.objects().mapIndexed { i, o ->
+                // chapterIndex v2 mulai dari 0 dan sah bernilai 0 — jangan lewat
+                // intAny (nilai 0 dianggap kosong di sana).
+                val number = if (o.has("chapterIndex")) o.optInt("chapterIndex", i) + 1
+                else o.intAny("indexStr", "index", "episode", i + 1)
+                // isPay tidak dijadikan kunci: /play tetap melayani episode berbayar.
                 EpisodeInfo(
-                    o.intAny("indexStr", "index", "episode", i + 1),
+                    number,
                     o.stringAny("stream_url", "streaming", "url"),
-                    o.stringAny("episode_label", "title", "label")
+                    o.stringAny("episode_label", "title", "label", "chapterName")
                 )
             }
             val total = max(info.intAny("chapterCount", "chapter_count", input.episodes), eps.size)
@@ -4925,16 +4938,21 @@ private class DramakuRepository {
             return StreamResult(url, pickSubtitleUrl(json))
         }
         if (d.drama.platform == "dramabox") {
-            // Proxy baru (dramahub.be) membalas JSON: { code, video, duration, subtitles }.
-            // `video` itu mp4 ber-token yang redirect 302 ke CDN dramaboxdb, jadi yang
-            // diputar adalah URL di dalam balasan — bukan URL endpoint-nya. Kalau
-            // balasannya bukan JSON (proxy gaya lama yang mengirim playlist), URL
-            // endpoint tetap dipakai supaya tidak ada yang hilang.
-            val url = "$base/stream?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in"
-            val json = try { getJson(url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
-            val video = json?.let { DramaboxCatalog.streamUrl(it) }.orEmpty()
-            if (video.isNotBlank()) return StreamResult(video, pickSubtitleUrl(json))
-            return StreamResult(url)
+            // Proxy v2: /play?bookId&episode membalas data.videoPathList
+            // [{ quality: 1080|720|540, urlvideo }] lewat gerbang stream iniapi
+            // (Content-Type video/mp4, URL tanpa ekstensi — ExoPlayer sniff).
+            val json = getJson("$base/play?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in")
+            val data = json.optJSONObject("data") ?: json
+            val paths = (data.optJSONArray("videoPathList") ?: JSONArray()).objects()
+                .filter { it.stringAny("urlvideo", "url", "videoPath").startsWith("http") }
+                .sortedBy { it.optInt("quality", 0) }
+            val pick = if (ds) paths.firstOrNull() else paths.lastOrNull()
+            val video = pick?.stringAny("urlvideo", "url", "videoPath").orEmpty()
+            if (video.isNotBlank()) return StreamResult(video, pickSubtitleUrl(data, json))
+            // Cadangan bentuk lama { video: "..." } bila proxy berganti lagi.
+            val legacy = DramaboxCatalog.streamUrl(json)
+            if (legacy.isNotBlank()) return StreamResult(legacy, pickSubtitleUrl(json))
+            error("Video belum tersedia")
         }
         if (d.drama.platform == "netshort") {
             // /episode/{id}/{ep} membalas { episodeNo, episodeId, videos:[{quality,url}], subtitles }.
@@ -5309,9 +5327,10 @@ private fun pagesFor(p: String): IntRange = 1..1
 private fun homeUrls(p: String, page: Int): List<String> {
     val base = apiBase(p)
     ExtraPlatforms.homeUrls(p, page, base)?.let { return it }
-    // Kode Bahasa Indonesia di proxy DramaBox adalah "in"; "lang=id" malah 500 di upstream-nya.
+    // Proxy DramaBox v2 (dramahub.be/dramaboxv2/api/v1): /home ber-page, /rank
+    // untuk peringkat. Kode Bahasa Indonesia tetap "in".
     if (p == "dramabox") {
-        return listOf("$base/recommend/book?lang=in", "$base/rank?lang=in", "$base/home?lang=in")
+        return listOf("$base/home?lang=in&page=$page", "$base/rank?lang=in", "$base/home?lang=in&page=${page + 1}")
     }
     // NetShort: daftar NetShort punya jalur sendiri (loadNetshortHome), jadi
     // tiga URL ini jarang dipakai — hanya saat pemanggil generik terlanjur minta.
@@ -5364,7 +5383,7 @@ private fun detailUrl(d: Drama): String {
     ExtraPlatforms.detailUrl(d.platform, d.id, apiBase(d.platform))?.let { return it }
     return when (d.platform) {
     "stardusttv" -> "${apiBase(d.platform)}/video/${enc(d.id)}?lang=id"
-    "dramabox" -> "${apiBase(d.platform)}/drama/${enc(d.id)}?lang=in"
+    "dramabox" -> "${apiBase(d.platform)}/book?id=${enc(d.id)}&lang=in"
     "netshort" -> "${apiBase(d.platform)}/${NetshortCatalog.detailPath(d.id)}"
     "reelshort" -> "${apiBase(d.platform)}/${ReelshortCatalog.detailPath(d.id)}"
     "anichin" -> "${apiBase(d.platform)}/${AnichinCatalog.detailPath(d.id)}"
@@ -5584,7 +5603,12 @@ private fun flat(any: Any?, fp: String): List<Drama> {
         }
     }
     extractBooks(any)
-    return out.distinctBy { it.platform + "|" + it.id }
+    return out
+        // Proxy DramaBox v2 mencampur buku katalog cppartner (prefix 42…, bisa
+        // diputar) dengan buku 41… yang selalu dijawab "书籍找不到了" oleh upstream.
+        // Buang yang mati supaya pengguna tidak membuka judul tanpa video.
+        .filterNot { it.platform == "dramabox" && it.id.startsWith("41") }
+        .distinctBy { it.platform + "|" + it.id }
 }
 
 private fun normalize(o: JSONObject, fp: String): Drama {

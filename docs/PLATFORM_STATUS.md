@@ -7,19 +7,21 @@ server di luar Indonesia, jadi CDN yang geo-lock ke ID bisa salah terdeteksi 403
 
 ## ✅ Terverifikasi sehat (stream 200/206)
 
-melolo¹, netshort¹, freereels, stardusttv, cashdrama, dramabite, flextv,
-happyshort², minishort, microdrama¹, moboreels², raptdrama, reelbuzz,
+melolo¹, netshort¹, **dramabox³**, freereels, stardusttv, cashdrama, dramabite,
+flextv, happyshort², minishort, microdrama¹, moboreels², raptdrama, reelbuzz,
 shorten², shortmax, shotshort, starshort, vibeshort, wetv
 
 ¹ awalnya salah vonis oleh script (ekstraksi id/URL), diverifikasi manual OK.
 ² lolos di salah satu run — proxy-nya flaky (lihat bawah).
+³ dipulihkan 2026-10-19 dengan migrasi ke proxy v2 (`dramaboxv2/api/v1`):
+  home/rank/book/play/search terverifikasi, probe video 206. Buku prefix `41…`
+  mati di upstream ("书籍找不到了") dan difilter dari daftar; hanya `42…` tampil.
 
 ## 🔴 Mati di sisi server (konsisten di semua run — bukan bug aplikasi)
 
 | Platform | Gejala |
 |---|---|
 | dramanova | Semua endpoint 404 (`discover/feed`, `home/modules`, `drama/list`) |
-| dramabox | Semua endpoint `dramaboxbaru/api/*` 404 |
 | sodareels | Home `api/v1/dramas` 404 |
 | sereal | `api/watch/{id}/{ep}` selalu HTTP 500 |
 | shortsky | Episode dijawab `"Serial tidak ada"` (cuowuma 401) dari upstream |
