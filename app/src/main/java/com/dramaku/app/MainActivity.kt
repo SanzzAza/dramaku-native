@@ -109,6 +109,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
@@ -278,6 +279,23 @@ private data class EpisodeInfo(val number: Int, val streaming: String = "", val 
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
 private data class StreamResult(val url: String, val subtitle: String = "", val subtitleMime: String = "")
+private const val HUB_BEARER = "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"
+private const val HUB_REFERER = "https://www.cdreader.com/"
+
+/** Bearer dramahub hanya untuk host dramahub.be. CDN presigned (S3/GCS/signature)
+ * bisa menolak request yang membawa header Authorization asing, dan token kita
+ * tidak perlu bocor ke pihak ketiga. Referer cdreader hanya untuk host yang
+ * memang memeriksanya (dramahub + CDN cdreader milik DramaBox). */
+private fun scopedVideoHeaders(host: String?): Map<String, String> {
+    val h = host.orEmpty().lowercase()
+    val hub = h == "dramahub.be" || h.endsWith(".dramahub.be")
+    val cdreader = h == "cdreader.com" || h.endsWith(".cdreader.com")
+    return buildMap {
+        if (hub) put("Authorization", HUB_BEARER)
+        if (hub || cdreader) put("Referer", HUB_REFERER)
+    }
+}
+
 private const val STREAM_CACHE_TTL_MS = 45_000L
 private const val DETAIL_CACHE_TTL_MS = 5 * 60_000L
 private const val SIGNED_URL_SAFETY_MS = 3 * 60_000L
@@ -3125,14 +3143,15 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
         .setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15_000).setReadTimeoutMs(30_000)
-    // Proxy DramaBox (dramahub.be/dramaboxbaru) dan Melolo (dramahub.be)
-    // wajib Bearer; segmen mp4 di CDN dramaboxdb bebas token, jadi aman kalau
-    // header ikut terkirim ke sana juga (sudah dicek: rentang byte 206 tetap OK).
-    val headers = requestHeaders.toMutableMap()
-    if (!headers.containsKey("Authorization")) headers["Authorization"] = "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"
-    if (!headers.containsKey("Referer")) headers["Referer"] = "https://www.cdreader.com/"
-    http.setDefaultRequestProperties(headers)
-    val cache = CacheDataSource.Factory().setCache(VideoCache.get(ctx)).setUpstreamDataSourceFactory(http).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    // Header sensitif dipasang per-request sesuai host tujuan, bukan default
+    // untuk semua CDN: Bearer dramahub bocor ke CDN pihak ketiga bisa memicu
+    // 400/403 pada URL presigned (S3/GCS menolak dua mekanisme auth sekaligus).
+    if (requestHeaders.isNotEmpty()) http.setDefaultRequestProperties(requestHeaders)
+    val upstream = ResolvingDataSource.Factory(http) { spec ->
+        val scoped = scopedVideoHeaders(spec.uri.host)
+        if (scoped.isEmpty()) spec else spec.withAdditionalHeaders(scoped)
+    }
+    val cache = CacheDataSource.Factory().setCache(VideoCache.get(ctx)).setUpstreamDataSourceFactory(upstream).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     return ExoPlayer.Builder(ctx)
         .setAudioAttributes(AudioAttributes.DEFAULT, true)
         .setHandleAudioBecomingNoisy(true)
@@ -3888,15 +3907,15 @@ private class DramakuRepository {
         val clean = cleanUrl(url)
         if (!clean.startsWith("http")) return@withContext false
         runCatching {
-            val request = Request.Builder()
+            // Probe memakai header yang sama dengan pemutar: salah header di sini
+            // membuat link sehat divonis kedaluwarsa (false negative).
+            val builder = Request.Builder()
                 .url(clean)
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
                 .header("Accept", "*/*")
                 .header("Range", "bytes=0-1")
-                .header("Referer", "https://www.cdreader.com/")
-                .header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
-                .build()
-            client.newCall(request).execute().use { response -> response.isSuccessful }
+            scopedVideoHeaders(runCatching { java.net.URI(clean).host }.getOrNull()).forEach { (k, v) -> builder.header(k, v) }
+            client.newCall(builder.build()).execute().use { response -> response.isSuccessful }
         }.getOrDefault(false)
     }
 
@@ -5223,7 +5242,7 @@ private class DramakuRepository {
                     reqBuilder.post(jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType()))
                 }
                 if (url.contains("dramahub.be")) {
-                    reqBuilder.header("Authorization", "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e")
+                    reqBuilder.header("Authorization", HUB_BEARER)
                 }
                 return@withContext client.newCall(reqBuilder.build()).execute().use { r ->
                     val body = r.body?.string().orEmpty().trim()
@@ -5234,7 +5253,12 @@ private class DramakuRepository {
                     }
                     if (!r.isSuccessful) {
                         val msg = json?.stringAny("error_msg", "error", "message", "msg").orEmpty()
-                        error(msg.ifBlank { "HTTP ${r.code}" })
+                        val fallback = when {
+                            r.code in 500..599 -> "Server sumber sedang gangguan (HTTP ${r.code}). Coba lagi nanti atau pindah sumber."
+                            r.code == 404 -> "Endpoint sumber tidak ditemukan (404). Sumber ini mungkin sedang dirombak penyedianya."
+                            else -> "HTTP ${r.code}"
+                        }
+                        error(msg.ifBlank { fallback })
                     }
                     val parsed = json ?: JSONObject(body)
                     val code = parsed.optInt("code", 200)

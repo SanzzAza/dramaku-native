@@ -2,6 +2,20 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.15 (2026-10-19)
+
+- Audit 42 platform via smoke test otomatis (`scripts/smoke_test_platforms.py`)
+  — hasil lengkap di `docs/PLATFORM_STATUS.md`. Terkonfirmasi mati di sisi
+  server (bukan bug aplikasi): dramanova, dramabox, sodareels, sereal,
+  shortsky, goodshort, flickreels; CDN bonustv & dramarush menolak akses (403).
+- Header video kini di-scope per host: Bearer dramahub & Referer cdreader
+  hanya dikirim ke dramahub.be / *.cdreader.com, tidak lagi ke semua CDN.
+  Mencegah 400/403 di URL presigned (S3/GCS) dan menghentikan kebocoran token
+  ke pihak ketiga. Probe kedaluwarsa memakai header yang sama dengan pemutar
+  sehingga link sehat tidak salah divonis expired.
+- Pesan error jaringan 5xx/404 kini menyebut gangguan server sumber secara
+  eksplisit, supaya jelas bukan kerusakan aplikasi.
+
 ## 4.9.14 (2026-10-19)
 
 - Pencarian: riwayat kini hanya tercatat saat hasil benar-benar dibuka —
