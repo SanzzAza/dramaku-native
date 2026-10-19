@@ -20,6 +20,13 @@ class DramaboxCatalogTest {
     )
 
     @Test
+    fun `playPath converts displayed episode to zero based upstream index`() {
+        assertEquals("play?bookId=42000010883&index=0&lang=in", DramaboxCatalog.playPath("42000010883", 1))
+        assertEquals("play?bookId=42000010883&index=1&lang=in", DramaboxCatalog.playPath("42000010883", 2))
+        assertEquals("play?bookId=book+id&index=0&lang=in", DramaboxCatalog.playPath("book id", 0))
+    }
+
+    @Test
     fun `streamUrl takes video field from proxy json`() {
         assertTrue(DramaboxCatalog.streamUrl(streamResponse).startsWith("https://dramabox.backengine.web.id/api/stream?"))
         assertTrue(DramaboxCatalog.streamUrl(streamResponse).contains("seg=video.mp4"))

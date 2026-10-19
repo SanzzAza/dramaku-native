@@ -4940,10 +4940,12 @@ private class DramakuRepository {
             return StreamResult(url, pickSubtitleUrl(json))
         }
         if (d.drama.platform == "dramabox") {
-            // Proxy v2: /play?bookId&episode membalas data.videoPathList
-            // [{ quality: 1080|720|540, urlvideo }] lewat gerbang stream iniapi
-            // (Content-Type video/mp4, URL tanpa ekstensi — ExoPlayer sniff).
-            val json = getJson("$base/play?bookId=${enc(id)}&episode=${ep.coerceAtLeast(1)}&lang=in")
+            // Proxy v2: /play memilih chapter lewat `index` berbasis nol.
+            // `episode=` tampak valid tetapi diabaikan upstream sehingga selalu
+            // mengembalikan EP 1; konversi nomor UI ke chapterIndex dilakukan
+            // oleh helper dan memastikan tiap swipe meminta chapter yang benar.
+            // Balasan data.videoPathList: [{ quality, urlvideo }] via gateway.
+            val json = getJson("$base/${DramaboxCatalog.playPath(id, ep)}")
             val data = json.optJSONObject("data") ?: json
             val paths = (data.optJSONArray("videoPathList") ?: JSONArray()).objects()
                 .filter { it.stringAny("urlvideo", "url", "videoPath").startsWith("http") }

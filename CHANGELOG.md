@@ -2,6 +2,13 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.19 (2026-10-19)
+
+- Fix pergantian episode DramaBox: resolver sebelumnya mengirim parameter
+  `episode`, yang diabaikan proxy v2 sehingga stream selalu kembali ke EP 1.
+  Request kini memakai parameter `index` 0-based sesuai chapterIndex API
+  (episode 1 → index 0, episode 2 → index 1), dengan unit test regresi.
+
 ## 4.9.18 (2026-10-19)
 
 - Fix DramaBox "Sumber video gagal dibuka": ternyata file CDN dramaboxdb

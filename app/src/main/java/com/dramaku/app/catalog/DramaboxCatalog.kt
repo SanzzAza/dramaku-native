@@ -2,6 +2,7 @@ package com.dramaku.app.catalog
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URLEncoder
 
 /**
  * Satu genre DramaBox dari endpoint `/categories`.
@@ -21,6 +22,17 @@ object DramaboxCatalog {
 
     /** Field yang boleh membawa URL video di balasan `/stream`. */
     private val STREAM_URL_KEYS = arrayOf("video", "playUrl", "play_url", "url", "resourceLink", "source")
+
+    /**
+     * Jalur pemutar DramaBox v2. Endpoint `/play` memilih chapter lewat `index`
+     * yang berbasis nol; parameter `episode` lama diabaikan oleh upstream dan
+     * selalu membalas episode pertama.
+     */
+    fun playPath(bookId: String, episode: Int): String {
+        val encodedId = URLEncoder.encode(bookId, "UTF-8")
+        val chapterIndex = (episode - 1).coerceAtLeast(0)
+        return "play?bookId=$encodedId&index=$chapterIndex&lang=in"
+    }
 
     /**
      * Ambil URL video dari balasan `/stream`.
