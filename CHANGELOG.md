@@ -2,6 +2,15 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.13 (2026-10-19)
+
+- Toast “Dilanjutkan dari 04:32” saat episode diputar kembali dari posisi
+  tersimpan (>3 detik), termasuk setelah muat ulang link.
+- Getaran halus saat double tap tengah menambahkan Suka.
+- Petunjuk sekali-tayang “Geser ke atas untuk episode berikutnya” dengan
+  chevron memantul; hilang setelah swipe pertama atau 5 detik, tersimpan
+  agar tidak muncul lagi.
+
 ## 4.9.12 (2026-10-19)
 
 - Player makin mirip Melolo: judul `Ep.n · Judul ›` satu baris, cuplikan

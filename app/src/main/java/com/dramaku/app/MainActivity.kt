@@ -3324,6 +3324,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var liked by remember { mutableStateOf(store.isLiked(detail.drama.id, detail.drama.platform)) }
     var showLike by remember { mutableStateOf(false) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var showSwipeHint by remember { mutableStateOf(total > 1 && !store.playerHintShown()) }
     var curMs by remember { mutableLongStateOf(0L) }
     var durMs by remember { mutableLongStateOf(0L) }
     var bufferedMs by remember { mutableLongStateOf(0L) }
@@ -3473,6 +3474,10 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     }
     LaunchedEffect(notice) { if (notice != null) { delay(1_400); notice = null } }
     LaunchedEffect(showLike) { if (showLike) { delay(900); showLike = false } }
+    LaunchedEffect(showSwipeHint) { if (showSwipeHint) { delay(5_000); store.setPlayerHintShown(); showSwipeHint = false } }
+    LaunchedEffect(pager.settledPage) {
+        if (showSwipeHint && pager.settledPage != (startEp - 1).coerceIn(0, total - 1)) { store.setPlayerHintShown(); showSwipeHint = false }
+    }
 
     LaunchedEffect(pager.settledPage, retryKey) {
         val ep = pager.settledPage + 1
@@ -3506,6 +3511,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                 player.setPlaybackSpeed(playbackSpeed)
                 player.prepare()
                 player.playWhenReady = wantsToPlay && foreground && panel == null
+                if (start > 3_000L) notice = "Dilanjutkan dari ${clockLabel(start)}"
             }
             loading = false
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -3578,7 +3584,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                                 when {
                                     offset.x < width * 0.35f -> seekBy(-10_000L)
                                     offset.x > width * 0.65f -> seekBy(10_000L)
-                                    else -> likeVideo(toggle = false)
+                                    else -> { haptics.performHapticFeedback(HapticFeedbackType.LongPress); likeVideo(toggle = false) }
                                 }
                             },
                             onHold = { held ->
@@ -3588,6 +3594,26 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                         ))
                     }
                 } else AsyncImage(detail.drama.poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+        }
+        // One-time onboarding: a bouncing chevron teaching the vertical swipe, dismissed on first swipe or after 5s.
+        AnimatedVisibility(
+            showSwipeHint && !immersive && panel == null && error == null,
+            Modifier.align(Alignment.Center),
+            enter = fadeIn(), exit = fadeOut()
+        ) {
+            val hint = rememberInfiniteTransition(label = "swipeHint")
+            val dy by hint.animateFloat(0f, -14f, infiniteRepeatable(tween(650, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "swipeHintDy")
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Rounded.KeyboardArrowUp, null, tint = Color.White, modifier = Modifier.size(36.dp).offset(y = dy.dp))
+                Spacer(Modifier.height(2.dp))
+                Surface(color = Color.Black.copy(alpha = 0.60f), shape = RoundedCornerShape(30.dp), contentColor = Color.White) {
+                    Text(
+                        "Geser ke atas untuk episode berikutnya",
+                        Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        fontSize = 12.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
         EpisodePlayerChrome(
@@ -3726,6 +3752,11 @@ private fun formatMs(ms: Long): String {
 
 private fun shareDrama(ctx: Context, d: Drama) {
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, "${d.title}\n${platformLabel(d.platform)} · Dramaku") }, "Bagikan"))
+}
+
+private fun clockLabel(ms: Long): String {
+    val seconds = (ms / 1_000).coerceAtLeast(0)
+    return if (seconds >= 3_600) "%d:%02d:%02d".format(seconds / 3_600, seconds / 60 % 60, seconds % 60) else "%d:%02d".format(seconds / 60, seconds % 60)
 }
 
 private fun Context.isNetworkAvailable(): Boolean {
@@ -5573,6 +5604,8 @@ private class LocalStore(ctx: Context) {
     fun setAutoNext(v: Boolean) = p.edit().putBoolean("autoNext", v).apply()
     fun fitContain() = p.getBoolean("fitContain", true)
     fun setFitContain(v: Boolean) = p.edit().putBoolean("fitContain", v).apply()
+    fun playerHintShown() = p.getBoolean("playerHintShown", false)
+    fun setPlayerHintShown() = p.edit().putBoolean("playerHintShown", true).apply()
     fun subtitleOn() = p.getBoolean("subtitleOn", true)
     fun setSubtitleOn(v: Boolean) = p.edit().putBoolean("subtitleOn", v).apply()
     fun playbackSpeed() = p.getFloat("playbackSpeed", 1f).takeIf { it in listOf(0.75f, 1f, 1.25f, 1.5f, 2f) } ?: 1f

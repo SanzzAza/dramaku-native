@@ -1,4 +1,4 @@
-# Player streaming 4.9.12
+# Player streaming 4.9.13
 
 ## Acuan dan batas kesesuaian
 
@@ -26,6 +26,9 @@ visual akhir masih perlu dilakukan dengan APK referensi di perangkat Android.
   hati kecil menyebar ke atas, ±850 ms).
 - Ketuk video untuk jeda/putar. Ikon play tengah hanya terlihat saat jeda.
 - Swipe vertikal berganti episode setelah halaman berhenti (`settledPage`).
+- Pemutaran pertama menampilkan petunjuk “Geser ke atas untuk episode
+  berikutnya” (sekali seumur instalasi); resume dari posisi tersimpan
+  menampilkan toast “Dilanjutkan dari m:ss”.
 - Double tap sisi kiri/kanan mundur/maju 10 detik; tengah menambahkan Suka.
 - Tahan untuk 2x. Lepas, pembatalan gestur, atau background memulihkan speed.
 - Suka dan Koleksi memakai penyimpanan lokal terpisah, tanpa angka sosial palsu.
