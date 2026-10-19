@@ -14,9 +14,12 @@ shorten², shortmax, shotshort, starshort, vibeshort, wetv
 ¹ awalnya salah vonis oleh script (ekstraksi id/URL), diverifikasi manual OK.
 ² lolos di salah satu run — proxy-nya flaky (lihat bawah).
 ³ dipulihkan 2026-10-19 dengan migrasi ke proxy v2 (`dramaboxv2/api/v1`):
-  home/rank/book/play/search terverifikasi, probe video 206; video diputar
-  langsung dari CDN dramaboxdb (gateway iniapi terlalu lambat). Buku prefix `41…`
-  mati di upstream ("书籍找不到了") dan difilter dari daftar; hanya `42…` tampil.
+  home/rank/book/play/search terverifikasi. PENTING: file CDN dramaboxdb
+  (`.encrypt.mp4`) terenkripsi Aliyun private — durasi terbaca tapi frame tidak
+  bisa didecode; playback WAJIB lewat gateway `dramabox.iniapi.web.id` yang
+  men-decrypt on-the-fly (lebih lambat; kualitas dibatasi 720p). Buku prefix
+  `41…` mati di upstream ("书籍找不到了") dan difilter dari daftar; hanya `42…`
+  tampil.
 
 ## 🔴 Mati di sisi server (konsisten di semua run — bukan bug aplikasi)
 

@@ -2,6 +2,18 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.18 (2026-10-19)
+
+- Fix DramaBox "Sumber video gagal dibuka": ternyata file CDN dramaboxdb
+  (`.encrypt.mp4`) memakai enkripsi Aliyun private — header kontainer polos
+  (durasi tampil, mis. 3:07) tapi bitstream h264 tersandi sehingga decoder
+  selalu gagal. Diverifikasi dengan decoder ffmpeg: CDN langsung 0 frame,
+  output gateway 30 frame bersih (gateway men-decrypt on-the-fly, area mdat
+  berbeda). Bypass CDN dari 4.9.17 dibatalkan; playback kembali lewat gateway.
+- Kualitas DramaBox dibatasi 720p (hemat data: 540p) supaya relay gateway
+  tidak keteteran, plus timeout HTTP pemutar dilonggarkan (connect 20 dtk,
+  read 45 dtk) untuk sumber yang byte pertamanya lambat.
+
 ## 4.9.17 (2026-10-19)
 
 - DramaBox mulai diputar jauh lebih cepat. Gateway relay `iniapi` yang

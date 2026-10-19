@@ -94,12 +94,16 @@ object DramaboxCatalog {
     }
 
     /**
-     * URL video dari proxy v2 dibungkus gateway relay
-     * (`https://dramabox.iniapi.web.id/api/web/stream?u=<base64>`), dan relay itu
-     * lambat — terukur TTFB ~12 dtk dengan throughput belasan KB/s. Param `u`
-     * berisi URL CDN dramaboxdb bertanda tangan CloudFront yang kontennya
-     * byte-per-byte identik dan jauh lebih cepat, jadi lebih baik diputar
-     * langsung. Kembalikan string kosong bila bukan format gateway tersebut.
+     * ⚠️ JANGAN pakai hasil fungsi ini untuk playback.
+     *
+     * URL video proxy v2 dibungkus gateway (`…/api/web/stream?u=<base64>`).
+     * Param `u` memang bisa di-decode menjadi URL CDN dramaboxdb bertanda
+     * tangan CloudFront — tapi file `.encrypt.mp4` di CDN memakai enkripsi
+     * Aliyun private (`etavirp_nuyila`): moov terbaca (durasi muncul), bitstream
+     * h264 tersandi, decoder selalu gagal ("Sumber video gagal dibuka").
+     * Gateway-lah yang men-decrypt on-the-fly (area mdat-nya berbeda dan
+     * terbukti ter-decode). Fungsi ini dipertahankan hanya untuk diagnostik
+     * dan sebagai dokumentasi temuan; playback harus tetap lewat gateway.
      */
     fun directVideoUrl(wrapped: String): String {
         val marker = "stream?u="

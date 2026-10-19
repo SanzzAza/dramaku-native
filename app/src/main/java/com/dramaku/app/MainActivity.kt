@@ -3149,7 +3149,9 @@ private object VideoCache {
 private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = emptyMap()): ExoPlayer {
     val http = DefaultHttpDataSource.Factory()
         .setUserAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
-        .setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(15_000).setReadTimeoutMs(30_000)
+        // Relay seperti gateway DramaBox butuh waktu lebih lama untuk byte pertama
+        // (decrypt on-the-fly); timeout dilonggarkan agar tidak keburu divonis error.
+        .setAllowCrossProtocolRedirects(true).setConnectTimeoutMs(20_000).setReadTimeoutMs(45_000)
     // Header sensitif dipasang per-request sesuai host tujuan, bukan default
     // untuk semua CDN: Bearer dramahub bocor ke CDN pihak ketiga bisa memicu
     // 400/403 pada URL presigned (S3/GCS menolak dua mekanisme auth sekaligus).
@@ -4946,18 +4948,17 @@ private class DramakuRepository {
             val paths = (data.optJSONArray("videoPathList") ?: JSONArray()).objects()
                 .filter { it.stringAny("urlvideo", "url", "videoPath").startsWith("http") }
                 .sortedBy { it.optInt("quality", 0) }
-            val pick = if (ds) paths.firstOrNull() else paths.lastOrNull()
+            // PENTING — jangan ulangi "optimasi" memutar URL CDN hasil decode u=:
+            // file dramaboxdb berakhiran .encrypt.mp4 memakai enkripsi Aliyun
+            // private (`etavirp_nuyila`). Header moov-nya polos (durasi terbaca),
+            // tapi bitstream h264-nya tersandi — ExoPlayer selalu "Source error".
+            // Gateway iniapi men-decrypt on-the-fly (area mdat-nya terbukti beda
+            // dan ter-decode bersih), jadi playback WAJIB lewat gateway meski
+            // lebih lambat. Kualitas dibatasi 720p agar relay-nya tidak keteteran.
+            val pick = if (ds) paths.firstOrNull()
+            else paths.lastOrNull { it.optInt("quality", 0) in 1..720 } ?: paths.lastOrNull()
             val video = pick?.stringAny("urlvideo", "url", "videoPath").orEmpty()
-            if (video.isNotBlank()) {
-                // Gateway iniapi cuma relay lambat (TTFB ~12 dtk, belasan KB/s).
-                // Param u= berisi URL CDN asli yang identik byte-per-byte dan
-                // jauh lebih cepat — pakai itu bila masih hidup; kalau CDN
-                // menolak (mis. geo), jatuh kembali ke gateway.
-                val direct = DramaboxCatalog.directVideoUrl(video)
-                val sub = pickSubtitleUrl(data, json)
-                if (direct.isNotBlank() && streamIsReachable(direct)) return StreamResult(direct, sub)
-                return StreamResult(video, sub)
-            }
+            if (video.isNotBlank()) return StreamResult(video, pickSubtitleUrl(data, json))
             // Cadangan bentuk lama { video: "..." } bila proxy berganti lagi.
             val legacy = DramaboxCatalog.streamUrl(json)
             if (legacy.isNotBlank()) return StreamResult(legacy, pickSubtitleUrl(json))
