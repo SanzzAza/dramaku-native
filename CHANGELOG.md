@@ -2,6 +2,17 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.14 (2026-10-19)
+
+- Pencarian: riwayat kini hanya tercatat saat hasil benar-benar dibuka —
+  tidak lagi dipenuhi potongan ketikan dari debounce. Daftar “Pencarian
+  terakhir” tampil hingga 8 entri dengan tombol “Hapus semua”.
+- Notifikasi pengingat “Lanjutkan nonton?”: opsi baru di Profil → Preferensi.
+  Sehari setelah sesi nonton terakhir, bila episode belum selesai, muncul
+  notifikasi berisi judul, nomor episode, dan persentase progres. Memakai
+  WorkManager; izin POST_NOTIFICATIONS diminta saat opsi diaktifkan (Android
+  13+), dan episode yang sudah tamat tidak diingatkan.
+
 ## 4.9.13 (2026-10-19)
 
 - Toast “Dilanjutkan dari 04:32” saat episode diputar kembali dari posisi

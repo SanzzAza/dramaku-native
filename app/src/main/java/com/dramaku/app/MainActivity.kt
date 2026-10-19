@@ -8,6 +8,7 @@ import android.graphics.Color as AndroidColor
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
@@ -77,6 +78,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.input.pointer.pointerInput
 import coil.compose.AsyncImage
 import coil.Coil
+import com.dramaku.app.reminder.ResumeReminder
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
@@ -2185,10 +2187,10 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
         if (query.length < 2) { state = Load.Idle; return@LaunchedEffect }
         delay(260)
         state = Load.Loading
-        state = runCatching {
-            store.saveRecent(query)
-            repo.searchPlatform(query, searchPlatformId)
-        }.fold({ Load.Ok(it) }, { Load.Err(it.message ?: "Gagal") })
+        // Riwayat pencarian hanya dicatat saat pengguna membuka hasil,
+        // bukan setiap potongan ketikan yang lolos debounce.
+        state = runCatching { repo.searchPlatform(query, searchPlatformId) }
+            .fold({ Load.Ok(it) }, { Load.Err(it.message ?: "Gagal") })
         bump()
     }
 
@@ -2283,7 +2285,9 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     modifier = Modifier.fillMaxSize()
                                 ) {
-                                    items(all, key = { it.platform + it.id }) { d -> SearchDramaCard(d, onDrama) }
+                                    items(all, key = { it.platform + it.id }) { d ->
+                                        SearchDramaCard(d, { picked -> store.saveRecent(q.trim()); bump(); onDrama(picked) })
+                                    }
                                 }
                             }
                         }
@@ -2296,9 +2300,16 @@ private fun SearchScreen(repo: DramakuRepository, store: LocalStore, currentPlat
                         .take(6)
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                         if (recent.isNotEmpty()) {
-                            SearchSectionTitle("Pencarian terakhir", "Ketuk untuk mencari lagi.")
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.weight(1f)) { SearchSectionTitle("Pencarian terakhir", "Ketuk untuk mencari lagi.") }
+                                Text(
+                                    "Hapus semua",
+                                    Modifier.clip(RoundedCornerShape(8.dp)).clickable { store.clearRecentSearches(); bump() }.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    color = DS.Muted, fontSize = 11.5.sp, fontFamily = Type.Sans, fontWeight = FontWeight.SemiBold
+                                )
+                            }
                             Spacer(Modifier.height(8.dp))
-                            recent.take(6).forEach { keyword ->
+                            recent.take(8).forEach { keyword ->
                                 Row(
                                     Modifier.fillMaxWidth().clickable { q = keyword }.padding(vertical = 11.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -2532,6 +2543,13 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
     var autoNext by remember(dataTick) { mutableStateOf(store.autoNext()) }
     var fitContain by remember(dataTick) { mutableStateOf(store.fitContain()) }
     var subtitleOn by remember(dataTick) { mutableStateOf(store.subtitleOn()) }
+    var reminderOn by remember(dataTick) { mutableStateOf(store.resumeReminder()) }
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (!granted) {
+            reminderOn = false; store.setResumeReminder(false)
+            Toast.makeText(ctx, "Izin notifikasi ditolak. Pengingat dimatikan.", Toast.LENGTH_SHORT).show()
+        }
+    }
     var dialog by remember { mutableStateOf<String?>(null) }
     val hCount = remember(dataTick) { store.history(dataTick).size }
     val fCount = remember(dataTick) { store.favs().size }
@@ -2578,6 +2596,14 @@ private fun ProfileScreen(store: LocalStore, dataTick: Int, bump: () -> Unit) {
             SettingsSwitch("Rasio asli", "Tampilkan video tanpa crop.", fitContain) { fitContain = it; store.setFitContain(it); bump() }
             GroupDivider()
             SettingsSwitch("Subtitle", "Tampilkan teks kalau sumbernya menyediakan.", subtitleOn) { subtitleOn = it; store.setSubtitleOn(it); bump() }
+            GroupDivider()
+            SettingsSwitch("Pengingat lanjut nonton", "Diingatkan sehari kemudian kalau ada episode yang belum selesai.", reminderOn) { on ->
+                reminderOn = on; store.setResumeReminder(on); bump()
+                if (on) {
+                    if (Build.VERSION.SDK_INT >= 33) notifPermission.launch("android.permission.POST_NOTIFICATIONS")
+                    ResumeReminder.schedule(ctx)
+                } else ResumeReminder.cancel(ctx)
+            }
         }
 
         Spacer(Modifier.height(22.dp))
@@ -3440,6 +3466,8 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         act?.lifecycle?.addObserver(observer)
         onDispose {
             saveProgress()
+            // Sesi nonton selesai: jadwalkan ulang pengingat bila fiturnya aktif.
+            if (store.resumeReminder()) runCatching { ResumeReminder.schedule(ctx) }
             act?.lifecycle?.removeObserver(observer)
             player.removeListener(listener)
             player.stop(); player.clearMediaItems(); player.release()
@@ -5604,6 +5632,8 @@ private class LocalStore(ctx: Context) {
     fun setAutoNext(v: Boolean) = p.edit().putBoolean("autoNext", v).apply()
     fun fitContain() = p.getBoolean("fitContain", true)
     fun setFitContain(v: Boolean) = p.edit().putBoolean("fitContain", v).apply()
+    fun resumeReminder() = p.getBoolean(ResumeReminder.PREF_ENABLED, false)
+    fun setResumeReminder(v: Boolean) = p.edit().putBoolean(ResumeReminder.PREF_ENABLED, v).apply()
     fun playerHintShown() = p.getBoolean("playerHintShown", false)
     fun setPlayerHintShown() = p.edit().putBoolean("playerHintShown", true).apply()
     fun subtitleOn() = p.getBoolean("subtitleOn", true)
