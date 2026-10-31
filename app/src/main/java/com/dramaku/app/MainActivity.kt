@@ -109,6 +109,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
@@ -3175,12 +3176,17 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
         if (scoped.isEmpty()) spec else spec.withAdditionalHeaders(scoped)
     }
     val cache = CacheDataSource.Factory().setCache(VideoCache.get(ctx)).setUpstreamDataSourceFactory(upstream).setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    // DefaultDataSource menangani skema data:/file: (master playlist sintetis FilmKu) dan
+    // meneruskan http(s) ke rantai cache → header → HTTP di atas.
+    val dataSourceFactory = DefaultDataSource.Factory(ctx, cache)
     return ExoPlayer.Builder(ctx)
         .setAudioAttributes(AudioAttributes.DEFAULT, true)
         .setHandleAudioBecomingNoisy(true)
         .setSeekBackIncrementMs(10_000L)
         .setSeekForwardIncrementMs(10_000L)
-        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(10_000, 30_000, 800, 1_500).build())
+        // Film panjang (FilmKu) butuh cadangan buffer lebih besar agar tidak gampang
+        // "muter-muter" saat throughput turun; mulai putar tetap cepat (1 dtk).
+        .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(15_000, 60_000, 1_000, 2_500).build())
         .setRenderersFactory(DefaultRenderersFactory(ctx).setEnableDecoderFallback(true))
         .setTrackSelector(
             DefaultTrackSelector(ctx).apply {
@@ -3193,7 +3199,7 @@ private fun buildPlayer(ctx: Context, requestHeaders: Map<String, String> = empt
                 )
             }
         )
-        .setMediaSourceFactory(DefaultMediaSourceFactory(cache)).build()
+        .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory)).build()
 }
 
 private fun playerError(e: PlaybackException): String {
@@ -3988,6 +3994,8 @@ private class DramakuRepository {
 
     private fun isSignedVideoUrl(url: String): Boolean {
         val lower = url.lowercase()
+        // Master playlist sintetis FilmKu (data:) tidak bisa diprobe lewat HTTP.
+        if (lower.startsWith("data:")) return false
         return listOf(
             "auth_key=", "expires=", "x-amz-", "signature=", "policy=",
             "token=", "hdnts=", "wssecret=", "x-oss-signature", "x-goog-signature", "sign="
@@ -5097,7 +5105,7 @@ private class DramakuRepository {
     }
 
     suspend fun resolveStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
-        if (d.drama.platform == FilmKuCatalog.PLATFORM_ID) return resolveFilmKuStream(d, ep)
+        if (d.drama.platform == FilmKuCatalog.PLATFORM_ID) return resolveFilmKuStream(d, ep, ds)
         val base = apiBase(d.drama.platform); val id = d.drama.id
         if (d.drama.platform == "stardusttv") {
             val json = getJson("$base/video/${enc(id)}/episode/${ep.coerceAtLeast(1)}?lang=id")
@@ -5245,7 +5253,7 @@ private class DramakuRepository {
      * (https://…) dan PlaybackPolicy.isEmbeddedStream() mengenalinya sebagai embed
      * sehingga diputar lewat WebView, bukan ExoPlayer.
      */
-    private suspend fun resolveFilmKuStream(d: Detail, ep: Int): StreamResult {
+    private suspend fun resolveFilmKuStream(d: Detail, ep: Int, dataSaver: Boolean = false): StreamResult {
         val mediaType = if (d.drama.subjectType == 2) "tv" else "movie"
         val imdbId = filmKuImdb[d.drama.id].orEmpty()
         val season = filmKuSeasons[d.drama.id] ?: 1
@@ -5253,7 +5261,7 @@ private class DramakuRepository {
         // 1. Jalur utama: HLS langsung → diputar ExoPlayer, tidak bergantung WebView.
         //    Di banyak perangkat, iframe provider tampil hitam walau Chrome normal.
         if (filmKuLiveMode && filmKuLiveForced[d.drama.id] != false) {
-            val live = fetchFilmKuLive(d.drama.id, mediaType, season, ep)
+            val live = fetchFilmKuLive(d.drama.id, mediaType, season, ep, dataSaver)
             if (live != null) return live
         }
 
@@ -5278,7 +5286,7 @@ private class DramakuRepository {
      * Tukar halaman embed Vidrift → token → /api/source → playlist HLS.
      * Mengembalikan null kalau salah satu langkah gagal supaya resolver jatuh ke embed.
      */
-    private suspend fun fetchFilmKuLive(tmdbId: String, mediaType: String, season: Int, ep: Int): StreamResult? =
+    private suspend fun fetchFilmKuLive(tmdbId: String, mediaType: String, season: Int, ep: Int, dataSaver: Boolean = false): StreamResult? =
         withContext(Dispatchers.IO) {
             runCatching {
                 val pageUrl = FilmKuCatalog.liveEmbedUrl(tmdbId, mediaType, season, ep)
@@ -5286,9 +5294,28 @@ private class DramakuRepository {
                 if (token.isBlank()) return@runCatching null
                 val sourceUrl = FilmKuCatalog.liveSourceUrl(tmdbId, mediaType, season, ep, token)
                 val json = getJson(sourceUrl)
-                val best = FilmKuCatalog.pickStream(FilmKuCatalog.parseSourceStreams(json))
-                    ?: return@runCatching null
+                val streams = FilmKuCatalog.parseSourceStreams(json)
+                val maxRes = json.optInt("maxRes", 1080)
+                val maxHeight = if (dataSaver) 480 else Int.MAX_VALUE
                 val subs = FilmKuCatalog.parseSourceSubtitles(json).firstOrNull()
+
+                // Vela memberi beberapa media playlist terpisah (1080/720/480) tanpa master →
+                // rangkai master sintetis (data: URI) supaya ExoPlayer bisa adaptif bitrate.
+                // Tanpa ini app selalu memutar 1080p ±7 Mbps dan buffering di jaringan seluler.
+                val master = FilmKuCatalog.buildMasterPlaylist(streams, maxRes, maxHeight)
+                if (master != null) {
+                    filmKuLiveForced[tmdbId] = true
+                    val b64 = android.util.Base64.encodeToString(master.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                    return@runCatching StreamResult(
+                        "data:application/vnd.apple.mpegurl;base64,$b64",
+                        subtitle = subs?.second.orEmpty(),
+                        mimeType = MimeTypes.APPLICATION_M3U8,
+                        isEmbed = false,
+                    )
+                }
+
+                val best = FilmKuCatalog.pickStream(streams, maxRes, maxHeight)
+                    ?: return@runCatching null
                 filmKuLiveForced[tmdbId] = true
                 // URL proxy (edge.reelvault.click/proxy?u=…) tidak mengandung ".m3u8",
                 // jadi MIME harus diberi tahu eksplisit — kalau tidak, ExoPlayer memperlakukannya

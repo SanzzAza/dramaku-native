@@ -287,6 +287,55 @@ object FilmKuCatalog {
         }
     }
 
+    /** Tinggi video per urutan stream: index 0 = tertinggi (= maxRes), lalu turun. */
+    private val LADDER = listOf(2160, 1080, 720, 480, 360, 240)
+
+    /** Perkiraan bitrate (bps) per tinggi — dari ukuran segmen vela yang diukur 31 Okt 2026. */
+    fun estimatedBandwidth(height: Int): Int = when {
+        height >= 2160 -> 14_000_000
+        height >= 1080 -> 6_800_000
+        height >= 720 -> 3_600_000
+        height >= 480 -> 1_600_000
+        height >= 360 -> 900_000
+        else -> 500_000
+    }
+
+    /** Pasangan (stream, tinggi) — vela tidak menyebut resolusi, jadi diturunkan dari urutan + maxRes. */
+    fun streamsWithHeight(streams: List<LiveStream>, maxRes: Int): List<Pair<LiveStream, Int>> {
+        val hls = streams.filter { it.url.startsWith("https://") && mimeTypeOf(it) == MIME_HLS }
+        val start = LADDER.indexOfFirst { it <= maxRes.coerceAtLeast(1) }.let { if (it < 0) 1 else it }
+        return hls.mapIndexed { i, st -> st to (LADDER.getOrNull(start + i) ?: LADDER.last()) }
+    }
+
+    /**
+     * Vidrift (provider vela) mengembalikan beberapa MEDIA playlist terpisah — bukan master —
+     * dan dulu app selalu memutar index 0 (1080p ±7 Mbps) tanpa bisa turun kualitas, sehingga
+     * di jaringan seluler buffering terus. Fungsi ini merangkai master playlist HLS agar
+     * ExoPlayer memilih bitrate adaptif. Null bila hanya ada ≤1 stream (tidak perlu master).
+     *
+     * @param maxHeight batas kualitas (hemat data = 480).
+     */
+    fun buildMasterPlaylist(streams: List<LiveStream>, maxRes: Int, maxHeight: Int = Int.MAX_VALUE): String? {
+        val ranked = streamsWithHeight(streams, maxRes)
+        val allowed = ranked.filter { it.second <= maxHeight }.ifEmpty { ranked.takeLast(1) }
+        if (allowed.size < 2) return null
+        return buildString {
+            append("#EXTM3U\n#EXT-X-VERSION:3\n")
+            // Urutan rendah → tinggi supaya pemutar mulai cepat lalu naik.
+            allowed.sortedBy { it.second }.forEach { (st, h) ->
+                val w = h * 16 / 9
+                append("#EXT-X-STREAM-INF:BANDWIDTH=${estimatedBandwidth(h)},RESOLUTION=${w}x${h}\n")
+                append(st.url).append('\n')
+            }
+        }
+    }
+
+    /** Stream tunggal terbaik di bawah batas tinggi (dipakai bila master tidak dibangun). */
+    fun pickStream(streams: List<LiveStream>, maxRes: Int, maxHeight: Int): LiveStream? {
+        val ranked = streamsWithHeight(streams, maxRes)
+        return ranked.firstOrNull { it.second <= maxHeight }?.first ?: pickStream(streams)
+    }
+
     /**
      * Apakah URL ini halaman web provider (harus lewat WebView), bukan media langsung.
      * Dipakai PlaybackPolicy agar URL HLS tanpa ekstensi TIDAK salah dikira iframe.

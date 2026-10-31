@@ -407,4 +407,31 @@ class FilmKuCatalogTest {
         assertFalse(FilmKuCatalog.isEmbedPageUrl("https://img.hscow.com/hls_mps/x/720/0.jpg?t=1"))
         assertFalse(FilmKuCatalog.isEmbedPageUrl("https://x/y/index.m3u8"))
     }
+
+    @Test
+    fun `buildMasterPlaylist merangkai varian vela urut rendah ke tinggi`() {
+        val streams = listOf(
+            FilmKuCatalog.LiveStream("https://edge.reelvault.click/proxy?u=A", "hls", provider = "Vela"),
+            FilmKuCatalog.LiveStream("https://edge.reelvault.click/proxy?u=B", "hls", provider = "Vela"),
+            FilmKuCatalog.LiveStream("https://edge.reelvault.click/proxy?u=C", "hls", provider = "Vela"),
+        )
+        val master = FilmKuCatalog.buildMasterPlaylist(streams, maxRes = 1080)!!
+        val lines = master.lines().filter { it.isNotBlank() }
+        assertEquals("#EXTM3U", lines[0])
+        assertTrue(lines[2].contains("RESOLUTION=854x480"))
+        assertEquals("https://edge.reelvault.click/proxy?u=C", lines[3])
+        assertTrue(lines[4].contains("RESOLUTION=1280x720"))
+        assertEquals("https://edge.reelvault.click/proxy?u=B", lines[5])
+        assertTrue(lines[6].contains("RESOLUTION=1920x1080"))
+        assertTrue(lines[6].contains("BANDWIDTH=6800000"))
+        assertEquals("https://edge.reelvault.click/proxy?u=A", lines[7])
+
+        // Hemat data: hanya ≤480 → tinggal 1 varian → tidak perlu master, pickStream memilih 480.
+        assertNull(FilmKuCatalog.buildMasterPlaylist(streams, maxRes = 1080, maxHeight = 480))
+        assertEquals(streams[2], FilmKuCatalog.pickStream(streams, maxRes = 1080, maxHeight = 480))
+        // Titan: satu stream 720 → tidak ada master.
+        val titan = listOf(FilmKuCatalog.LiveStream("https://img1.hscow.com/x/720/index.m3u8?Expires=1", "hls"))
+        assertNull(FilmKuCatalog.buildMasterPlaylist(titan, maxRes = 720))
+        assertEquals(titan[0], FilmKuCatalog.pickStream(titan, maxRes = 720, maxHeight = Int.MAX_VALUE))
+    }
 }

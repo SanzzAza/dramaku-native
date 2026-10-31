@@ -2,6 +2,17 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.21 (2026-10-31)
+
+- FilmKu buffering/"muter-muter": Vidrift (vela) memberi 3 media playlist
+  terpisah (±6,8 / 3,6 / 1,6 Mbps) tanpa master, dan app selalu memutar index 0
+  (1080p) tanpa bisa turun kualitas. Kini dirangkai master playlist sintetis
+  (`data:` URI) sehingga ExoPlayer adaptif bitrate; hemat data dibatasi 480p.
+- Player menerima skema `data:` lewat `DefaultDataSource`; buffer maksimum
+  dinaikkan ke 60 dtk (rebuffer 2,5 dtk) untuk film panjang.
+- Master sintetis dikecualikan dari probe "URL bertanda tangan" agar tidak
+  menambah waktu loading.
+
 ## 4.9.20 (2026-10-31)
 
 - Fix FilmKu tidak bisa diputar: respons `/api/source` Vidrift sering memberi
