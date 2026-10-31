@@ -82,6 +82,7 @@ import com.dramaku.app.reminder.ResumeReminder
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.dramaku.app.catalog.FilmKuCatalog
 import com.dramaku.app.data.NativeRemoteConfig
 import com.dramaku.app.data.RemoteConfigRepository
 import com.dramaku.app.home.Greetings
@@ -329,7 +330,9 @@ private val Platforms = listOf(
     PlatformInfo("netshort", "NetShort", "https://dramahub.be/netshort/api/v1", logoUrl = "https://dramahub.be/logos/netshort.png", logoRes = R.drawable.logo_netshort),
     PlatformInfo("reelshort", "ReelShort", "https://dramahub.be/reelshort/api/v1", logoUrl = "https://dramahub.be/logos/reelshort.png", logoRes = R.drawable.logo_reelshort),
     PlatformInfo("anichin", "Anichin", "https://dramahub.be/anichin", logoUrl = "https://dramahub.be/logos/anichin.png", logoRes = R.drawable.logo_anichin),
-    PlatformInfo("stardusttv", "Stardust TV", "https://dramahub.be/stardusttv/api/v1", logoUrl = "https://dramahub.be/logos/stardusttv.png", logoRes = R.drawable.logo_stardusttv)
+    PlatformInfo("stardusttv", "Stardust TV", "https://dramahub.be/stardusttv/api/v1", logoUrl = "https://dramahub.be/logos/stardusttv.png", logoRes = R.drawable.logo_stardusttv),
+    // FilmKu: platform film & serial (TMDB via vidbox.wtf). Lihat catalog/FilmKuCatalog.kt
+    PlatformInfo("filmku", "FilmKu", FilmKuCatalog.BASE_URL, logoUrl = FilmKuCatalog.LOGO_URL, logoRes = R.drawable.logo_filmku)
 ) + ExtraPlatforms.platforms
 
 // Rak genre DramaBox cadangan: dipakai kalau /categories tidak terbaca, supaya
@@ -3828,6 +3831,10 @@ private class DramakuRepository {
     private val dispatcher = Dispatcher().apply { maxRequests = 32; maxRequestsPerHost = 16 }
     private val client = OkHttpClient.Builder().dispatcher(dispatcher).connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).callTimeout(45, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
     private val detailCache = ConcurrentHashMap<String, CachedDetail>()
+    // FilmKu: simpan imdb_id & jumlah season per TMDB id (dipakai provider embed)
+    private val filmKuImdb = mutableMapOf<String, String>()
+    private val filmKuSeasons = mutableMapOf<String, Int>()
+    private val filmKuProvider = mutableMapOf<String, String>()
     private val streamCache = ConcurrentHashMap<String, CachedStream>()
     private val forcedDetailRefresh = ConcurrentHashMap.newKeySet<String>()
 
@@ -3965,6 +3972,7 @@ private class DramakuRepository {
         if (p == "netshort") return@coroutineScope loadNetshortHome(page)
         if (p == "reelshort") return@coroutineScope loadReelshortHome(page)
         if (p == "anichin") return@coroutineScope loadAnichinHome(page)
+        if (p == "filmku") return@coroutineScope loadFilmKuHome(page)
         if (ExtraPlatforms.isExtraPlatform(p)) return@coroutineScope loadExtraPlatformHome(p, page)
         val req = homePageRequest(p, page)
         val json = try { fetchHome(req.url) } catch (e: CancellationException) { throw e } catch (_: Throwable) { null }
@@ -4008,6 +4016,51 @@ private class DramakuRepository {
         if (page == 1 && pageItems.isEmpty()) error("Stardust TV sedang tidak tersedia")
         HomeBundle(pageItems, pageItems, pageItems, page, false)
     }
+
+    /**
+     * Beranda FilmKu: tiga rak dari /api/search/discover.
+     *
+     * Server mengabaikan `sort` (selalu popularity), jadi rak dibedakan lewat filter:
+     * Trending (`trending=true`), Populer (default), dan Rating 8+.
+     * Semua item dipetakan ke Drama dari TMDB; jumlah episode baru diketahui saat detail dibuka.
+     */
+    private suspend fun loadFilmKuHome(page: Int): HomeBundle = coroutineScope {
+        val vp = page.coerceIn(1, FilmKuCatalog.MAX_PAGE)
+        val base = FilmKuCatalog.BASE_URL
+        val trendingUrl = "$base/api/search/discover?type=movie&page=$vp&genre=all&year=all" +
+            "&watch_provider=all&country=all&rating=all&now_playing=false&trending=true"
+
+        suspend fun load(url: String) = async {
+            try { FilmKuCatalog.parseDiscover(getJson(url), vp).items }
+            catch (e: CancellationException) { throw e }
+            catch (_: Throwable) { emptyList() }
+        }
+
+        val trending = load(trendingUrl).await()
+        val populer = load(FilmKuCatalog.discoverUrl(page = vp)).await()
+        val topRated = load(FilmKuCatalog.discoverUrl(page = vp, rating = "8")).await()
+
+        val rec = dedupe(trending.map { it.toFilmKuDrama() })
+        val pop = dedupe(populer.map { it.toFilmKuDrama() })
+        val nw = dedupe(topRated.map { it.toFilmKuDrama() })
+        if (rec.isEmpty() && pop.isEmpty() && nw.isEmpty() && vp == 1) {
+            error("FilmKu sedang tidak tersedia. Coba beberapa saat lagi.")
+        }
+        val loaded = dedupe(rec + pop + nw).size
+        HomeBundle(rec, pop, nw, vp, vp < FilmKuCatalog.MAX_PAGE && loaded >= 15)
+    }
+
+    /** FilmKu memetakan item TMDB → Drama; episode diisi ulang saat detail dimuat. */
+    private fun FilmKuCatalog.FilmItem.toFilmKuDrama(): Drama = Drama(
+        id = id,
+        title = title,
+        description = overview,
+        poster = FilmKuCatalog.posterUrl(posterPath),
+        episodes = 1,
+        views = if (rating > 0) "\u2b50 ${"%.1f".format(rating)}" else "",
+        tags = listOfNotNull(subtitleOf(this).takeIf { it.isNotBlank() }),
+        platform = FilmKuCatalog.PLATFORM_ID,
+    )
 
     /**
      * Beranda NetShort: tiga slot HomeBundle diisi endpoint berbeda supaya
@@ -4105,6 +4158,8 @@ private class DramakuRepository {
     suspend fun searchPlatform(q: String, p: String): List<Drama> = coroutineScope {
         val items = runCatching {
             when (p) {
+                "filmku" -> FilmKuCatalog.parseDiscover(getJson(FilmKuCatalog.discoverUrl(page = 1, query = q)))
+                    .items.map { it.toFilmKuDrama() }
                 "stardusttv" -> flat(getJson("${apiBase(p)}/search?q=${enc(q)}&lang=id&page=1&page_size=20").dataOrSelf(), p)
                 "dramabox" -> flat(getJson("${apiBase(p)}/search?keyword=${enc(q)}&page=1&lang=in").dataOrSelf(), p)
                 // NetShort: keyword masuk ke path (bukan query), spasi harus %20.
@@ -4320,6 +4375,7 @@ private class DramakuRepository {
         runCatching { flat(getJson("${apiBase("freereels")}/$categoryPath?page=0&lang=id-ID").dataOrSelf(), "freereels") }.getOrDefault(emptyList())
 
     suspend fun loadDetail(input: Drama): Detail {
+        if (input.platform == FilmKuCatalog.PLATFORM_ID) return loadFilmKuDetail(input)
         val p = input.platform
         val url = detailUrl(input); val json = getJson(url)
         if (p == "melolo") {
@@ -4519,6 +4575,41 @@ private class DramakuRepository {
         val total = max(d.episodes, eps.size)
         return Detail(d.copy(episodes = total), if (eps.isNotEmpty()) eps else (1..total.coerceAtLeast(1)).map { EpisodeInfo(it) })
     }
+
+    /**
+     * Detail FilmKu = TMDB. Film mendapat 1 episode sintetis ("Film penuh"),
+     * serial mendapat 1..number_of_episodes.
+     *
+     * EpisodeInfo.streaming sengaja kosong: URL embed dibangun resolver dari provider
+     * yang dipilih, jadi ganti provider tidak perlu memuat ulang detail.
+     */
+    private suspend fun loadFilmKuDetail(input: Drama): Detail {
+        val mediaType = filmKuMediaType(input)
+        val json = getJson(FilmKuCatalog.detailUrl(input.id, mediaType))
+        val d = FilmKuCatalog.parseDetail(json, mediaType)
+        filmKuImdb[input.id] = d.imdbId
+        filmKuSeasons[input.id] = d.seasons.coerceAtLeast(1)
+
+        val drama = Drama(
+            id = input.id,
+            title = d.title.ifBlank { input.title },
+            description = d.overview.ifBlank { input.description },
+            poster = FilmKuCatalog.posterUrl(d.posterPath.ifBlank { input.poster }),
+            episodes = if (d.mediaType == "tv") d.episodes.coerceAtLeast(1) else 1,
+            views = if (d.rating > 0) "\u2b50 ${"%.1f".format(d.rating)}" else input.views,
+            tags = (d.genres + listOfNotNull(d.year.takeIf { it.isNotBlank() })).distinct().take(8),
+            platform = FilmKuCatalog.PLATFORM_ID,
+            subjectType = if (d.mediaType == "tv") 2 else 1,
+        )
+        val eps = FilmKuCatalog.episodes(d).map { (num, label) ->
+            EpisodeInfo(number = num, streaming = "", label = label)
+        }
+        return Detail(drama, eps)
+    }
+
+    /** media_type TMDB ditebak dari tag kartu ("Serial ...") atau subjectType, default movie. */
+    private fun filmKuMediaType(d: Drama): String =
+        if (d.subjectType == 2 || d.tags.any { it.trim().startsWith("Serial") }) "tv" else "movie"
 
     private suspend fun loadExtraPlatformDetail(input: Drama, json: JSONObject): Detail {
         val p = input.platform
@@ -4931,6 +5022,7 @@ private class DramakuRepository {
     }
 
     suspend fun resolveStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
+        if (d.drama.platform == FilmKuCatalog.PLATFORM_ID) return resolveFilmKuStream(d, ep)
         val base = apiBase(d.drama.platform); val id = d.drama.id
         if (d.drama.platform == "stardusttv") {
             val json = getJson("$base/video/${enc(id)}/episode/${ep.coerceAtLeast(1)}?lang=id")
@@ -5070,6 +5162,44 @@ private class DramakuRepository {
         val source = epObj?.stringAny("stream_url", "streaming", "url", "play_url", "video_url").orEmpty()
         if (source.isBlank()) error("Video belum tersedia")
         return StreamResult(source)
+    }
+
+    /**
+     * FilmKu tidak menyediakan URL video langsung — sama seperti vidbox sendiri, yang
+     * dipakai adalah iframe provider pihak ketiga. Karena itu hasilnya berupa URL embed
+     * (https://…) dan PlaybackPolicy.isEmbeddedStream() mengenalinya sebagai embed
+     * sehingga diputar lewat WebView, bukan ExoPlayer.
+     */
+    private fun resolveFilmKuStream(d: Detail, ep: Int): StreamResult {
+        val mediaType = if (d.drama.subjectType == 2) "tv" else "movie"
+        val imdbId = filmKuImdb[d.drama.id].orEmpty()
+        val season = filmKuSeasons[d.drama.id] ?: 1
+        val provider = filmKuProvider[d.drama.id]
+            ?.let { id -> FilmKuCatalog.PROVIDERS.firstOrNull { it.id == id } }
+            ?: FilmKuCatalog.HEALTHY_PROVIDERS.first()
+        return StreamResult(
+            FilmKuCatalog.embedUrl(
+                provider = provider,
+                tmdbId = d.drama.id,
+                imdbId = imdbId,
+                mediaType = mediaType,
+                season = season,
+                episode = ep,
+            )
+        )
+    }
+
+    /** Ganti provider embed FilmKu (dipanggil dari tombol "ganti server" di player). */
+    fun rotateFilmKuProvider(dramaId: String, episode: Int = 1): String {
+        val chain = FilmKuCatalog.HEALTHY_PROVIDERS
+        if (chain.isEmpty()) return ""
+        val current = filmKuProvider[dramaId] ?: chain.first().id
+        val index = chain.indexOfFirst { it.id == current }.coerceAtLeast(0)
+        val next = chain[(index + 1) % chain.size]
+        filmKuProvider[dramaId] = next.id
+        streamCache.keys.filter { it.startsWith("${FilmKuCatalog.PLATFORM_ID}|$dramaId|$episode|") }
+            .forEach { streamCache.remove(it) }
+        return next.label
     }
 
     private suspend fun resolveExtraPlatformStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
