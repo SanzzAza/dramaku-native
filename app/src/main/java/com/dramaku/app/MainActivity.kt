@@ -4058,7 +4058,7 @@ private class DramakuRepository {
         poster = FilmKuCatalog.posterUrl(posterPath),
         episodes = 1,
         views = if (rating > 0) "\u2b50 ${"%.1f".format(rating)}" else "",
-        tags = listOfNotNull(subtitleOf(this).takeIf { it.isNotBlank() }),
+        tags = listOfNotNull(FilmKuCatalog.subtitleOf(this).takeIf { it.isNotBlank() }),
         platform = FilmKuCatalog.PLATFORM_ID,
     )
 
