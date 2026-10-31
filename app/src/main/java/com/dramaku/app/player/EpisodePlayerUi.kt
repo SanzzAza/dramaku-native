@@ -51,8 +51,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.dramaku.app.R
 
-internal enum class PlayerPanel { Episodes, More, Speed, Quality, Subtitles, Details }
-internal enum class PlayerAction { Back, PlayPause, Like, Collect, Share, Episodes, More, Immersive, Speed, Quality, Subtitles, Fit, AutoNext, Reload, Details }
+internal enum class PlayerPanel { Episodes, More, Speed, Quality, Subtitles, Source, Details }
+internal enum class PlayerAction { Back, PlayPause, Like, Collect, Share, Episodes, More, Immersive, Speed, Quality, Subtitles, Source, Fit, AutoNext, Reload, Details }
 internal data class EpisodeChoice(val number: Int, val locked: Boolean = false, val progress: Float = 0f)
 
 internal data class EpisodePlayerUiState(
@@ -68,6 +68,10 @@ internal data class EpisodePlayerUiState(
     val buffering: Boolean = false,
     val failed: Boolean = false,
     val embedded: Boolean = false,
+    /** Nama sumber embed yang sedang dipakai (khusus embed multi-sumber seperti FilmKu). */
+    val sourceLabel: String = "",
+    /** Pilihan sumber embed; kosong = pemutar tidak menampilkan pemilih sumber. */
+    val sources: List<Pair<String, String>> = emptyList(),
     val liked: Boolean = false,
     val collected: Boolean = false,
     val positionMs: Long = 0L,
@@ -197,6 +201,20 @@ internal fun EpisodePlayerChrome(
                 if (state.loading) {
                     Spacer(Modifier.height(10.dp))
                     Label("Menyiapkan video…", color = Color.White.copy(alpha = 0.8f), size = 11.sp)
+                }
+            }
+        }
+        // Embed multi-sumber (mis. FilmKu) kadang memuat halaman tapi tidak memutar apa pun.
+        // Tanpa tombol ini pengguna hanya melihat layar hitam dengan judul episode.
+        if (state.embedded && state.sources.size > 1 && state.chromeVisible && !state.immersive) {
+            Surface(
+                Modifier.align(Alignment.Center).clickable { onAction(PlayerAction.Source) },
+                color = Color.Black.copy(alpha = 0.66f), shape = RoundedCornerShape(30.dp)
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Refresh, "Coba sumber lain", tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Label("Layar hitam? Coba sumber lain", size = 12.sp, weight = FontWeight.SemiBold)
                 }
             }
         }
@@ -384,7 +402,8 @@ internal fun PlayerSettingsSheet(
     onAction: (PlayerAction) -> Unit,
     onSpeed: (Float) -> Unit,
     onDataSaver: (Boolean) -> Unit,
-    onSubtitles: (Boolean) -> Unit
+    onSubtitles: (Boolean) -> Unit,
+    onSource: (String) -> Unit = {}
 ) {
     PlayerModal(onDismiss = onDismiss) {
         val title = when (panel) {
@@ -392,6 +411,7 @@ internal fun PlayerSettingsSheet(
             PlayerPanel.Quality -> "Kualitas video"
             PlayerPanel.Subtitles -> "Subtitle"
             PlayerPanel.Details -> "Tentang cerita"
+            PlayerPanel.Source -> "Sumber video"
             else -> "Pengaturan pemutar"
         }
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -418,6 +438,16 @@ internal fun PlayerSettingsSheet(
                     }
                     Label("Teks yang sudah menyatu dengan gambar video tidak dapat dimatikan.", Modifier.padding(top = 12.dp), color = Secondary, size = 11.sp)
                 }
+                PlayerPanel.Source -> {
+                    if (state.sources.isEmpty()) {
+                        Label("Pemutar ini hanya memakai satu sumber.", Modifier.padding(vertical = 16.dp), color = Secondary)
+                    } else {
+                        state.sources.forEach { (id, label) ->
+                            ChoiceRow(label, label == state.sourceLabel) { onSource(id) }
+                        }
+                        Label("Kalau layar tetap hitam, coba sumber berikutnya. Tiap sumber punya pemutar sendiri, jadi tampilan kontrolnya bisa berbeda.", Modifier.padding(top = 12.dp), color = Secondary, size = 11.sp)
+                    }
+                }
                 PlayerPanel.Details -> {
                     Label(state.title, Modifier.padding(vertical = 12.dp), size = 20.sp, weight = FontWeight.Bold)
                     Label("${state.platform} · ${state.total} episode", color = Secondary, size = 12.sp)
@@ -438,6 +468,12 @@ internal fun PlayerSettingsSheet(
                         Option(Icons.Rounded.AspectRatio, "Ukuran video", if (state.fitContain) "Rasio asli" else "Penuhi layar", Modifier.weight(1f)) { onAction(PlayerAction.Fit) }
                         Option(Icons.Rounded.SkipNext, "Putar otomatis", if (state.autoNext) "Aktif" else "Nonaktif", Modifier.weight(1f)) { onAction(PlayerAction.AutoNext) }
                         Option(Icons.Rounded.Refresh, "Muat ulang", "Link terbaru", Modifier.weight(1f)) { onAction(PlayerAction.Reload) }
+                    }
+                    if (state.sources.isNotEmpty()) {
+                        Spacer(Modifier.height(18.dp))
+                        Label("Sumber video", color = Secondary, size = 11.sp)
+                        Spacer(Modifier.height(4.dp))
+                        ChoiceRow(state.sourceLabel.ifBlank { state.sources.first().first } + " · aktif", true, "Ketuk untuk ganti sumber lain") { onAction(PlayerAction.Source) }
                     }
                     Spacer(Modifier.height(18.dp))
                     Label(if (state.embedded) "Video embed memakai kontrol dari pemutar sumber." else "Ketuk untuk jeda/putar · Ketuk dua kali di sisi layar untuk ±10 detik · Tahan untuk 2x", color = Secondary, size = 11.sp)

@@ -3604,7 +3604,13 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         liked = liked, collected = collected, positionMs = curMs, durationMs = durMs, bufferedMs = bufferedMs,
         seeking = isSeeking, speed = playbackSpeed, speedHeld = speedHold, immersive = immersive, chromeVisible = chromeVisible,
         dataSaver = dataSaver, subtitleEnabled = subOn, hasSubtitles = hasSub, fitContain = fitContain,
-        autoNext = autoNext, notice = notice, showLike = showLike
+        autoNext = autoNext, notice = notice, showLike = showLike,
+        sourceLabel = if (detail.drama.platform == FilmKuCatalog.PLATFORM_ID)
+            repo.filmKuProviderLabel(detail.drama.id) ?: FilmKuCatalog.PLAYABLE_PROVIDERS.firstOrNull()?.label.orEmpty()
+        else "",
+        sources = if (detail.drama.platform == FilmKuCatalog.PLATFORM_ID)
+            FilmKuCatalog.PROVIDER_CHOICES.map { it.id to it.label }
+        else emptyList()
     )
     val action: (PlayerAction) -> Unit = { selected ->
         revealChrome() // Interacting with the chrome restarts the auto-hide countdown.
@@ -3623,6 +3629,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             PlayerAction.Details -> panel = PlayerPanel.Details
             PlayerAction.Fit -> { fitContain = !fitContain; store.setFitContain(fitContain) }
             PlayerAction.AutoNext -> { autoNext = !autoNext; store.setAutoNext(autoNext) }
+            PlayerAction.Source -> panel = PlayerPanel.Source
             PlayerAction.Reload -> { panel = null; reload(manual = true) }
         }
     }
@@ -3707,7 +3714,19 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
                     panel = null
                     if (selected != dataSaver) { dataSaver = selected; store.setDataSaver(selected); reload(manual = true) }
                 },
-                onSubtitles = { subOn = it; store.setSubtitleOn(it); panel = null }
+                onSubtitles = { subOn = it; store.setSubtitleOn(it); panel = null },
+                onSource = { providerId ->
+                    panel = null
+                    if (detail.drama.platform == FilmKuCatalog.PLATFORM_ID) {
+                        val label = repo.selectFilmKuProvider(detail.drama.id, providerId, pager.settledPage + 1)
+                        if (label.isNotBlank()) {
+                            // URL embed provider baru harus dibangun ulang, bukan diambil dari cache.
+                            embedUrl = ""
+                            reload(manual = true)
+                            notice = "Sumber: $label"
+                        }
+                    }
+                }
             )
         }
     }
@@ -5174,9 +5193,9 @@ private class DramakuRepository {
         val mediaType = if (d.drama.subjectType == 2) "tv" else "movie"
         val imdbId = filmKuImdb[d.drama.id].orEmpty()
         val season = filmKuSeasons[d.drama.id] ?: 1
-        val provider = filmKuProvider[d.drama.id]
-            ?.let { id -> FilmKuCatalog.PROVIDERS.firstOrNull { it.id == id } }
-            ?: FilmKuCatalog.HEALTHY_PROVIDERS.first()
+        val provider = FilmKuCatalog.providerById(filmKuProvider[d.drama.id])
+            ?: FilmKuCatalog.PLAYABLE_PROVIDERS.firstOrNull()
+            ?: FilmKuCatalog.PROVIDER_CHOICES.first()
         return StreamResult(
             FilmKuCatalog.embedUrl(
                 provider = provider,
@@ -5190,17 +5209,30 @@ private class DramakuRepository {
     }
 
     /** Ganti provider embed FilmKu (dipanggil dari tombol "ganti server" di player). */
-    fun rotateFilmKuProvider(dramaId: String, episode: Int = 1): String {
-        val chain = FilmKuCatalog.HEALTHY_PROVIDERS
+    fun rotateFilmKuProvider(dramaId: String, episode: Int = 1): String =
+        selectFilmKuProvider(dramaId, "", episode)
+
+    /** Pilih sumber embed tertentu ("" = lanjut ke berikutnya di daftar). */
+    fun selectFilmKuProvider(dramaId: String, providerId: String, episode: Int = 1): String {
+        val chain = FilmKuCatalog.PROVIDER_CHOICES.ifEmpty { FilmKuCatalog.PROVIDERS }
         if (chain.isEmpty()) return ""
-        val current = filmKuProvider[dramaId] ?: chain.first().id
-        val index = chain.indexOfFirst { it.id == current }.coerceAtLeast(0)
-        val next = chain[(index + 1) % chain.size]
+        val next = if (providerId.isBlank()) {
+            val current = filmKuProvider[dramaId] ?: chain.first().id
+            val index = chain.indexOfFirst { it.id == current }.coerceAtLeast(0)
+            chain[(index + 1) % chain.size]
+        } else {
+            chain.firstOrNull { it.id == providerId } ?: return ""
+        }
         filmKuProvider[dramaId] = next.id
-        streamCache.keys.filter { it.startsWith("${FilmKuCatalog.PLATFORM_ID}|$dramaId|$episode|") }
-            .forEach { streamCache.remove(it) }
+        // Buang cache stream episode ini supaya resolver membangun URL provider baru.
+        val prefix = "${FilmKuCatalog.PLATFORM_ID}|$dramaId|$episode|"
+        streamCache.keys.filter { it.startsWith(prefix) }.forEach { streamCache.remove(it) }
         return next.label
     }
+
+    /** Sumber yang sedang dipakai (null = default). */
+    fun filmKuProviderLabel(dramaId: String): String? =
+        FilmKuCatalog.providerById(filmKuProvider[dramaId])?.label
 
     private suspend fun resolveExtraPlatformStream(d: Detail, ep: Int, ds: Boolean): StreamResult {
         val p = d.drama.platform

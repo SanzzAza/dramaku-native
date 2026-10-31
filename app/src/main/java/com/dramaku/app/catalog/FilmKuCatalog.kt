@@ -97,31 +97,62 @@ object FilmKuCatalog {
         val movieUrl: String,
         val tvUrl: String,
         val idType: String = "tmdb",   // "tmdb" | "imdb"
-        val status: Int = 200,          // hasil probe terakhir
+        /**
+         * Status HTTP terakhir. 200 = halaman terbuka, TAPI belum tentu bisa memutar
+         * di dalam iframe (ada yang 200 lalu memasang X-Frame-Options, atau 200 dengan
+         * body "not found").
+         */
+        val status: Int = 200,
+        /**
+         * `embeddable` = hasil uji di dalam iframe (origin induk https, WebView app),
+         * bukan sekadar cek HTTP:
+         *   "play"  → memutar video (poster/kontrol tampil, ada request media)
+         *   "blank" → halaman terbuka tapi tidak memutar (XFO, 404, sumber kosong)
+         *   "deny"  → menolak di-iframe (X-Frame-Options / frame-ancestors)
+         */
+        val embeddable: String = "play",
+        val note: String = "",
     )
 
+    /**
+     * Urutan uji 31 Okt 2026 (iframe di WebView-style, 390x780, TMDB 155 & 1399).
+     * Yang memutar ditaruh paling atas karena `HEALTHY_PROVIDERS.first()` adalah
+     * sumber default — dulu Vidlink di posisi pertama padahal di dalam iframe ia
+     * hanya menampilkan poster dengan posisi 0:00.
+     */
     val PROVIDERS: List<EmbedProvider> = listOf(
-        EmbedProvider("vidlink", "Vidlink", "https://vidlink.pro/movie/{id}", "https://vidlink.pro/tv/{id}/{season}/{episode}"),
-        EmbedProvider("vidfast", "Vidfast", "https://vidfast.vc/movie/{id}?autoplay=true", "https://vidfast.vc/tv/{id}/{season}/{episode}?autoplay=true"),
-        EmbedProvider("vidnest", "Vidnest", "https://vidnest.fun/movie/{id}", "https://vidnest.fun/tv/{id}/{season}/{episode}"),
-        EmbedProvider("vidrock", "Vidrock", "https://vidrock.net/embed/movie/{id}?autoplay=true", "https://vidrock.net/embed/tv/{id}/{season}/{episode}?autoplay=true"),
-        EmbedProvider("nxsha", "Nxsha", "https://nxsha.space/embed/movie/{id}?lang={lang}&autoplay=true&sub={lang}", "https://nxsha.space/embed/tv/{id}/{season}/{episode}?lang={lang}&autoplay=true&sub={lang}"),
-        EmbedProvider("videasy", "Videasy", "https://www.vidy.st/movie/{id}", "https://www.vidy.st/tv/{id}/{season}/{episode}"),
-        EmbedProvider("vidrift", "Vidrift", "https://embed.vidrift.net/embed/movie/{id}?autoplay=true", "https://embed.vidrift.net/embed/tv/{id}/{season}/{episode}?autoplay=true"),
-        EmbedProvider("vapar", "Vapar", "https://vaplayer.ru/embed/movie/{id}?autoplay=true", "https://vaplayer.ru/embed/tv/{id}/{season}/{episode}?autoplay=true"),
-        EmbedProvider("ythd", "Ythd", "https://ythd.org/embed/{id}", "https://ythd.org/embed/{id}/{season}/{episode}"),
-        EmbedProvider("cinemaos", "Cinemaos", "https://cinemaos.tech/player/{id}", "https://cinemaos.tech/player/{id}/{season}/{episode}"),
-        EmbedProvider("moviesapi", "Moviesapi", "https://moviesapi.vip/movie/{id}", "https://moviesapi.vip/tv/{id}/{season}/{episode}"),
-        EmbedProvider("xpass", "Xpass", "https://play.xpass.top/e/movie/{id}", "https://play.xpass.top/e/tv/{id}/{season}/{episode}"),
-        EmbedProvider("111movies", "111movies", "https://111movies.net/movie/{id}", "https://111movies.net/tv/{id}/{season}/{episode}"),
-        EmbedProvider("2embed", "2Embed", "https://2embed.stream/embed/movie/{id}", "https://2embed.stream/embed/tv/{id}/{season}/{episode}"),
-        EmbedProvider("primesrc", "Primesrc", "https://primesrc.me/embed/movie?imdb={imdb}", "https://primesrc.me/embed/tv?imdb={imdb}&season={season}&episode={episode}", idType = "imdb"),
-        EmbedProvider("vixsrc", "Vixsrc", "https://vixsrc.to/movie/{id}", "https://vixsrc.to/tv/{id}/{season}/{episode}", status = 403),
-        EmbedProvider("peachify", "Peachify", "https://peachify.top/embed/movie/{id}", "https://peachify.top/embed/tv/{id}/{season}/{episode}", status = 403),
+        EmbedProvider("vidrock", "Vidrock", "https://vidrock.net/embed/movie/{id}?autoplay=true", "https://vidrock.net/embed/tv/{id}/{season}/{episode}?autoplay=true", embeddable = "play", note = "film terverifikasi memutar (durasi & kontrol tampil); serial belum"),
+        EmbedProvider("111movies", "111Movies", "https://111movies.net/movie/{id}", "https://111movies.net/tv/{id}/{season}/{episode}", embeddable = "play", note = "sumber HLS punkflix; lambat saat pemanasan, serial belum"),
+        EmbedProvider("vidrift", "Vidrift", "https://embed.vidrift.net/embed/movie/{id}?autoplay=true", "https://embed.vidrift.net/embed/tv/{id}/{season}/{episode}?autoplay=true", embeddable = "play", note = "film memutar (HLS hscow); serial masih LOADING saat diuji"),
+        EmbedProvider("vidlink", "Vidlink", "https://vidlink.pro/movie/{id}", "https://vidlink.pro/tv/{id}/{season}/{episode}", embeddable = "blank", note = "poster tampil tapi video tidak mulai di iframe"),
+        EmbedProvider("nxsha", "Nxsha", "https://nxsha.space/embed/movie/{id}?lang={lang}&autoplay=true&sub={lang}", "https://nxsha.space/embed/tv/{id}/{season}/{episode}?lang={lang}&autoplay=true&sub={lang}", embeddable = "blank", note = "VIDEOJS MEDIA_ERR_SRC_NOT_SUPPORTED"),
+        EmbedProvider("videasy", "Videasy", "https://www.vidy.st/movie/{id}", "https://www.vidy.st/tv/{id}/{season}/{episode}", embeddable = "blank", note = "galat JS saat memuat sumber"),
+        EmbedProvider("vidnest", "Vidnest", "https://vidnest.fun/movie/{id}", "https://vidnest.fun/tv/{id}/{season}/{episode}", embeddable = "blank", note = "film tidak ditemukan + secureDecrypt butuh konteks browser"),
+        EmbedProvider("vapar", "Vapar", "https://vaplayer.ru/embed/movie/{id}?autoplay=true", "https://vaplayer.ru/embed/tv/{id}/{season}/{episode}?autoplay=true", embeddable = "blank", note = "iframe induknya diblokir NotSameOrigin"),
+        EmbedProvider("ythd", "Ythd", "https://ythd.org/embed/{id}", "https://ythd.org/embed/{id}/{season}/{episode}", embeddable = "blank", note = "halaman menolak: Verification failed"),
+        EmbedProvider("xpass", "Xpass", "https://play.xpass.top/e/movie/{id}", "https://play.xpass.top/e/tv/{id}/{season}/{episode}", embeddable = "blank", note = "404 page not found"),
+        EmbedProvider("moviesapi", "Moviesapi", "https://moviesapi.vip/movie/{id}", "https://moviesapi.vip/tv/{id}/{season}/{episode}", embeddable = "blank", note = "404 NOT FOUND"),
+        EmbedProvider("cinemaos", "Cinemaos", "https://cinemaos.tech/player/{id}", "https://cinemaos.tech/player/{id}/{season}/{episode}", embeddable = "deny", note = "X-Frame-Options menolak iframe"),
+        EmbedProvider("2embed", "2Embed", "https://2embed.stream/embed/movie/{id}", "https://2embed.stream/embed/tv/{id}/{season}/{episode}", embeddable = "deny", note = "frame-ancestors menolak iframe"),
+        EmbedProvider("primesrc", "Primesrc", "https://primesrc.me/embed/movie?imdb={imdb}", "https://primesrc.me/embed/tv?imdb={imdb}&season={season}&episode={episode}", idType = "imdb", embeddable = "deny", note = "frame-ancestors menolak iframe"),
+        EmbedProvider("vidfast", "Vidfast", "https://vidfast.vc/movie/{id}?autoplay=true", "https://vidfast.vc/tv/{id}/{season}/{episode}?autoplay=true", embeddable = "deny", note = "X-Frame-Options menolak iframe"),
+        EmbedProvider("vixsrc", "Vixsrc", "https://vixsrc.to/movie/{id}", "https://vixsrc.to/tv/{id}/{season}/{episode}", status = 403, embeddable = "deny", note = "Cloudflare 403"),
+        EmbedProvider("peachify", "Peachify", "https://peachify.top/embed/movie/{id}", "https://peachify.top/embed/tv/{id}/{season}/{episode}", status = 403, embeddable = "deny", note = "Cloudflare 403"),
     )
 
-    /** Provider yang staminanya masih 200 saat diuji → dipakai untuk auto-fallback. */
+    /** Provider yang status HTTP-nya 200 (belum tentu bisa memutar di iframe). */
     val HEALTHY_PROVIDERS: List<EmbedProvider> get() = PROVIDERS.filter { it.status == 200 }
+
+    /** Provider yang benar-benar memutar di dalam iframe — dipakai sebagai default. */
+    val PLAYABLE_PROVIDERS: List<EmbedProvider> get() = PROVIDERS.filter { it.embeddable == "play" }
+
+    /**
+     * Daftar untuk pemilih "sumber video" di pemutar: yang memutar dulu, lalu sisanya
+     * (ditandai di UI) supaya pengguna masih bisa mencoba kalau yang atas sedang mati.
+     */
+    val PROVIDER_CHOICES: List<EmbedProvider> get() = PROVIDERS.filter { it.status == 200 }
+
+    fun providerById(id: String?): EmbedProvider? = PROVIDERS.firstOrNull { it.id == id }
 
     /**
      * URL embed untuk satu episode.
@@ -151,7 +182,7 @@ object FilmKuCatalog {
 
     /** Rantai fallback: provider sehat sesuai urutan, dipakai kalau yang sebelumnya gagal di WebView. */
     fun embedFallbacks(tmdbId: String, imdbId: String = "", mediaType: String = "movie", season: Int = 1, episode: Int = 1): List<String> =
-        HEALTHY_PROVIDERS.map { embedUrl(it, tmdbId, imdbId, mediaType, season, episode) }
+        PROVIDER_CHOICES.map { embedUrl(it, tmdbId, imdbId, mediaType, season, episode) }
 
     // ────────────────────────────────────────────────────────────────
     // Parser

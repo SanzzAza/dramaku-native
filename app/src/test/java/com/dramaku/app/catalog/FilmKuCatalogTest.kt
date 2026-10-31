@@ -261,10 +261,43 @@ class FilmKuCatalogTest {
     fun `embedFallbacks only uses healthy providers`() {
         val chain = FilmKuCatalog.embedFallbacks("155", "tt0468569")
         assertTrue(chain.isNotEmpty())
-        assertTrue(chain.first().contains("vidlink"))
         // provider 403 tidak boleh masuk rantai otomatis
         assertTrue(chain.none { it.contains("vixsrc.to") })
         assertTrue(chain.none { it.contains("peachify") })
+    }
+
+    @Test
+    fun `default provider is one that actually plays in an iframe`() {
+        // Regresi: dulu daftar dimulai Vidlink yang cuma menampilkan poster di iframe,
+        // sehingga pemutar menampilkan layar hitam tanpa pesan apa pun.
+        val first = FilmKuCatalog.PLAYABLE_PROVIDERS.first()
+        assertEquals("vidrock", first.id)
+        assertEquals("play", first.embeddable)
+        assertTrue(FilmKuCatalog.PLAYABLE_PROVIDERS.all { it.status == 200 })
+    }
+
+    @Test
+    fun `providers that refuse iframes are not playable`() {
+        val playable = FilmKuCatalog.PLAYABLE_PROVIDERS.map { it.id }
+        listOf("vidfast", "cinemaos", "2embed", "primesrc", "vixsrc", "peachify").forEach {
+            assertTrue("$it seharusnya tidak dianggap playable", it !in playable)
+        }
+    }
+
+    @Test
+    fun `provider choices keep blocked ones out and playable ones on top`() {
+        val choices = FilmKuCatalog.PROVIDER_CHOICES
+        assertEquals(15, choices.size)
+        assertEquals(3, FilmKuCatalog.PLAYABLE_PROVIDERS.size)
+        assertEquals(choices.take(3).map { it.id }, FilmKuCatalog.PLAYABLE_PROVIDERS.map { it.id })
+        assertTrue(choices.none { it.id == "vixsrc" })
+    }
+
+    @Test
+    fun `providerById resolves known and missing ids`() {
+        assertEquals("vidrock", FilmKuCatalog.providerById("vidrock")?.id)
+        assertEquals(null, FilmKuCatalog.providerById("tidak-ada"))
+        assertEquals(null, FilmKuCatalog.providerById(null))
     }
 
     @Test
