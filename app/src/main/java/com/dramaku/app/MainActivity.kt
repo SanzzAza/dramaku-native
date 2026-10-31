@@ -279,7 +279,18 @@ private data class Drama(
 private data class EpisodeInfo(val number: Int, val streaming: String = "", val label: String = "", val locked: Boolean = false)
 private data class Detail(val drama: Drama, val episodes: List<EpisodeInfo> = emptyList())
 private data class HomeBundle(val recommended: List<Drama>, val popular: List<Drama>, val newest: List<Drama>, val loadedPage: Int = 1, val hasMore: Boolean = true)
-private data class StreamResult(val url: String, val subtitle: String = "", val subtitleMime: String = "")
+/**
+ * @param mimeType  MIME eksplisit (mis. MimeTypes.APPLICATION_M3U8) untuk URL yang tidak
+ *                  bisa ditebak dari ekstensinya — contoh proxy HLS FilmKu "/proxy?u=…".
+ * @param isEmbed   true = URL adalah halaman web (iframe provider), harus lewat WebView.
+ */
+private data class StreamResult(
+    val url: String,
+    val subtitle: String = "",
+    val subtitleMime: String = "",
+    val mimeType: String = "",
+    val isEmbed: Boolean = false,
+)
 private const val HUB_BEARER = "Bearer 15693e658f723c5b4c45900a5d045ef0ab6a053ecda4dadb831c68fef773ba5e"
 private const val HUB_REFERER = "https://www.cdreader.com/"
 
@@ -3567,7 +3578,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             val stream = repo.resolveStreamCached(detail, ep, dataSaver)
             currentCoroutineContext().ensureActive()
             if (stream.url.isBlank()) throw IllegalStateException("Video belum tersedia")
-            if (PlaybackPolicy.isEmbeddedStream(detail.drama.platform, stream.url)) {
+            if (stream.isEmbed || PlaybackPolicy.isEmbeddedStream(detail.drama.platform, stream.url)) {
                 embedUrl = stream.url
                 store.saveHistory(detail.drama, ep)
             } else {
@@ -3828,6 +3839,8 @@ private fun buildMediaItem(s: StreamResult): MediaItem {
     val b = MediaItem.Builder().setUri(Uri.parse(url))
     val lower = url.lowercase()
     when {
+        // Resolver sudah tahu tipenya (FilmKu HLS via proxy tanpa ekstensi, dll).
+        s.mimeType.isNotBlank() -> b.setMimeType(s.mimeType)
         // Playlist HLS (harus dicek sebelum "dash" karena URL seperti Shorten punya path "/dash/hls-.../main.m3u8")
         lower.contains(".m3u8") || lower.contains("m3u8") -> b.setMimeType(MimeTypes.APPLICATION_M3U8)
         // DramaBox (proxy dramahub.be/dramaboxbaru) membalas mp4 ber-token:
@@ -5256,7 +5269,8 @@ private class DramakuRepository {
                 mediaType = mediaType,
                 season = season,
                 episode = ep,
-            )
+            ),
+            isEmbed = true,
         )
     }
 
@@ -5272,11 +5286,19 @@ private class DramakuRepository {
                 if (token.isBlank()) return@runCatching null
                 val sourceUrl = FilmKuCatalog.liveSourceUrl(tmdbId, mediaType, season, ep, token)
                 val json = getJson(sourceUrl)
-                val best = FilmKuCatalog.parseSourceStreams(json).firstOrNull { it.url.startsWith("https://") }
+                val best = FilmKuCatalog.pickStream(FilmKuCatalog.parseSourceStreams(json))
                     ?: return@runCatching null
                 val subs = FilmKuCatalog.parseSourceSubtitles(json).firstOrNull()
                 filmKuLiveForced[tmdbId] = true
-                StreamResult(best.url, subtitle = subs?.second.orEmpty())
+                // URL proxy (edge.reelvault.click/proxy?u=…) tidak mengandung ".m3u8",
+                // jadi MIME harus diberi tahu eksplisit — kalau tidak, ExoPlayer memperlakukannya
+                // sebagai file progresif dan PlaybackPolicy mengiranya halaman embed (→ WebView hitam).
+                StreamResult(
+                    best.url,
+                    subtitle = subs?.second.orEmpty(),
+                    mimeType = FilmKuCatalog.mimeTypeOf(best),
+                    isEmbed = false,
+                )
             }.getOrNull()
         }
 

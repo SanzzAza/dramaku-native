@@ -1,5 +1,6 @@
 package com.dramaku.app.player
 
+import com.dramaku.app.catalog.FilmKuCatalog
 import java.net.URI
 
 /** Playback decisions kept independent of Android so edge cases can be unit-tested. */
@@ -34,14 +35,11 @@ internal object PlaybackPolicy {
         (current + 1).takeIf { current in 1 until total && it !in locked }
 
     fun isEmbeddedStream(platform: String, url: String): Boolean {
-        // FilmKu: sumbernya murni iframe provider pihak ketiga (tidak ada URL video langsung),
-        // jadi semua URL https non-file media dianggap embed.
-        if (platform == "filmku") {
-            val uri = runCatching { URI(url) }.getOrNull() ?: return false
-            if (uri.scheme != "https") return false
-            val path = uri.path.orEmpty().lowercase()
-            return listOf(".mp4", ".m3u8", ".mpd").none { path.endsWith(it) }
-        }
+        // FilmKu: jalur utama adalah HLS langsung (ExoPlayer). URL HLS-nya sering TANPA
+        // ekstensi (proxy "edge.reelvault.click/proxy?u=…"), jadi jangan menebak dari
+        // ekstensi — hanya halaman provider yang dikenal yang dianggap embed.
+        // (Dulu semua URL non-.m3u8 dianggap embed → playlist dibuka di WebView → hitam.)
+        if (platform == "filmku") return FilmKuCatalog.isEmbedPageUrl(url)
         if (platform != "anichin") return false
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
         if (uri.scheme != "https") return false

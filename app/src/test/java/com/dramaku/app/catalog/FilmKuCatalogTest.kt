@@ -2,6 +2,7 @@ package com.dramaku.app.catalog
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -379,5 +380,31 @@ class FilmKuCatalogTest {
         assertEquals(2, subs.size)
         assertEquals("Indonesia" to "https://x/id.vtt", subs[0])
         assertEquals("https://x/en.srt", subs[1].second)
+    }
+
+    @Test
+    fun `pickStream dan mimeTypeOf mengenali proxy HLS tanpa ekstensi`() {
+        val proxy = FilmKuCatalog.LiveStream("https://edge.reelvault.click/proxy?u=abc", "hls", provider = "Vela")
+        val titan = FilmKuCatalog.LiveStream("https://img1.hscow.com/hls_mps/x/720/index_287.m3u8?Expires=1", "hls", provider = "Titan")
+        val mp4 = FilmKuCatalog.LiveStream("https://cdn/x/video.mp4", "mp4")
+        val http = FilmKuCatalog.LiveStream("http://insecure/x.m3u8", "hls")
+
+        assertEquals(FilmKuCatalog.MIME_HLS, FilmKuCatalog.mimeTypeOf(proxy))
+        assertEquals(FilmKuCatalog.MIME_HLS, FilmKuCatalog.mimeTypeOf(titan))
+        assertEquals(FilmKuCatalog.MIME_HLS, FilmKuCatalog.mimeTypeOf(FilmKuCatalog.LiveStream("https://edge.reelvault.click/proxy?u=abc", "")))
+        assertEquals(FilmKuCatalog.MIME_MP4, FilmKuCatalog.mimeTypeOf(mp4))
+
+        assertEquals(proxy, FilmKuCatalog.pickStream(listOf(http, mp4, proxy)))
+        assertEquals(mp4, FilmKuCatalog.pickStream(listOf(http, mp4)))
+        assertNull(FilmKuCatalog.pickStream(listOf(http)))
+    }
+
+    @Test
+    fun `isEmbedPageUrl membedakan halaman provider dari media`() {
+        assertTrue(FilmKuCatalog.isEmbedPageUrl("https://vidrock.net/embed/movie/155?autoplay=true"))
+        assertTrue(FilmKuCatalog.isEmbedPageUrl("https://vidlink.pro/tv/1399/1/1"))
+        assertFalse(FilmKuCatalog.isEmbedPageUrl("https://edge.reelvault.click/proxy?u=abc"))
+        assertFalse(FilmKuCatalog.isEmbedPageUrl("https://img.hscow.com/hls_mps/x/720/0.jpg?t=1"))
+        assertFalse(FilmKuCatalog.isEmbedPageUrl("https://x/y/index.m3u8"))
     }
 }

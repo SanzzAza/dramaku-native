@@ -64,4 +64,16 @@ class PlaybackPolicyTest {
         assertFalse(PlaybackPolicy.isEmbeddedStream("anichin", "http://ok.ru/videoembed/123"))
         assertFalse(PlaybackPolicy.isEmbeddedStream("anichin", "file:///embed/video"))
     }
+
+    @Test fun `filmku HLS tanpa ekstensi diputar ExoPlayer, hanya halaman provider yang embed`() {
+        // Proxy Vidrift (vela): tidak ada ".m3u8" di URL — dulu salah dikira iframe.
+        assertFalse(PlaybackPolicy.isEmbeddedStream("filmku", "https://edge.reelvault.click/proxy?u=Z-20ANl5BM8dFm4hMYC0lwpbLnDud06"))
+        assertFalse(PlaybackPolicy.isEmbeddedStream("filmku", "https://img1.hscow.com/hls_mps/abc/720/index_287.m3u8?Expires=1&Signature=x"))
+        assertFalse(PlaybackPolicy.isEmbeddedStream("filmku", "https://cdn.example/v.mp4"))
+        // Halaman provider tetap lewat WebView.
+        assertTrue(PlaybackPolicy.isEmbeddedStream("filmku", "https://vidrock.net/embed/movie/155?autoplay=true"))
+        assertTrue(PlaybackPolicy.isEmbeddedStream("filmku", "https://111movies.net/movie/155"))
+        assertTrue(PlaybackPolicy.isEmbeddedStream("filmku", "https://embed.vidrift.net/embed/tv/1399/1/1"))
+        assertFalse(PlaybackPolicy.isEmbeddedStream("filmku", "http://vidrock.net/embed/movie/155"))
+    }
 }

@@ -2,6 +2,18 @@
 
 Semua perubahan penting pada project Dramaku Native dicatat di dokumen ini.
 
+## 4.9.20 (2026-10-31)
+
+- Fix FilmKu tidak bisa diputar: respons `/api/source` Vidrift sering memberi
+  URL HLS lewat proxy (`edge.reelvault.click/proxy?u=…`) yang **tidak punya
+  ekstensi `.m3u8`**. `PlaybackPolicy.isEmbeddedStream` menganggap semua URL
+  FilmKu non-`.m3u8` sebagai iframe, sehingga playlist HLS dibuka di WebView
+  (layar hitam/teks). Kini resolver menandai hasil secara eksplisit
+  (`isEmbed` + `mimeType`), ExoPlayer menerima MIME `application/x-mpegURL`
+  langsung, dan hanya halaman provider yang dikenal yang dialihkan ke WebView.
+- Pemilihan stream FilmKu mengutamakan HLS https (`pickStream`), dengan unit
+  test regresi untuk URL proxy tanpa ekstensi.
+
 ## 4.9.19 (2026-10-19)
 
 - Fix pergantian episode DramaBox: resolver sebelumnya mengirim parameter

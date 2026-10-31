@@ -253,6 +253,58 @@ object FilmKuCatalog {
 
     data class LiveStream(val url: String, val type: String, val quality: String = "", val provider: String = "")
 
+    /** Nilai MIME media3 (ditulis literal agar file ini tetap bebas dependensi Android). */
+    const val MIME_HLS = "application/x-mpegURL"
+    const val MIME_DASH = "application/dash+xml"
+    const val MIME_MP4 = "video/mp4"
+
+    /**
+     * Pilih stream yang akan diputar: wajib https, utamakan HLS karena segmen-nya
+     * bisa di-range dan CDN-nya (hscow / edge reelvault) menerima request tanpa Referer.
+     */
+    fun pickStream(streams: List<LiveStream>): LiveStream? {
+        val https = streams.filter { it.url.startsWith("https://") }
+        return https.firstOrNull { isHlsType(it.type) || it.url.contains(".m3u8") }
+            ?: https.firstOrNull()
+    }
+
+    private fun isHlsType(type: String): Boolean =
+        type.equals("hls", true) || type.equals("m3u8", true) || type.contains("mpegurl", true)
+
+    /**
+     * MIME eksplisit untuk ExoPlayer. Penting karena URL proxy Vidrift
+     * ("…/proxy?u=<base64>") tidak punya ekstensi sehingga tidak bisa ditebak dari URL.
+     */
+    fun mimeTypeOf(stream: LiveStream): String {
+        val u = stream.url.lowercase()
+        return when {
+            isHlsType(stream.type) || u.contains(".m3u8") -> MIME_HLS
+            stream.type.equals("dash", true) || u.contains(".mpd") -> MIME_DASH
+            stream.type.equals("mp4", true) || u.contains(".mp4") -> MIME_MP4
+            // Tipe tidak dikenal tapi lewat proxy edge → hampir pasti HLS.
+            u.contains("/proxy?") -> MIME_HLS
+            else -> ""
+        }
+    }
+
+    /**
+     * Apakah URL ini halaman web provider (harus lewat WebView), bukan media langsung.
+     * Dipakai PlaybackPolicy agar URL HLS tanpa ekstensi TIDAK salah dikira iframe.
+     */
+    fun isEmbedPageUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        if (!lower.startsWith("https://")) return false
+        if (listOf(".m3u8", ".mp4", ".mpd", "/proxy?", "mpegurl").any { lower.contains(it) }) return false
+        val hostAndPath = lower.removePrefix("https://")
+        val host = hostAndPath.substringBefore('/').substringBefore(':')
+        val path = "/" + hostAndPath.substringAfter('/', "").substringBefore('?')
+        if (host == "edge.reelvault.click" || host.endsWith(".hscow.com")) return false
+        val providerHosts = PROVIDERS.flatMap { listOf(it.movieUrl, it.tvUrl) }
+            .map { it.removePrefix("https://").substringBefore('/').lowercase() }
+            .toSet()
+        return host in providerHosts || path.contains("/embed")
+    }
+
     // ────────────────────────────────────────────────────────────────
     // Parser
     // ────────────────────────────────────────────────────────────────
