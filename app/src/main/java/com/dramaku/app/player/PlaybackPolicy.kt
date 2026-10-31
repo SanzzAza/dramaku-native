@@ -34,6 +34,14 @@ internal object PlaybackPolicy {
         (current + 1).takeIf { current in 1 until total && it !in locked }
 
     fun isEmbeddedStream(platform: String, url: String): Boolean {
+        // FilmKu: sumbernya murni iframe provider pihak ketiga (tidak ada URL video langsung),
+        // jadi semua URL https non-file media dianggap embed.
+        if (platform == "filmku") {
+            val uri = runCatching { URI(url) }.getOrNull() ?: return false
+            if (uri.scheme != "https") return false
+            val path = uri.path.orEmpty().lowercase()
+            return listOf(".mp4", ".m3u8", ".mpd").none { path.endsWith(it) }
+        }
         if (platform != "anichin") return false
         val uri = runCatching { URI(url) }.getOrNull() ?: return false
         if (uri.scheme != "https") return false
