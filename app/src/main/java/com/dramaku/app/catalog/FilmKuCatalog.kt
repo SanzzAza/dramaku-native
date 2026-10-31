@@ -27,6 +27,9 @@ object FilmKuCatalog {
     const val PLATFORM_ID = "filmku"
     const val LABEL = "FilmKu"
     const val BASE_URL = "https://vidbox.wtf"
+
+    /** Host yang menyediakan jalur HLS langsung (tanpa iframe). */
+    const val DIRECT_EMBED_HOST = "https://embed.vidrift.net"
     const val TMDB_BASE = "https://api.themoviedb.org/3"
     const val TMDB_IMG = "https://image.tmdb.org/t/p/w500"
     const val LOGO_URL = "https://vidbox.wtf/logo.png"
@@ -183,6 +186,72 @@ object FilmKuCatalog {
     /** Rantai fallback: provider sehat sesuai urutan, dipakai kalau yang sebelumnya gagal di WebView. */
     fun embedFallbacks(tmdbId: String, imdbId: String = "", mediaType: String = "movie", season: Int = 1, episode: Int = 1): List<String> =
         PROVIDER_CHOICES.map { embedUrl(it, tmdbId, imdbId, mediaType, season, episode) }
+
+    // ────────────────────────────────────────────────────────────────
+    // Sumber video langsung (HLS) — jalur utama, tanpa WebView
+    // ────────────────────────────────────────────────────────────────
+
+    /**
+     * Vidrift menaruh token bertanda tangan di HTML halaman embed lalu menukarnya
+     * dengan daftar stream di /api/source.
+     *
+     * Keunggulan jalur ini dibanding iframe: hasilnya playlist .m3u8 yang diputar
+     * ExoPlayer, jadi tidak bergantung pada WebView perangkat (di banyak HP, iframe
+     * provider tampil hitam walau di Chrome normal). Diuji 31 Okt 2026: segmen
+     * balas 200/206 dan bisa di-range, berlaku untuk film maupun serial.
+     */
+    private val TOKEN_RE = Regex("""eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}""")
+
+    /** Ambil token bertanda tangan dari HTML halaman embed. */
+    fun extractSourceToken(html: String): String =
+        TOKEN_RE.find(html)?.value.orEmpty()
+
+    /** Path API sumber untuk satu episode. */
+    fun sourcePath(tmdbId: String, mediaType: String = "movie", season: Int = 1, episode: Int = 1): String =
+        if (mediaType == "tv") "tv/${enc(tmdbId)}/${season.coerceAtLeast(1)}/${episode.coerceAtLeast(1)}"
+        else "movie/${enc(tmdbId)}"
+
+    fun liveEmbedUrl(tmdbId: String, mediaType: String = "movie", season: Int = 1, episode: Int = 1): String =
+        "$DIRECT_EMBED_HOST/embed/" + sourcePath(tmdbId, mediaType, season, episode)
+
+    fun liveSourceUrl(tmdbId: String, mediaType: String = "movie", season: Int = 1, episode: Int = 1, token: String = ""): String =
+        "$DIRECT_EMBED_HOST/api/source/" + sourcePath(tmdbId, mediaType, season, episode) +
+            if (token.isBlank()) "" else "?token=" + enc(token)
+
+    /**
+     * Ambil URL HLS dari respons /api/source.
+     *
+     * `proxyUrl` dipakai lebih dulu: host edge-nya menerima permintaan tanpa Referer
+     * (diuji dengan curl maupun UA ExoPlayer), sedangkan `url` mentah biasanya
+     * memerlukan Referer situs embed.
+     */
+    fun parseSourceStreams(json: JSONObject): List<LiveStream> {
+        val list = json.optJSONArray("streams") ?: return emptyList()
+        val out = mutableListOf<LiveStream>()
+        for (i in 0 until list.length()) {
+            val o = list.optJSONObject(i) ?: continue
+            val url = o.optString("proxyUrl").ifBlank { o.optString("url") }.trim()
+            if (url.isBlank()) continue
+            val type = o.optString("type").ifBlank { if (url.contains(".m3u8")) "hls" else "mp4" }
+            out.add(LiveStream(url = url, type = type, quality = json.optString("quality"), provider = o.optString("provider")))
+        }
+        return out
+    }
+
+    /** Subtitle dari /api/source (bila ada), dipetakan ke pasangan (label, url). */
+    fun parseSourceSubtitles(json: JSONObject): List<Pair<String, String>> {
+        val list = json.optJSONArray("subtitles") ?: return emptyList()
+        val out = mutableListOf<Pair<String, String>>()
+        for (i in 0 until list.length()) {
+            val o = list.optJSONObject(i) ?: continue
+            val url = o.optString("url").ifBlank { o.optString("file") }
+            if (url.isBlank()) continue
+            out.add(o.optString("label").ifBlank { o.optString("lang", "Subtitle") } to url)
+        }
+        return out
+    }
+
+    data class LiveStream(val url: String, val type: String, val quality: String = "", val provider: String = "")
 
     // ────────────────────────────────────────────────────────────────
     // Parser

@@ -3619,7 +3619,8 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         sources = if (detail.drama.platform == FilmKuCatalog.PLATFORM_ID)
             FilmKuCatalog.PROVIDER_CHOICES.map { it.id to it.label }
         else emptyList(),
-        embedDirect = embedDirect,
+        // FilmKu yang berhasil memakai HLS tidak menampilkan baris "Cara muat" embed.
+        embedDirect = if (detail.drama.platform == FilmKuCatalog.PLATFORM_ID) true else embedDirect,
         embedLog = embedLog.toList()
     )
     val action: (PlayerAction) -> Unit = { selected ->
@@ -3641,12 +3642,21 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             PlayerAction.AutoNext -> { autoNext = !autoNext; store.setAutoNext(autoNext) }
             PlayerAction.Source -> panel = PlayerPanel.Source
             PlayerAction.EmbedMode -> {
-                embedDirect = !embedDirect
-                notice = if (embedDirect) "Memuat langsung" else "Memuat lewat iframe"
-                embedLog.clear()
-                val keep = embedUrl
-                embedUrl = ""
-                if (keep.isNotBlank()) embedUrl = keep
+                if (detail.drama.platform == FilmKuCatalog.PLATFORM_ID) {
+                    // FilmKu: pindah antara HLS langsung (ExoPlayer) dan iframe (WebView).
+                    val useLive = !repo.isFilmKuLive()
+                    repo.setFilmKuLive(useLive)
+                    embedDirect = true
+                    notice = if (useLive) "Mode: HLS langsung" else "Mode: iframe"
+                    reload(manual = true)
+                } else {
+                    embedDirect = !embedDirect
+                    notice = if (embedDirect) "Memuat langsung" else "Memuat lewat iframe"
+                    embedLog.clear()
+                    val keep = embedUrl
+                    embedUrl = ""
+                    if (keep.isNotBlank()) embedUrl = keep
+                }
             }
             PlayerAction.OpenExternal -> {
                 val target = embedUrl.ifBlank { detail.drama.poster }
@@ -3885,6 +3895,8 @@ private class DramakuRepository {
     private val filmKuImdb = mutableMapOf<String, String>()
     private val filmKuSeasons = mutableMapOf<String, Int>()
     private val filmKuProvider = mutableMapOf<String, String>()
+    private val filmKuLiveForced = mutableMapOf<String, Boolean>()
+    @Volatile private var filmKuLiveMode = true
     private val streamCache = ConcurrentHashMap<String, CachedStream>()
     private val forcedDetailRefresh = ConcurrentHashMap.newKeySet<String>()
 
@@ -5220,10 +5232,19 @@ private class DramakuRepository {
      * (https://…) dan PlaybackPolicy.isEmbeddedStream() mengenalinya sebagai embed
      * sehingga diputar lewat WebView, bukan ExoPlayer.
      */
-    private fun resolveFilmKuStream(d: Detail, ep: Int): StreamResult {
+    private suspend fun resolveFilmKuStream(d: Detail, ep: Int): StreamResult {
         val mediaType = if (d.drama.subjectType == 2) "tv" else "movie"
         val imdbId = filmKuImdb[d.drama.id].orEmpty()
         val season = filmKuSeasons[d.drama.id] ?: 1
+
+        // 1. Jalur utama: HLS langsung → diputar ExoPlayer, tidak bergantung WebView.
+        //    Di banyak perangkat, iframe provider tampil hitam walau Chrome normal.
+        if (filmKuLiveMode && filmKuLiveForced[d.drama.id] != false) {
+            val live = fetchFilmKuLive(d.drama.id, mediaType, season, ep)
+            if (live != null) return live
+        }
+
+        // 2. Cadangan: URL embed (WebView) memakai provider yang dipilih pengguna.
         val provider = FilmKuCatalog.providerById(filmKuProvider[d.drama.id])
             ?: FilmKuCatalog.PLAYABLE_PROVIDERS.firstOrNull()
             ?: FilmKuCatalog.PROVIDER_CHOICES.first()
@@ -5238,6 +5259,43 @@ private class DramakuRepository {
             )
         )
     }
+
+    /**
+     * Tukar halaman embed Vidrift → token → /api/source → playlist HLS.
+     * Mengembalikan null kalau salah satu langkah gagal supaya resolver jatuh ke embed.
+     */
+    private suspend fun fetchFilmKuLive(tmdbId: String, mediaType: String, season: Int, ep: Int): StreamResult? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val pageUrl = FilmKuCatalog.liveEmbedUrl(tmdbId, mediaType, season, ep)
+                val token = FilmKuCatalog.extractSourceToken(fetchText(pageUrl))
+                if (token.isBlank()) return@runCatching null
+                val sourceUrl = FilmKuCatalog.liveSourceUrl(tmdbId, mediaType, season, ep, token)
+                val json = getJson(sourceUrl)
+                val best = FilmKuCatalog.parseSourceStreams(json).firstOrNull { it.url.startsWith("https://") }
+                    ?: return@runCatching null
+                val subs = FilmKuCatalog.parseSourceSubtitles(json).firstOrNull()
+                filmKuLiveForced[tmdbId] = true
+                StreamResult(best.url, subtitle = subs?.second.orEmpty())
+            }.getOrNull()
+        }
+
+    /** GET sederhana ber-UA browser; dipakai untuk mengambil HTML halaman embed. */
+    private suspend fun fetchText(url: String): String = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(url)
+            .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/121 Mobile Safari/537.36")
+            .header("Accept", "text/html,application/xhtml+xml")
+            .build()
+        client.newCall(req).execute().use { r ->
+            if (!r.isSuccessful) error("HTTP ${r.code}")
+            r.body?.string().orEmpty()
+        }
+    }
+
+    /** true = pakai HLS langsung, false = paksa lewat iframe (untuk pembanding). */
+    fun setFilmKuLive(useLive: Boolean) { filmKuLiveMode = useLive }
+
+    fun isFilmKuLive(): Boolean = filmKuLiveMode
 
     /** Ganti provider embed FilmKu (dipanggil dari tombol "ganti server" di player). */
     fun rotateFilmKuProvider(dramaId: String, episode: Int = 1): String =

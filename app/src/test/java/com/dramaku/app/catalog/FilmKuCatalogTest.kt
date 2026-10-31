@@ -334,4 +334,50 @@ class FilmKuCatalogTest {
     fun `parseItem returns null for junk without crashing`() {
         assertNull(FilmKuCatalog.parseItem(JSONObject("""{"foo":"bar"}""")))
     }
+
+    @Test
+    fun `extractSourceToken finds signed token inside embed html`() {
+        val html = """<html><script>const t="eyJ0bWRiSWQiOjE1NSwidHlwZSI6Im1vdmllIiwic2Vhc29uIjpudWxsLCJleHAiOjE3OTM0ODEyMDB9.4C8USq06HFhD6WvzxzKt0EkYqXiYmL9rE4pVOa7-mHE";</script></html>"""
+        val token = FilmKuCatalog.extractSourceToken(html)
+        assertTrue(token.startsWith("eyJ0bWRiSWQiOjE1NS"))
+        assertTrue(token.contains("."))
+        assertEquals("", FilmKuCatalog.extractSourceToken("<html>tidak ada token</html>"))
+    }
+
+    @Test
+    fun `source paths follow vidrift shape for movie and tv`() {
+        assertEquals("movie/155", FilmKuCatalog.sourcePath("155"))
+        assertEquals("tv/1399/1/5", FilmKuCatalog.sourcePath("1399", "tv", 1, 5))
+        assertEquals("https://embed.vidrift.net/embed/tv/1399/2/3",
+            FilmKuCatalog.liveEmbedUrl("1399", "tv", 2, 3))
+        assertEquals("https://embed.vidrift.net/api/source/movie/155?token=abc",
+            FilmKuCatalog.liveSourceUrl("155", token = "abc"))
+    }
+
+    @Test
+    fun `parseSourceStreams prefers proxyUrl`() {
+        val json = JSONObject(
+            """{"success":true,"quality":"HD","maxRes":1080,"streams":[
+                 {"url":"","proxyUrl":"https://edge.example/proxy?u=aaa","type":"hls","provider":"Atlas"},
+                 {"url":"https://cdn.example/raw.m3u8","proxyUrl":"","type":"hls","provider":"Direct"},
+                 {"url":"","proxyUrl":"","type":"hls"}],"subtitles":[]}""".trimIndent()
+        )
+        val streams = FilmKuCatalog.parseSourceStreams(json)
+        assertEquals(2, streams.size)
+        assertEquals("https://edge.example/proxy?u=aaa", streams[0].url)
+        assertEquals("hls", streams[0].type)
+        assertEquals("HD", streams[0].quality)
+        assertEquals("https://cdn.example/raw.m3u8", streams[1].url)
+    }
+
+    @Test
+    fun `parseSourceSubtitles reads url or file`() {
+        val json = JSONObject(
+            """{"subtitles":[{"label":"Indonesia","url":"https://x/id.vtt"},{"file":"https://x/en.srt"}]}""".trimIndent()
+        )
+        val subs = FilmKuCatalog.parseSourceSubtitles(json)
+        assertEquals(2, subs.size)
+        assertEquals("Indonesia" to "https://x/id.vtt", subs[0])
+        assertEquals("https://x/en.srt", subs[1].second)
+    }
 }
