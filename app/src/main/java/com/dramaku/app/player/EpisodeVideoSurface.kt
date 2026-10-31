@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.os.Build
 import android.text.TextUtils
 import android.view.LayoutInflater
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -51,11 +52,26 @@ internal fun EpisodeVideoSurface(player: ExoPlayer, fitContain: Boolean, immersi
 
 /** Embed-only fallback. Never grant file access or leave an iframe playing after disposal/background. */
 @Composable
-internal fun EmbeddedEpisodeVideo(url: String, foreground: Boolean, modifier: Modifier = Modifier, onFailure: (String) -> Unit) {
+internal fun EmbeddedEpisodeVideo(
+    url: String,
+    foreground: Boolean,
+    modifier: Modifier = Modifier,
+    /**
+     * true = URL provider dimuat sebagai dokumen utama (paling andal: tidak ada iframe
+     * lintas-origin, tidak ada frame-ancestors, UA & cookie apa adanya).
+     * false = dibungkus iframe di dalam dokumen ber-base https, dipakai jalur Anichin.
+     */
+    direct: Boolean = false,
+    onFailure: (String) -> Unit,
+    /** Baris log untuk panel diagnosa di layar (console, error jaringan, status halaman). */
+    onDiagnostic: (String) -> Unit = {},
+) {
     AndroidView(
         factory = { context ->
             WebView(context).apply {
                 setBackgroundColor(Color.BLACK)
+                onDiagnostic("WebView: " + runCatching { WebSettings.getDefaultUserAgent(context) }
+                    .getOrDefault("?").substringAfter("Chrome/", "?").substringBefore(' '))
                 settings.apply {
                     javaScriptEnabled = true
                     domStorageEnabled = true
@@ -63,24 +79,37 @@ internal fun EmbeddedEpisodeVideo(url: String, foreground: Boolean, modifier: Mo
                     allowFileAccess = false
                     allowContentAccess = false
                     javaScriptCanOpenWindowsAutomatically = false
-                    mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) safeBrowsingEnabled = true
-                    userAgentString = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                    // UA perangkat dipakai apa adanya: memalsukan UA yang lebih baru dari
+                    // WebView sebenarnya membuat situs mengirim sintaks JS yang tidak dikenali.
                 }
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                webChromeClient = WebChromeClient()
+                webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(msg: ConsoleMessage): Boolean {
+                        onDiagnostic("console: " + msg.message().take(120))
+                        return true
+                    }
+                }
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                         request.url.scheme !in listOf("https", "about")
 
+                    override fun onPageFinished(view: WebView, url: String) = onDiagnostic("selesai: " + url.take(70))
+
+                    override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                        if (request.isForMainFrame) onDiagnostic("HTTP ${response.statusCode} ${request.url.host}")
+                    }
+
                     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                        onDiagnostic("error ${error.errorCode} ${request.url.host}: ${error.description}".take(120))
                         if (request.isForMainFrame && request.url.scheme == "https") onFailure("Pemutar sumber gagal dimuat. Periksa koneksi lalu coba lagi.")
                     }
                 }
             }
         },
         update = { view ->
-            val target = if (foreground) url else "about:blank"
+            val target = if (foreground) (if (direct) "1|" else "0|") + url else "about:blank"
             if (view.tag != target) {
                 view.tag = target
                 if (!foreground) {
@@ -89,9 +118,13 @@ internal fun EmbeddedEpisodeVideo(url: String, foreground: Boolean, modifier: Mo
                     view.onPause()
                 } else {
                     view.onResume()
-                    val source = TextUtils.htmlEncode(url)
-                    val html = """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#000;width:100%;height:100%;overflow:hidden}iframe{border:0;width:100%;height:100%}</style></head><body><iframe src="$source" allow="autoplay;fullscreen;encrypted-media;picture-in-picture" allowfullscreen></iframe></body></html>"""
-                    view.loadDataWithBaseURL("https://anichin.moe/", html, "text/html", "UTF-8", null)
+                    if (direct) {
+                        view.loadUrl(url)
+                    } else {
+                        val source = TextUtils.htmlEncode(url)
+                        val html = """<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#000;width:100%;height:100%;overflow:hidden}iframe{border:0;width:100%;height:100%}</style></head><body><iframe src="$source" allow="autoplay;fullscreen;encrypted-media;picture-in-picture" allowfullscreen></iframe></body></html>"""
+                        view.loadDataWithBaseURL("https://anichin.moe/", html, "text/html", "UTF-8", null)
+                    }
                 }
             }
         },

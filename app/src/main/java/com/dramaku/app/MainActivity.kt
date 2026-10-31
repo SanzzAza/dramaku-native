@@ -3389,6 +3389,13 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
     var streamHasSub by remember { mutableStateOf(false) }
     var hasSub by remember { mutableStateOf(false) }
     var embedUrl by remember { mutableStateOf("") }
+    // FilmKu memuat URL provider sebagai dokumen utama (tanpa iframe): paling andal di WebView.
+    var embedDirect by remember { mutableStateOf(true) }
+    val embedLog = remember { mutableStateListOf<String>() }
+    fun logEmbed(line: String) {
+        if (embedLog.size > 4) embedLog.removeAt(0)
+        embedLog.add(line.take(140))
+    }
     var portraitVideo by remember { mutableStateOf(detail.drama.platform != "anichin") }
     var subOn by remember { mutableStateOf(store.subtitleOn()) }
     var dataSaver by remember { mutableStateOf(store.dataSaver()) }
@@ -3548,6 +3555,7 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         if (requestedEpisode != ep) wantsToPlay = true
         requestedEpisode = ep; retryBudget.beginEpisode(ep)
         firstFrame = false; embedUrl = ""; streamHasSub = false; hasSub = false
+        embedLog.clear()
         speedHold = false; isSeeking = false; chromeVisible = true; curMs = 0L; durMs = 0L; bufferedMs = 0L
         loading = true; buffering = false; error = null
         if (ep in locked) { loading = false; error = "Episode ini masih terkunci di sumber. Pilih episode lain."; return@LaunchedEffect }
@@ -3610,7 +3618,9 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
         else "",
         sources = if (detail.drama.platform == FilmKuCatalog.PLATFORM_ID)
             FilmKuCatalog.PROVIDER_CHOICES.map { it.id to it.label }
-        else emptyList()
+        else emptyList(),
+        embedDirect = embedDirect,
+        embedLog = embedLog.toList()
     )
     val action: (PlayerAction) -> Unit = { selected ->
         revealChrome() // Interacting with the chrome restarts the auto-hide countdown.
@@ -3630,6 +3640,20 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             PlayerAction.Fit -> { fitContain = !fitContain; store.setFitContain(fitContain) }
             PlayerAction.AutoNext -> { autoNext = !autoNext; store.setAutoNext(autoNext) }
             PlayerAction.Source -> panel = PlayerPanel.Source
+            PlayerAction.EmbedMode -> {
+                embedDirect = !embedDirect
+                notice = if (embedDirect) "Memuat langsung" else "Memuat lewat iframe"
+                embedLog.clear()
+                val keep = embedUrl
+                embedUrl = ""
+                if (keep.isNotBlank()) embedUrl = keep
+            }
+            PlayerAction.OpenExternal -> {
+                val target = embedUrl.ifBlank { detail.drama.poster }
+                if (target.isNotBlank()) runCatching {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+                }.onFailure { notice = "Tidak ada browser terpasang" }
+            }
             PlayerAction.Reload -> { panel = null; reload(manual = true) }
         }
     }
@@ -3639,7 +3663,14 @@ private fun VerticalEpisodePlayer(detail: Detail, startEp: Int, repo: DramakuRep
             Box(Modifier.fillMaxSize().background(Color.Black)) {
                 if (page == pager.settledPage) {
                     if (embedUrl.isNotBlank()) {
-                        EmbeddedEpisodeVideo(embedUrl, foreground, Modifier.fillMaxSize()) { error = it }
+                        EmbeddedEpisodeVideo(
+                            url = embedUrl,
+                            foreground = foreground,
+                            modifier = Modifier.fillMaxSize(),
+                            direct = embedDirect,
+                            onFailure = { error = it },
+                            onDiagnostic = { logEmbed(it) },
+                        )
                     } else {
                         if (loadedEpisode == page + 1) EpisodeVideoSurface(player, fitContain, immersive, Modifier.fillMaxSize())
                         if (!firstFrame || loadedEpisode != page + 1) AsyncImage(detail.drama.poster, null, Modifier.fillMaxSize().alpha(0.55f), contentScale = ContentScale.Crop)

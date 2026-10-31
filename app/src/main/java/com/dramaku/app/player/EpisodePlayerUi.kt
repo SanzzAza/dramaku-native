@@ -52,7 +52,7 @@ import coil.compose.AsyncImage
 import com.dramaku.app.R
 
 internal enum class PlayerPanel { Episodes, More, Speed, Quality, Subtitles, Source, Details }
-internal enum class PlayerAction { Back, PlayPause, Like, Collect, Share, Episodes, More, Immersive, Speed, Quality, Subtitles, Source, Fit, AutoNext, Reload, Details }
+internal enum class PlayerAction { Back, PlayPause, Like, Collect, Share, Episodes, More, Immersive, Speed, Quality, Subtitles, Source, EmbedMode, OpenExternal, Fit, AutoNext, Reload, Details }
 internal data class EpisodeChoice(val number: Int, val locked: Boolean = false, val progress: Float = 0f)
 
 internal data class EpisodePlayerUiState(
@@ -72,6 +72,10 @@ internal data class EpisodePlayerUiState(
     val sourceLabel: String = "",
     /** Pilihan sumber embed; kosong = pemutar tidak menampilkan pemilih sumber. */
     val sources: List<Pair<String, String>> = emptyList(),
+    /** true = URL sumber dimuat sebagai dokumen utama, false = dibungkus iframe. */
+    val embedDirect: Boolean = false,
+    /** Beberapa baris terakhir dari WebView (console/HTTP/error) untuk diagnosa di layar. */
+    val embedLog: List<String> = emptyList(),
     val liked: Boolean = false,
     val collected: Boolean = false,
     val positionMs: Long = 0L,
@@ -474,6 +478,24 @@ internal fun PlayerSettingsSheet(
                         Label("Sumber video", color = Secondary, size = 11.sp)
                         Spacer(Modifier.height(4.dp))
                         ChoiceRow(state.sourceLabel.ifBlank { state.sources.first().first } + " · aktif", true, "Ketuk untuk ganti sumber lain") { onAction(PlayerAction.Source) }
+                    }
+                    if (state.embedded) {
+                        Spacer(Modifier.height(12.dp))
+                        Row(Modifier.fillMaxWidth()) {
+                            Option(
+                                Icons.Rounded.Language, "Cara muat",
+                                if (state.embedDirect) "Langsung" else "Iframe",
+                                Modifier.weight(1f)
+                            ) { onAction(PlayerAction.EmbedMode) }
+                            Option(Icons.Rounded.OpenInBrowser, "Buka di browser", "Cek sumber", Modifier.weight(1f)) { onAction(PlayerAction.OpenExternal) }
+                        }
+                        if (state.embedLog.isNotEmpty()) {
+                            Spacer(Modifier.height(10.dp))
+                            Label("Diagnosa", color = Secondary, size = 11.sp)
+                            state.embedLog.forEach { line ->
+                                Label("· $line", color = Secondary, size = 10.sp)
+                            }
+                        }
                     }
                     Spacer(Modifier.height(18.dp))
                     Label(if (state.embedded) "Video embed memakai kontrol dari pemutar sumber." else "Ketuk untuk jeda/putar · Ketuk dua kali di sisi layar untuk ±10 detik · Tahan untuk 2x", color = Secondary, size = 11.sp)
