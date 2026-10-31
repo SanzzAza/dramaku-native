@@ -323,7 +323,7 @@ object FilmKuCatalog {
             append("#EXTM3U\n#EXT-X-VERSION:3\n")
             // Urutan rendah → tinggi supaya pemutar mulai cepat lalu naik.
             allowed.sortedBy { it.second }.forEach { (st, h) ->
-                val w = h * 16 / 9
+                val w = ((h * 16 / 9) + 1) / 2 * 2  // genapkan: 480 → 854, 720 → 1280, 1080 → 1920
                 append("#EXT-X-STREAM-INF:BANDWIDTH=${estimatedBandwidth(h)},RESOLUTION=${w}x${h}\n")
                 append(st.url).append('\n')
             }
